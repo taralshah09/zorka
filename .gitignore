@@ -1,0 +1,44 @@
+# ---- Secrets: never commit ----
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.ppk
+secrets/
+secrets.*
+credentials.json
+service-account*.json
+*-credentials.json
+.npmrc
+.pypirc
+.netrc
+.aws/
+.gcloud/
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+
+# ---- Claude Code local-only files ----
+.claude/settings.local.json
+
+# ---- Common build / dependency output ----
+node_modules/
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+.next/
+.DS_Store
+Thumbs.db
+
+docs
+design_ref
