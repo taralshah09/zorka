@@ -1,0 +1,17 @@
+# Codex project config for Kimbo — mirrors .claude/settings.json.
+# Project-level .codex/ config is only loaded once the project is trusted in Codex.
+
+# Ask before anything that leaves the sandbox; writes stay inside the workspace.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+# Codex natively reads AGENTS.md. Also load CODEX.md / AGENT.md as project instructions.
+project_doc_fallback_filenames = ["CODEX.md", "AGENT.md"]
+
+[sandbox_workspace_write]
+# No outbound network from sandboxed commands (blocks git push / gh writes at the network level too).
+network_access = false
+
+[features]
+# Enables .codex/hooks.json (PreToolUse guard against git/gh writes).
+codex_hooks = true

@@ -1,0 +1,44 @@
+# Codex execpolicy rules for Kimbo — mirrors permissions.deny in .claude/settings.json.
+# Codex may never commit, push, rewrite history, change remotes, or write to GitHub.
+
+prefix_rule(
+    pattern = ["git", ["commit", "commit-tree", "push", "merge", "rebase", "cherry-pick", "revert", "am", "tag", "update-ref", "subtree", "filter-branch", "filter-repo"]],
+    decision = "forbidden",
+    justification = "Codex must not commit, push, or rewrite git history in this repo. Give the user the command to run themselves.",
+)
+
+prefix_rule(
+    pattern = ["git", "remote", ["add", "set-url", "rename", "remove", "rm"]],
+    decision = "forbidden",
+    justification = "Codex must not change git remotes in this repo.",
+)
+
+prefix_rule(
+    pattern = ["gh", ["api", "secret", "variable"]],
+    decision = "forbidden",
+    justification = "Codex must not write to GitHub in this repo.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", ["create", "merge", "edit", "close", "reopen", "comment", "review"]],
+    decision = "forbidden",
+    justification = "Codex must not write to GitHub in this repo.",
+)
+
+prefix_rule(
+    pattern = ["gh", "repo", ["create", "sync", "edit", "delete", "fork", "rename"]],
+    decision = "forbidden",
+    justification = "Codex must not write to GitHub in this repo.",
+)
+
+prefix_rule(
+    pattern = ["gh", "release", ["create", "edit", "upload", "delete"]],
+    decision = "forbidden",
+    justification = "Codex must not write to GitHub in this repo.",
+)
+
+prefix_rule(
+    pattern = ["gh", "gist", ["create", "edit"]],
+    decision = "forbidden",
+    justification = "Codex must not write to GitHub in this repo.",
+)
