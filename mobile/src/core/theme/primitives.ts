@@ -1,0 +1,45 @@
+// Primitive palette — BRAND_GUIDELINES.md §3.1.
+// Components never import this file. They use semantic tokens via useTheme().
+export const palette = {
+  lime: { base: "#D3E76C", highlight: "#E4F77B", shade: "#B8CF4B", deep: "#4D5A00", notif: "#576500" },
+  lilac: { base: "#B2A1FE", highlight: "#CBBDFE", shade: "#9F8CFB", deep: "#4B3AB5" },
+  orchid: { base: "#F1C8FF", highlight: "#F8E1FF", shade: "#E4A7F9", deep: "#7E3A99" },
+  flame: { base: "#FF8A3D", highlight: "#FFA866", shade: "#D9631C" },
+  amber: { base: "#F5B556", highlight: "#FAD08A", shade: "#C98A2A", deep: "#8A5300" },
+  coral: { base: "#FF9E93", highlight: "#FFC2BA", shade: "#D9534A", deep: "#B3261E" },
+  veg: { base: "#4CC97A", shade: "#1E8E3E" },
+  nonveg: { base: "#D08A55", shade: "#7B3F00" },
+  obsidian: {
+    0: "#0D0F11",
+    1: "#16181B",
+    2: "#1C1F23",
+    3: "#22252A",
+    4: "#2A2E35",
+    5: "#333842",
+    outline: "#2F333B",
+  },
+  paper: {
+    0: "#FFFFFF",
+    1: "#F3F3EE",
+    2: "#EEEEE8",
+    3: "#E6E6DF",
+    4: "#DADAD2",
+    alt: "#F8F8F4",
+    outline: "#DEDED6",
+  },
+  ink: "#16181B",
+  text: {
+    darkPrimary: "#F1F2F6",
+    darkSecondary: "#9EA3AE",
+    darkTertiary: "#6B7280",
+    lightSecondary: "#5A5F69",
+    lightTertiary: "#8A8F98",
+  },
+  container: {
+    warnDark: "#3A2B14",
+    warnLight: "#FCEBD0",
+    errorDark: "#4A211E",
+    errorLight: "#FBE3E0",
+  },
+  coachBubbleLight: { lime: "#F4F8DC", lilac: "#EEEAFF", orchid: "#FBEFFF" },
+} as const;

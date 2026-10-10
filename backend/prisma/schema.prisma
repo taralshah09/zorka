@@ -9,3 +9,103 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ---------------------------------------------------------------------------
+// P05 · Users and profiles (D5: 3 dummy users, no auth)
+// Profile fields come from the IDEATION onboarding list. Every field is nullable
+// until onboarding (P09) fills it in.
+// ---------------------------------------------------------------------------
+
+enum Goal {
+  lose_fat
+  build_muscle
+  maintain
+  get_fitter
+}
+
+enum Sex {
+  male
+  female
+  unspecified
+}
+
+enum ActivityLevel {
+  sedentary
+  light
+  moderate
+  active
+  very_active
+}
+
+enum Diet {
+  veg
+  eggetarian
+  jain
+  non_veg
+}
+
+enum Pace {
+  gentle
+  steady
+  ambitious
+}
+
+enum Coach {
+  drill_sergeant
+  calm_mentor
+  desi_legend
+}
+
+model User {
+  id          String   @id @db.Uuid
+  displayName String   @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  profile    Profile?
+  syncProbes SyncProbe[]
+
+  @@map("users")
+}
+
+model Profile {
+  userId         String         @id @map("user_id") @db.Uuid
+  goal           Goal?
+  age            Int?
+  sex            Sex?
+  heightCm       Float?         @map("height_cm")
+  weightKg       Float?         @map("weight_kg")
+  activityLevel  ActivityLevel? @map("activity_level")
+  diet           Diet?
+  targetWeightKg Float?         @map("target_weight_kg")
+  pace           Pace?
+  coach          Coach?
+  onboardedAt    DateTime?      @map("onboarded_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// P07 · Sync probe — dev-only entity that exercises the offline outbox end to end.
+// Real local-first entities (meals, workouts, activities, weights) arrive in later phases
+// and use the same sync endpoint.
+// ---------------------------------------------------------------------------
+
+model SyncProbe {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  note            String
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sync_probes")
+}
