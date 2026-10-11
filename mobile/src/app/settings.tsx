@@ -10,6 +10,7 @@ import { useNetwork } from "@/core/network/network";
 import { retryFailedNow, useSyncStatus } from "@/core/sync/engine";
 import { useThemeControls, type ThemeName } from "@/core/theme";
 import { Card, Header, ListItem, Screen, SegmentedControl, Text, Toggle, useToast } from "@/core/ui";
+import { HealthConnectSettings } from "@/features/activity/HealthConnectSettings";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
@@ -105,6 +106,10 @@ export default function Settings() {
             }
           />
         </Card>
+      </Section>
+
+      <Section title="Health & activity">
+        <HealthConnectSettings />
       </Section>
 
       <Section title="Demo profile">

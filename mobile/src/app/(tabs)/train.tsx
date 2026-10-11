@@ -24,6 +24,7 @@ import {
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
 import { CATEGORY_LABEL } from "@shared/domain/gym";
+import { ActivityHistory } from "@/features/activity/history";
 
 const ACTIVITIES: { icon: IconName; label: string; hint: string }[] = [
   { icon: "directions_run", label: "Run", hint: "Pace · splits" },
@@ -174,10 +175,14 @@ export default function Train() {
         {ACTIVITIES.map((a) => (
           <PressableScale
             key={a.label}
-            onPress={() => router.push({ pathname: "/coming-soon", params: { feature: `${a.label} recording` } })}
+            onPress={() =>
+              a.label === "Hike"
+                ? router.push({ pathname: "/coming-soon", params: { feature: "Hike recording" } })
+                : router.push({ pathname: "/activity/record", params: { kind: a.label.toLowerCase() } })
+            }
             accessibilityRole="button"
             accessibilityLabel={`Record a ${a.label.toLowerCase()}`}
-            accessibilityHint="Coming soon"
+            accessibilityHint={a.label === "Hike" ? "Coming soon" : "Open the GPS recorder"}
             containerStyle={styles.gridSlot}
             style={[
               styles.activity,
@@ -203,6 +208,7 @@ export default function Train() {
       </View>
 
       <WeekVolume days={days} workouts={week} today={localDate(now)} />
+      <ActivityHistory userId={userId} />
 
       <View style={styles.sectionHead}>
         <Text variant="headline-sm" accessibilityRole="header">

@@ -171,6 +171,19 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       ALTER TABLE workouts ADD COLUMN routine_id TEXT;
       ALTER TABLE workout_exercises ADD COLUMN target_reps INTEGER;
     `),
+  // v7 · P23–P26: device-only health cache and durable GPS sessions/points.
+  (db) =>
+    db.execSync(`
+    CREATE TABLE activities (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL,
+      status TEXT NOT NULL, local_date TEXT NOT NULL, data TEXT NOT NULL);
+    CREATE INDEX activities_day ON activities(user_id, local_date, status);
+    CREATE UNIQUE INDEX one_recording ON activities((1)) WHERE status IN ('recording', 'paused');
+    CREATE TABLE route_points (activity_id TEXT NOT NULL, timestamp INTEGER NOT NULL,
+      data TEXT NOT NULL, PRIMARY KEY(activity_id, timestamp));
+    CREATE TABLE health_steps (user_id TEXT NOT NULL, local_date TEXT NOT NULL,
+      steps INTEGER NOT NULL, hourly TEXT NOT NULL, read_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, local_date));
+  `),
 ];
 
 let db: SQLiteDatabase | null = null;

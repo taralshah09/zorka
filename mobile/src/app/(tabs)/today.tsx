@@ -26,14 +26,21 @@ import {
 import { VoiceQueueCard } from "@/features/today/VoiceQueueCard";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
+import { ActivityStrip } from "@/features/activity/components";
+import { cachedSteps, useHealthSteps } from "@/features/activity/health";
+import { dayCredit, useActivityClock } from "@/features/activity/store";
 
 export default function Today() {
   const { profile, targets } = useTargets();
   const userId = useActiveUser((s) => s.userId);
-  const now = new Date();
+  const now = new Date(useActivityClock());
+  const day = localDate(now);
+  const health = useHealthSteps(userId, day);
+  const credit = dayCredit(userId, day);
+  const dailyTargets = targets ? { ...targets, kcal: targets.kcal + credit.kcal } : null;
   const meals = useDayMeals(userId, localDate(now));
   const voiceNotes = useVoiceQueue(userId);
-  const consumed = consumedFrom(meals);
+  const consumed = { ...consumedFrom(meals), steps: cachedSteps(userId, day)?.steps ?? null };
   const name = profile.data?.displayName;
 
   return (
@@ -75,9 +82,16 @@ export default function Today() {
       ) : (
         <>
           <DateStrip today={now} />
-          <RemainingHero targets={targets} consumed={consumed} />
+          <RemainingHero targets={dailyTargets!} consumed={consumed} />
+          {credit.kcal > 0 ? (
+            <Text
+              variant="caption"
+              color="primaryText"
+            >{`Budget includes +${credit.kcal} estimated activity kcal`}</Text>
+          ) : null}
           <MetricTiles targets={targets} consumed={consumed} />
-          <MacroBalance targets={targets} consumed={consumed} />
+          <ActivityStrip userId={userId} day={day} stepGoal={targets.steps} healthState={health.state} />
+          <MacroBalance targets={dailyTargets!} consumed={consumed} />
           {profile.data?.coach ? (
             <CoachLine coach={profile.data.coach} line="Your coach speaks up here once you start logging." muted />
           ) : null}

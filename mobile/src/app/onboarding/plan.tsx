@@ -1,4 +1,4 @@
-// S09 · Your plan (step 7 of 7): kcal · protein · steps, the projection, a "How we got this"
+// S09 · Your plan (step 8 of 8): kcal · protein · steps, the projection, a "How we got this"
 // disclosure for geeks, a line from the chosen coach and "Start today", which saves the profile.
 import { router } from "expo-router";
 import { useState } from "react";
@@ -38,7 +38,7 @@ export default function PlanStep() {
     // Reached without finishing the earlier steps (e.g. after a reload): start again.
     return (
       <OnboardingStep
-        step={7}
+        step={8}
         title="Your plan"
         cta="Start again"
         canContinue
@@ -78,7 +78,7 @@ export default function PlanStep() {
 
   return (
     <OnboardingStep
-      step={7}
+      step={8}
       title="Your plan"
       subtitle="Your daily targets. They adjust each week as you log."
       cta="Start today"

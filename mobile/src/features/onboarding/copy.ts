@@ -2,7 +2,7 @@
 import type { ActivityLevel, DietPref, Goal, Pace, Sex } from "@/core/api/types";
 import type { IconName } from "@/core/icons/Icon";
 
-export const STEP_COUNT = 7;
+export const STEP_COUNT = 8;
 
 export const GOAL_OPTIONS: readonly { value: Goal; title: string; body: string; icon: IconName }[] = [
   {

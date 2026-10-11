@@ -49,7 +49,11 @@ export default function QuickLog() {
         router.replace("/train/workout");
       },
     },
-    { icon: "directions_run", label: "Run", go: () => comingSoon("Run recording"), hint: "Coming soon" },
+    {
+      icon: "directions_run",
+      label: "Run",
+      go: () => router.replace({ pathname: "/activity/record", params: { kind: "run" } }),
+    },
     { icon: "monitor_weight", label: "Weight", go: () => comingSoon("Weight logging"), hint: "Coming soon" },
   ];
 

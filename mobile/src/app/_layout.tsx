@@ -29,6 +29,7 @@ import "@/features/meals/store";
 import { useExerciseCatalogSync } from "@/features/gym/catalog";
 import "@/features/gym/routines";
 import "@/features/gym/store";
+import { startRecorderLifecycle } from "@/features/activity/recorder";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -42,6 +43,7 @@ function bootstrap() {
   startNetworkMonitoring();
   getDb();
   startSyncEngine();
+  return startRecorderLifecycle();
 }
 
 function RootStack() {
@@ -61,6 +63,7 @@ function RootStack() {
         <Stack.Screen name="coming-soon" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="log" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="train" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
       </Stack>
     </View>

@@ -1,4 +1,4 @@
-// Shared onboarding layout — DESIGN.md §6.2: top progress bar (step x of 7), back arrow, one question
+// Shared onboarding layout — DESIGN.md §6.2: top progress bar (step x of STEP_COUNT), back arrow, one question
 // per screen, primary button pinned to the bottom and disabled until the step is valid.
 import { router } from "expo-router";
 import type { ReactNode } from "react";

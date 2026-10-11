@@ -1,5 +1,5 @@
 // S10 Today Home building blocks. Food comes from the day's logged meals (P12); steps and activity are
-// still 0 until P23/P24; the coach line, next action and streak are placeholders until P30/P31/P37.
+// supplied by P23/P24; the coach line, next action and streak are placeholders until P30/P31/P37.
 // Layout follows the S10 export; colours follow D14.
 import { router } from "expo-router";
 import { useId } from "react";
@@ -15,13 +15,13 @@ import { formatInt } from "@/features/targets/format";
 import { MEAL_TYPES, sumMacros } from "@shared/domain/food";
 import type { Targets } from "@shared/domain/targets";
 
-/** Today's intake / burn. Steps stay 0 until P23. */
-export type Consumed = { kcal: number; proteinG: number; carbsG: number; fatG: number; steps: number };
-export const NOTHING_CONSUMED: Consumed = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, steps: 0 };
+/** Today's intake and Health Connect steps. null means steps are not connected yet. */
+export type Consumed = { kcal: number; proteinG: number; carbsG: number; fatG: number; steps: number | null };
+export const NOTHING_CONSUMED: Consumed = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, steps: null };
 
 /** Sum of the day's meals (P12). */
 export function consumedFrom(meals: readonly Meal[]): Consumed {
-  return { ...sumMacros(meals.map(mealTotals)), steps: 0 };
+  return { ...sumMacros(meals.map(mealTotals)), steps: null };
 }
 
 const pct = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
@@ -140,9 +140,9 @@ export function MetricTiles({ targets, consumed }: { targets: Targets; consumed:
         title="Activity"
         icon="footprint"
         bg={colors.dataActivity}
-        value={formatInt(consumed.steps)}
+        value={consumed.steps === null ? "—" : formatInt(consumed.steps)}
         caption={`Goal: ${formatInt(targets.steps)} steps`}
-        progress={pct(consumed.steps, targets.steps)}
+        progress={pct(consumed.steps ?? 0, targets.steps)}
       />
       <MetricTile
         title="Protein"

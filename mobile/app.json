@@ -12,6 +12,18 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.taralshah.kimbo",
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,7 +42,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#16181B"
+          "backgroundColor": "#16181B",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
         }
       ],
       [
@@ -47,7 +62,34 @@
           "microphonePermission": false
         }
       ],
-      "expo-asset"
-    ]
+      "expo-asset",
+      "./plugins/with-health-rationale",
+      "react-native-health-connect",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Kimbo uses precise location while you record to save your route, distance and pace.",
+          "locationAlwaysAndWhenInUsePermission": "Kimbo uses location only during an activity you start, including when the screen is locked.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9fbf8183-7b07-4d23-b4d9-7939c7d0b897"
+      }
+    }
   }
 }

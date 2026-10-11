@@ -1,4 +1,4 @@
-// S08 · Pick your coach (step 6 of 7): three swipeable persona cards with page dots. Swipe to
+// S08 · Pick your coach (step 6 of 8): three swipeable persona cards with page dots. Swipe to
 // browse, tap to pick. Coach illustrations aren't delivered yet, so avatars are initials (D19/D27).
 import { router } from "expo-router";
 import { useState } from "react";
@@ -29,7 +29,7 @@ export default function CoachStep() {
       subtitle="Change any time in Settings."
       cta="Continue"
       canContinue={!!coach}
-      onNext={() => router.push("/onboarding/plan")}
+      onNext={() => router.push("/onboarding/health")}
     >
       <ScrollView
         horizontal
