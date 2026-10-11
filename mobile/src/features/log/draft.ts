@@ -134,6 +134,9 @@ export const draftActions = {
   },
 
   clear: () => useDraft.setState({ draft: null }),
+  /** Undo for a just-removed item: puts the earlier draft back if it's still the one being checked. */
+  restore: (prev: Draft) =>
+    set((d) => (d.mealId === prev.mealId && d.loggedAt === prev.loggedAt ? prev : d)),
   setMealType: (mealType: MealType) => set((d) => ({ ...d, mealType })),
   setOil: (oilLevel: OilLevel) => set((d) => ({ ...d, oilLevel })),
 

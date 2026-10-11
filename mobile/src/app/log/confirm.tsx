@@ -58,6 +58,12 @@ export default function ConfirmSheet() {
     }
   };
 
+  const removeItem = (item: DraftItem, name: string) => {
+    const prev = draft;
+    draftActions.removeItem(item.key);
+    toast({ kind: "info", message: `Removed ${name}`, onUndo: () => draftActions.restore(prev) });
+  };
+
   const save = () => {
     const editing = !!draft.mealId;
     saveDraft(userId, promptOn);
@@ -136,10 +142,11 @@ export default function ConfirmSheet() {
       {draft.items.map((item) => {
         const m = itemMacros(draft, item, promptOn);
         const unmatchedItem = !item.food && !item.snapshot;
+        const name = item.food?.name ?? item.snapshot?.name ?? item.query;
         return (
           <FoodItemRow
             key={item.key}
-            name={item.food?.name ?? item.snapshot?.name ?? item.query}
+            name={name}
             diet={item.food?.diet ?? item.snapshot?.diet ?? null}
             portion={formatPortion(item.quantity, item.unit)}
             kcal={m.kcal}
@@ -153,6 +160,7 @@ export default function ConfirmSheet() {
                   : undefined
             }
             onPress={() => openItem(item)}
+            onRemove={() => removeItem(item, name)}
           />
         );
       })}
