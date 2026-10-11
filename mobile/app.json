@@ -88,7 +88,12 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "buildArchs": ["arm64-v8a"],
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": true,
+            "extraProguardRules": "-keep class androidx.health.connect.client.** { *; }\n-keep class dev.matinzd.healthconnect.** { *; }"
           }
         }
       ],
