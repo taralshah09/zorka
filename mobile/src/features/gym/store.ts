@@ -10,6 +10,7 @@ import type { Exercise } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
 import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/engine";
 import { enqueue } from "@/core/sync/outbox";
+import { onPulled } from "@/core/sync/pull";
 import { localDate } from "@shared/domain/food";
 import {
   bestsOf,
@@ -470,6 +471,134 @@ export function deleteWorkout(w: Workout): void {
   bump();
   notifyLocalWrite();
 }
+
+// ── Pull ───────────────────────────────────────────────────────────────────────────────────────
+
+/** A workout as GET /users/:id/changes sends it (backend WorkoutDto). */
+type ServerWorkout = {
+  name: string;
+  startedAt: string;
+  endedAt: string;
+  localDate: string;
+  routineId: string | null;
+  clientUpdatedAt: string;
+  exercises: {
+    id: string;
+    exerciseId: string | null;
+    name: string;
+    type: ExerciseType;
+    sets: (SetValues & { id: string; completedAt: string | null; prKinds: PrKind[] })[];
+  }[];
+};
+
+function deleteWorkoutRows(id: string) {
+  const db = getDb();
+  db.runSync(
+    `DELETE FROM workout_sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)`,
+    id,
+  );
+  db.runSync(`DELETE FROM workout_exercises WHERE workout_id = ?`, id);
+}
+
+onPulled("workout", {
+  apply(userId, { id, deleted, data }) {
+    const db = getDb();
+    const local = db.getFirstSync<{ synced: number; client_updated_at: string }>(
+      `SELECT synced, client_updated_at FROM workouts WHERE id = ?`,
+      id,
+    );
+    if (local && !local.synced) return; // open, or finished and not pushed yet
+    if (deleted) {
+      deleteWorkoutRows(id);
+      db.runSync(`DELETE FROM workouts WHERE id = ?`, id);
+      return;
+    }
+    const w = data as ServerWorkout;
+    if (local?.client_updated_at === w.clientUpdatedAt) return;
+    // category / target_reps are local display snapshots: keep this phone's, else take the cached exercise's.
+    const kept = new Map(
+      db
+        .getAllSync<{ id: string; category: ExerciseCategory | null; target_reps: number | null }>(
+          `SELECT id, category, target_reps FROM workout_exercises WHERE workout_id = ?`,
+          id,
+        )
+        .map((r) => [r.id, r]),
+    );
+    deleteWorkoutRows(id);
+    db.runSync(
+      `INSERT OR REPLACE INTO workouts
+         (id, user_id, name, status, started_at, ended_at, local_date, routine_id, client_updated_at, deleted, synced)
+       VALUES (?, ?, ?, 'done', ?, ?, ?, ?, ?, 0, 1)`,
+      id,
+      userId,
+      w.name,
+      w.startedAt,
+      w.endedAt,
+      w.localDate,
+      w.routineId,
+      w.clientUpdatedAt,
+    );
+    w.exercises.forEach((e, position) => {
+      db.runSync(
+        `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, name, type, category, target_reps)
+         VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT json_extract(data, '$.category') FROM exercises WHERE id = ?3)), ?)`,
+        e.id,
+        id,
+        e.exerciseId,
+        position,
+        e.name,
+        e.type,
+        kept.get(e.id)?.category ?? null,
+        kept.get(e.id)?.target_reps ?? null,
+      );
+      e.sets.forEach((st, i) =>
+        db.runSync(
+          `INSERT INTO workout_sets
+             (id, workout_exercise_id, position, weight_kg, reps, duration_s, distance_m, done, completed_at, pr_kinds)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+          st.id,
+          e.id,
+          i,
+          st.weightKg ?? null,
+          st.reps ?? null,
+          st.durationS ?? null,
+          st.distanceM ?? null,
+          st.completedAt,
+          JSON.stringify(st.prKinds ?? []),
+        ),
+      );
+    });
+  },
+
+  requeueMissing(userId, onServer) {
+    const db = getDb();
+    const missing = db
+      .getAllSync<{ id: string }>(
+        `SELECT id FROM workouts WHERE user_id = ? AND status = 'done' AND synced = 1 AND deleted = 0`,
+        userId,
+      )
+      .filter((r) => !onServer.has(r.id));
+    for (const { id } of missing) {
+      const now = new Date().toISOString();
+      db.withTransactionSync(() => {
+        db.runSync(`UPDATE workouts SET synced = 0, client_updated_at = ? WHERE id = ?`, now, id);
+        const w = getWorkout(id)!;
+        enqueue({
+          op_id: randomUUID(),
+          user_id: userId,
+          entity: "workout",
+          action: "upsert",
+          record_id: id,
+          payload: JSON.stringify(syncPayload(w)),
+          client_updated_at: now,
+        });
+      });
+    }
+    return missing.length;
+  },
+
+  changed: bump,
+});
 
 // ── History ────────────────────────────────────────────────────────────────────────────────────
 

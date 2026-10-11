@@ -8,6 +8,7 @@ import type { DietPref, FoodCategory } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
 import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/engine";
 import { enqueue } from "@/core/sync/outbox";
+import { onPulled } from "@/core/sync/pull";
 import { localDate, sumMacros, type FoodUnit, type Macros, type MealType, type OilLevel } from "@shared/domain/food";
 
 export type MealSource = "search" | "text" | "voice" | "photo" | "repeat";
@@ -268,6 +269,87 @@ export function recentMeals(userId: string, limit = 8): Meal[] {
   }
   return out;
 }
+
+// ── Pull ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** A meal as GET /users/:id/changes sends it (backend MealLogDto). */
+type ServerMeal = {
+  id: string;
+  mealType: MealType;
+  loggedAt: string;
+  localDate: string;
+  source: MealSource;
+  oilLevel: OilLevel | null;
+  clientUpdatedAt: string;
+  items: Omit<MealItem, "diet" | "category">[];
+};
+
+onPulled("meal_log", {
+  apply(userId, { id, deleted, data }) {
+    const db = getDb();
+    const local = db.getFirstSync<{ synced: number; client_updated_at: string; photo_uri: string | null }>(
+      `SELECT synced, client_updated_at, photo_uri FROM meal_logs WHERE id = ?`,
+      id,
+    );
+    if (local && !local.synced) return; // an unsynced local change wins until the outbox has pushed it
+    if (deleted) {
+      db.runSync(`DELETE FROM meal_items WHERE meal_id = ?`, id);
+      db.runSync(`DELETE FROM meal_logs WHERE id = ?`, id);
+      return;
+    }
+    const m = data as ServerMeal;
+    if (local?.client_updated_at === m.clientUpdatedAt) return;
+    db.runSync(
+      `INSERT OR REPLACE INTO meal_logs
+         (id, user_id, meal_type, logged_at, local_date, source, oil_level, photo_uri, client_updated_at, deleted, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`,
+      id,
+      userId,
+      m.mealType,
+      m.loggedAt,
+      m.localDate,
+      m.source,
+      m.oilLevel,
+      local?.photo_uri ?? null,
+      m.clientUpdatedAt,
+    );
+    db.runSync(`DELETE FROM meal_items WHERE meal_id = ?`, id);
+    m.items.forEach((i, position) =>
+      // diet / category are display snapshots the server doesn't keep; take them from the cached food.
+      db.runSync(
+        `INSERT INTO meal_items (id, meal_id, position, food_id, name, quantity, unit, grams, kcal, protein_g, carbs_g, fat_g, diet, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           (SELECT json_extract(data, '$.diet') FROM foods WHERE id = ?4),
+           (SELECT json_extract(data, '$.category') FROM foods WHERE id = ?4))`,
+        i.id,
+        id,
+        position,
+        i.foodId,
+        i.name,
+        i.quantity,
+        i.unit,
+        i.grams,
+        i.kcal,
+        i.proteinG,
+        i.carbsG,
+        i.fatG,
+      ),
+    );
+  },
+
+  requeueMissing(userId, onServer) {
+    const ids = getDb()
+      .getAllSync<{ id: string }>(`SELECT id FROM meal_logs WHERE user_id = ? AND synced = 1 AND deleted = 0`, userId)
+      .filter((r) => !onServer.has(r.id));
+    for (const { id } of ids) {
+      const meal = getMeal(id);
+      if (meal) saveMeal(meal);
+    }
+    return ids.length;
+  },
+
+  changed: bump,
+});
 
 // ── Totals and hooks ─────────────────────────────────────────────────────────────────────────────
 

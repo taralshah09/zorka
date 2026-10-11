@@ -2,6 +2,8 @@ import { createApp } from "./app.js";
 import { loadEnv } from "./config/env.js";
 import { createLogger } from "./lib/logger.js";
 import { disconnectPrisma, getPrisma } from "./lib/prisma.js";
+import { prismaActivitiesRepository } from "./modules/activities/activities.repository.js";
+import { activitiesService } from "./modules/activities/activities.service.js";
 import { createAiClient } from "./modules/ai/ai.client.js";
 import { aiSlotsFromEnv } from "./modules/ai/ai.config.js";
 import { prismaExercisesRepository } from "./modules/exercises/exercises.repository.js";
@@ -14,6 +16,7 @@ import { prismaMealsRepository } from "./modules/meals/meals.repository.js";
 import { mealsService } from "./modules/meals/meals.service.js";
 import { prismaRoutinesRepository } from "./modules/routines/routines.repository.js";
 import { routinesService } from "./modules/routines/routines.service.js";
+import { changesService } from "./modules/sync/changes.js";
 import { prismaSyncRepository } from "./modules/sync/sync.repository.js";
 import { syncService } from "./modules/sync/sync.service.js";
 import { prismaUsersRepository } from "./modules/users/users.repository.js";
@@ -32,6 +35,8 @@ const exercisesRepo = prismaExercisesRepository(prisma);
 const exercises = exercisesService(exercisesRepo);
 const routines = routinesService(prismaRoutinesRepository(prisma), exercises.existingIds);
 const workouts = workoutsService(prismaWorkoutsRepository(prisma), exercises.existingIds, routines.existingIds);
+const activities = activitiesService(prismaActivitiesRepository(prisma));
+const syncRepo = prismaSyncRepository(prisma);
 const aiSlots = aiSlotsFromEnv(env);
 const ai = createAiClient({ slots: aiSlots, logger });
 
@@ -41,12 +46,19 @@ const app = createApp({
     await prisma.$queryRaw`SELECT 1`;
   },
   users: usersService(prismaUsersRepository(prisma)),
-  sync: syncService(prismaSyncRepository(prisma), {
+  sync: syncService(syncRepo, {
     meal_log: meals.syncMeal,
     custom_food: foods.syncCustomFood,
     custom_exercise: exercises.syncCustomExercise,
     workout: workouts.syncWorkout,
     routine: routines.syncRoutine,
+    activity: activities.syncActivity,
+  }),
+  changes: changesService(syncRepo.userExists, {
+    meal_log: meals.changes,
+    workout: workouts.changes,
+    routine: routines.changes,
+    activity: activities.changes,
   }),
   foods,
   meals,

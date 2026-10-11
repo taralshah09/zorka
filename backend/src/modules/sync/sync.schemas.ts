@@ -9,6 +9,7 @@ export const SYNC_ENTITIES = [
   "custom_exercise",
   "workout",
   "routine",
+  "activity",
 ] as const;
 export type SyncEntity = (typeof SYNC_ENTITIES)[number];
 

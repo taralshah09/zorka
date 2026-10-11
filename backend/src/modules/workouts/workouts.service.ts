@@ -1,5 +1,6 @@
 // Workouts: the "workout" sync handler (P19) and a recent list.
 import { notFound } from "../../http/errors.js";
+import type { ChangeFeed } from "../sync/changes.js";
 import { lwwGuard, parseOpData, type EntityHandler } from "../sync/lww.js";
 import type { WorkoutRecord, WorkoutsRepository } from "./workouts.repository.js";
 import { WorkoutData, type WorkoutDto } from "./workouts.schemas.js";
@@ -59,6 +60,14 @@ export function workoutsService(repo: WorkoutsRepository, existingExerciseIds: E
       if (!(await repo.userExists(userId))) throw notFound("User");
       return (await repo.listRecent(userId, limit)).map(toDto);
     },
+
+    changes: (async (userId, since, limit) =>
+      (await repo.listChanged(userId, since, limit)).map(({ updatedAt, ...r }) => ({
+        id: r.id,
+        updatedAt,
+        deleted: !!r.deletedAt,
+        data: toDto(r),
+      }))) satisfies ChangeFeed,
   };
 }
 

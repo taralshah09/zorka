@@ -14,6 +14,8 @@ export interface RoutinesRepository {
   upsertRoutine(r: { id: string; userId: string; clientUpdatedAt: Date } & RoutineData): Promise<void>;
   softDeleteRoutine(id: string, clientUpdatedAt: Date): Promise<void>;
   listRoutines(userId: string): Promise<RoutineRecord[]>;
+  /** Changed since `since` (inclusive), deleted ones included, oldest change first. */
+  listChanged(userId: string, since: Date, limit: number): Promise<(RoutineRecord & { updatedAt: Date })[]>;
   /** Ids from `ids` that exist (deleted or not). Keeps workout → routine links valid. */
   existingIds(ids: string[]): Promise<Set<string>>;
 }
@@ -68,6 +70,16 @@ export function prismaRoutinesRepository(prisma: PrismaClient): RoutinesReposito
       (
         await prisma.routine.findMany({ where: { userId, deletedAt: null }, include, orderBy: { name: "asc" } })
       ).map(toRecord),
+
+    listChanged: async (userId, since, limit) =>
+      (
+        await prisma.routine.findMany({
+          where: { userId, updatedAt: { gte: since } },
+          include,
+          orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+          take: limit,
+        })
+      ).map((r) => ({ ...toRecord(r), updatedAt: r.updatedAt })),
 
     existingIds: async (ids) => {
       if (!ids.length) return new Set();

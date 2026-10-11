@@ -4,6 +4,9 @@ import { AppState } from "react-native";
 import { create } from "zustand";
 
 import { getDb } from "@/core/storage/db";
+import { notifyLocalWrite, onAcknowledged } from "@/core/sync/engine";
+import { enqueue } from "@/core/sync/outbox";
+import { onPulled } from "@/core/sync/pull";
 import { localDate } from "@shared/domain/food";
 import {
   activeMs,
@@ -146,6 +149,7 @@ export function finishActivity(id: string) {
   // Credit the completion day, including runs that cross midnight. Idempotent: one session row.
   a.localDate = localDate(new Date(a.endedAt));
   saveActivity(a);
+  queueActivity(a);
 }
 export function dayActivities(userId: string | null, day: string): Activity[] {
   if (!userId) return [];
@@ -165,3 +169,148 @@ export function dayCredit(userId: string | null, day: string) {
     points: sessions.reduce((s, a) => s + Math.floor(movePoints(MET[a.kind], a.elapsedMs / 1000)), 0),
   };
 }
+
+// ── Sync (entity "activity") ─────────────────────────────────────────────────────────────────────
+// Finished sessions go to the server with their route, so they survive a new phone or a reinstall.
+
+onAcknowledged("activity", (row) => {
+  getDb().runSync(
+    `UPDATE activities SET synced = 1 WHERE id = ? AND client_updated_at = ?`,
+    row.record_id,
+    row.client_updated_at,
+  );
+});
+
+/** The server's cap (backend activities.schemas.ts); longer routes are thinned evenly. */
+const MAX_POINTS = 50_000;
+
+/** What the server stores. Points travel as [lat, lng, timestamp, accuracy, segment, activeMs]. */
+function syncPayload(a: Activity) {
+  let points = routePoints(a.id);
+  if (points.length > MAX_POINTS) {
+    const step = Math.ceil(points.length / MAX_POINTS);
+    points = points.filter((_, i) => i % step === 0);
+  }
+  return {
+    kind: a.kind,
+    weightKg: a.weightKg,
+    startedAt: new Date(a.startedAt).toISOString(),
+    endedAt: new Date(Math.max(a.endedAt ?? a.startedAt, a.startedAt)).toISOString(),
+    localDate: a.localDate,
+    elapsedMs: Math.round(a.elapsedMs),
+    points: points.map((p) => [
+      p.latitude,
+      p.longitude,
+      Math.round(p.timestamp),
+      Math.max(0, p.accuracy ?? 0),
+      p.segment,
+      Math.round(p.activeMs),
+    ]),
+  };
+}
+
+/** Marks a finished activity unsynced and queues it for the server. */
+function queueActivity(a: Activity) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    db.runSync(`UPDATE activities SET synced = 0, client_updated_at = ? WHERE id = ?`, now, a.id);
+    enqueue({
+      op_id: randomUUID(),
+      user_id: a.userId,
+      entity: "activity",
+      action: "upsert",
+      record_id: a.id,
+      payload: JSON.stringify(syncPayload(a)),
+      client_updated_at: now,
+    });
+  });
+  notifyLocalWrite();
+}
+
+/** An activity as GET /users/:id/changes sends it (backend ActivityDto). */
+type ServerActivity = {
+  kind: ActivityKind;
+  weightKg: number;
+  startedAt: string;
+  endedAt: string;
+  localDate: string;
+  elapsedMs: number;
+  points: [number, number, number, number, number, number][];
+  clientUpdatedAt: string;
+};
+
+onPulled("activity", {
+  apply(userId, { id, deleted, data }) {
+    const db = getDb();
+    const local = db.getFirstSync<{ synced: number; client_updated_at: string | null }>(
+      `SELECT synced, client_updated_at FROM activities WHERE id = ?`,
+      id,
+    );
+    if (local && !local.synced) return; // recording, or finished and not pushed yet
+    if (deleted) {
+      db.runSync(`DELETE FROM route_points WHERE activity_id = ?`, id);
+      db.runSync(`DELETE FROM activities WHERE id = ?`, id);
+      return;
+    }
+    const s = data as ServerActivity;
+    if (local?.client_updated_at === s.clientUpdatedAt) return;
+    const endedAt = Date.parse(s.endedAt);
+    const last = s.points.at(-1);
+    const a: Activity = {
+      id,
+      userId,
+      kind: s.kind,
+      weightKg: s.weightKg,
+      startedAt: Date.parse(s.startedAt),
+      endedAt,
+      localDate: s.localDate,
+      status: "done",
+      elapsedMs: s.elapsedMs,
+      resumedAt: null,
+      heartbeatAt: endedAt,
+      lastFixAt: last ? last[2] : null,
+      segment: last ? last[4] : 0,
+      background: false,
+      error: null,
+    };
+    db.runSync(
+      `INSERT OR REPLACE INTO activities (id, user_id, status, local_date, data, client_updated_at, synced)
+       VALUES (?, ?, 'done', ?, ?, ?, 1)`,
+      id,
+      userId,
+      a.localDate,
+      JSON.stringify(a),
+      s.clientUpdatedAt,
+    );
+    db.runSync(`DELETE FROM route_points WHERE activity_id = ?`, id);
+    for (const [latitude, longitude, timestamp, accuracy, segment, activeMs] of s.points) {
+      const p: RoutePoint = { latitude, longitude, timestamp, accuracy, segment, activeMs };
+      db.runSync(
+        `INSERT OR IGNORE INTO route_points (activity_id, timestamp, data) VALUES (?, ?, ?)`,
+        id,
+        timestamp,
+        JSON.stringify(p),
+      );
+    }
+  },
+
+  // Also catches sessions finished before activities synced: unsynced and with no op in the outbox.
+  requeueMissing(userId, onServer) {
+    const missing = getDb()
+      .getAllSync<{ id: string; synced: number }>(
+        `SELECT id, synced FROM activities
+         WHERE user_id = ? AND status = 'done'
+           AND (synced = 1 OR id NOT IN (SELECT record_id FROM outbox WHERE entity = 'activity'))`,
+        userId,
+      )
+      .filter((r) => !r.synced || !onServer.has(r.id));
+    for (const { id } of missing) {
+      const a = getActivity(id);
+      if (a) queueActivity(a);
+    }
+    return missing.length;
+  },
+
+  changed: activityChanged,
+});

@@ -9,6 +9,7 @@ import type { Exercise } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
 import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/engine";
 import { enqueue } from "@/core/sync/outbox";
+import { onPulled } from "@/core/sync/pull";
 import type { ExerciseCategory, ExerciseType } from "@shared/domain/gym";
 import { addExercises, startWorkout, useWorkoutsVersion, type Workout } from "./store";
 
@@ -114,6 +115,58 @@ export function deleteRoutine(r: Routine): void {
   bump();
   notifyLocalWrite();
 }
+
+// ── Pull ───────────────────────────────────────────────────────────────────────────────────────
+
+onPulled("routine", {
+  apply(userId, { id, deleted, data }) {
+    const db = getDb();
+    const local = db.getFirstSync<{ synced: number; client_updated_at: string; exercises: string }>(
+      `SELECT synced, client_updated_at, exercises FROM routines WHERE id = ?`,
+      id,
+    );
+    if (local && !local.synced) return; // an unsynced local edit wins until the outbox has pushed it
+    if (deleted) {
+      db.runSync(`DELETE FROM routines WHERE id = ?`, id);
+      return;
+    }
+    const r = data as { name: string; clientUpdatedAt: string; exercises: Omit<RoutineExercise, "category">[] };
+    if (local?.client_updated_at === r.clientUpdatedAt) return;
+    // category is a local display snapshot: keep this phone's, else take the cached exercise's.
+    const kept = new Map(
+      (local ? (JSON.parse(local.exercises) as RoutineExercise[]) : []).map((e) => [e.id, e.category]),
+    );
+    const cached = (exerciseId: string | null) =>
+      exerciseId
+        ? (db.getFirstSync<{ category: ExerciseCategory | null }>(
+            `SELECT json_extract(data, '$.category') AS category FROM exercises WHERE id = ?`,
+            exerciseId,
+          )?.category ?? null)
+        : null;
+    const exercises: RoutineExercise[] = r.exercises.map((e) => ({
+      ...e,
+      targetReps: e.targetReps ?? null,
+      category: kept.get(e.id) ?? cached(e.exerciseId),
+    }));
+    db.runSync(
+      `INSERT OR REPLACE INTO routines (id, user_id, name, exercises, client_updated_at, deleted, synced)
+       VALUES (?, ?, ?, ?, ?, 0, 1)`,
+      id,
+      userId,
+      r.name,
+      JSON.stringify(exercises),
+      r.clientUpdatedAt,
+    );
+  },
+
+  requeueMissing(userId, onServer) {
+    const missing = listRoutines(userId).filter((r) => r.synced && !onServer.has(r.id));
+    for (const r of missing) saveRoutine(userId, r);
+    return missing.length;
+  },
+
+  changed: bump,
+});
 
 /**
  * Opens a workout from a routine. Exercises missing from this phone's list (e.g. a deleted custom one) are

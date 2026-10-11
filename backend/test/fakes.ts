@@ -8,6 +8,8 @@ import { createAiClient, type AiClient } from "../src/modules/ai/ai.client.js";
 import type { AiSlot } from "../src/modules/ai/ai.config.js";
 import type { Fetch } from "../src/modules/ai/providers.js";
 import { exercisesFromRows } from "../src/modules/exercises/catalog.js";
+import type { ActivitiesRepository, ActivityRecord } from "../src/modules/activities/activities.repository.js";
+import { activitiesService } from "../src/modules/activities/activities.service.js";
 import type { ExerciseRecord, ExercisesRepository } from "../src/modules/exercises/exercises.repository.js";
 import { exercisesService } from "../src/modules/exercises/exercises.service.js";
 import { foodsFromRows } from "../src/modules/foods/catalog.js";
@@ -20,6 +22,7 @@ import { mealsService } from "../src/modules/meals/meals.service.js";
 import type { RoutineRecord, RoutinesRepository } from "../src/modules/routines/routines.repository.js";
 import { routinesService } from "../src/modules/routines/routines.service.js";
 import type { SyncRepository, ProbeRecord } from "../src/modules/sync/sync.repository.js";
+import { changesService } from "../src/modules/sync/changes.js";
 import { syncService } from "../src/modules/sync/sync.service.js";
 import type { UsersRepository, UserWithProfile } from "../src/modules/users/users.repository.js";
 import { usersService } from "../src/modules/users/users.service.js";
@@ -172,6 +175,7 @@ export function memoryMeals(userIds: string[]): MealsRepository & { rows: Map<st
       [...rows.values()]
         .filter((m) => m.userId === userId && m.localDate === localDate && !m.deletedAt)
         .sort((a, b) => a.loggedAt.getTime() - b.loggedAt.getTime()),
+    listChanged: async (userId, since, limit) => changed(rows, userId, since, limit),
   };
 }
 
@@ -218,6 +222,7 @@ export function memoryWorkouts(userIds: string[]): WorkoutsRepository & { rows: 
         .filter((w) => w.userId === userId && !w.deletedAt)
         .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
         .slice(0, limit),
+    listChanged: async (userId, since, limit) => changed(rows, userId, since, limit),
   };
 }
 
@@ -237,7 +242,55 @@ export function memoryRoutines(userIds: string[]): RoutinesRepository & { rows: 
     listRoutines: async (userId) =>
       [...rows.values()].filter((r) => r.userId === userId && !r.deletedAt).sort((a, b) => a.name.localeCompare(b.name)),
     existingIds: async (ids) => new Set(ids.filter((id) => rows.has(id))),
+    listChanged: async (userId, since, limit) => changed(rows, userId, since, limit),
   };
+}
+
+export function memoryActivities(): ActivitiesRepository & { rows: Map<string, ActivityRecord> } {
+  const rows = new Map<string, ActivityRecord>();
+  return {
+    rows,
+    findActivity: async (id) => rows.get(id) ?? null,
+    upsertActivity: async ({ id, userId, clientUpdatedAt, startedAt, endedAt, ...a }) => {
+      rows.set(id, {
+        ...a,
+        id,
+        userId,
+        clientUpdatedAt,
+        startedAt: new Date(startedAt),
+        endedAt: new Date(endedAt),
+        deletedAt: null,
+        updatedAt: tick(),
+      });
+    },
+    softDeleteActivity: async (id, at) => {
+      const a = rows.get(id);
+      if (a) rows.set(id, { ...a, deletedAt: at, clientUpdatedAt: at, updatedAt: tick() });
+    },
+    listChanged: async (userId, since, limit) => changed(rows, userId, since, limit),
+  };
+}
+
+/** Server-side change times for the in-memory repos: strictly increasing, like updated_at. */
+let clock = Date.parse("2026-10-11T00:00:00.000Z");
+const tick = () => new Date((clock += 1000));
+const stamps = new WeakMap<object, Date>();
+
+/** listChanged for repos whose records don't carry updatedAt: stamps each stored object on first sight. */
+function changed<R extends { id: string; userId: string; updatedAt?: Date }>(
+  rows: Map<string, R>,
+  userId: string,
+  since: Date,
+  limit: number,
+): (R & { updatedAt: Date })[] {
+  return [...rows.values()]
+    .map((r) => {
+      if (!r.updatedAt && !stamps.has(r)) stamps.set(r, tick());
+      return { ...r, updatedAt: r.updatedAt ?? stamps.get(r)! };
+    })
+    .filter((r) => r.userId === userId && r.updatedAt.getTime() >= since.getTime())
+    .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
+    .slice(0, limit);
 }
 
 /** An AI client whose network is `fetchImpl` (default: no slots configured). */
@@ -259,6 +312,8 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
   const exercises = exercisesService(exercisesRepo);
   const routines = routinesService(routinesRepo, exercises.existingIds);
   const workouts = workoutsService(workoutsRepo, exercises.existingIds, routines.existingIds);
+  const activitiesRepo = memoryActivities();
+  const activities = activitiesService(activitiesRepo);
   const ai = opts.ai ?? fakeAi();
   const app = createApp({
     logger: pino({ level: "silent" }),
@@ -272,6 +327,13 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
       custom_exercise: exercises.syncCustomExercise,
       workout: workouts.syncWorkout,
       routine: routines.syncRoutine,
+      activity: activities.syncActivity,
+    }),
+    changes: changesService(sync.userExists, {
+      meal_log: meals.changes,
+      workout: workouts.changes,
+      routine: routines.changes,
+      activity: activities.changes,
     }),
     foods,
     meals,
@@ -292,5 +354,6 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
     exercises: exercisesRepo,
     workouts: workoutsRepo,
     routines: routinesRepo,
+    activities: activitiesRepo,
   };
 }

@@ -15,6 +15,8 @@ export interface MealsRepository {
   upsertMeal(meal: { id: string; userId: string; clientUpdatedAt: Date } & MealLogData): Promise<void>;
   softDeleteMeal(id: string, clientUpdatedAt: Date): Promise<void>;
   listMeals(userId: string, localDate: string): Promise<MealRecord[]>;
+  /** Changed since `since` (inclusive), deleted ones included, oldest change first. */
+  listChanged(userId: string, since: Date, limit: number): Promise<(MealRecord & { updatedAt: Date })[]>;
 }
 
 const include = { items: { orderBy: { position: "asc" as const } } };
@@ -77,5 +79,15 @@ export function prismaMealsRepository(prisma: PrismaClient): MealsRepository {
           orderBy: { loggedAt: "asc" },
         })
       ).map(toRecord),
+
+    listChanged: async (userId, since, limit) =>
+      (
+        await prisma.mealLog.findMany({
+          where: { userId, updatedAt: { gte: since } },
+          include,
+          orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+          take: limit,
+        })
+      ).map((r) => ({ ...toRecord(r), updatedAt: r.updatedAt })),
   };
 }

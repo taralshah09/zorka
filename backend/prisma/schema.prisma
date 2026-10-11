@@ -69,6 +69,7 @@ model User {
   exercises  Exercise[]
   workouts   Workout[]
   routines   Routine[]
+  activities Activity[]
 
   @@map("users")
 }
@@ -429,4 +430,37 @@ model RoutineExercise {
 
   @@index([routineId])
   @@map("routine_exercises")
+}
+
+// ---------------------------------------------------------------------------
+// GPS activities (P24–P26). Recorded on the phone, synced as "activity" once finished (D23). The route is
+// kept as one JSON array of [latitude, longitude, timestamp ms, accuracy m, segment, active ms] tuples.
+// ---------------------------------------------------------------------------
+
+enum ActivityKind {
+  run
+  walk
+  ride
+}
+
+model Activity {
+  id              String       @id @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  kind            ActivityKind
+  weightKg        Float        @map("weight_kg")
+  startedAt       DateTime     @map("started_at") @db.Timestamptz(3)
+  endedAt         DateTime     @map("ended_at") @db.Timestamptz(3)
+  /// The local day the activity finished on (credit goes to the completion day).
+  localDate       String       @map("local_date")
+  elapsedMs       Int          @map("elapsed_ms")
+  points          Json         @default("[]")
+  clientUpdatedAt DateTime     @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@map("activities")
 }

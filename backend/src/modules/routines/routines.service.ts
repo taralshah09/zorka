@@ -1,5 +1,6 @@
 // Routines (P21): the "routine" sync handler and the user's list.
 import { notFound } from "../../http/errors.js";
+import type { ChangeFeed } from "../sync/changes.js";
 import { lwwGuard, parseOpData, type EntityHandler } from "../sync/lww.js";
 import type { RoutineRecord, RoutinesRepository } from "./routines.repository.js";
 import { RoutineData, type RoutineDto } from "./routines.schemas.js";
@@ -50,6 +51,14 @@ export function routinesService(repo: RoutinesRepository, existingExerciseIds: (
       if (!(await repo.userExists(userId))) throw notFound("User");
       return (await repo.listRoutines(userId)).map(toDto);
     },
+
+    changes: (async (userId, since, limit) =>
+      (await repo.listChanged(userId, since, limit)).map(({ updatedAt, ...r }) => ({
+        id: r.id,
+        updatedAt,
+        deleted: !!r.deletedAt,
+        data: toDto(r),
+      }))) satisfies ChangeFeed,
   };
 }
 

@@ -17,6 +17,8 @@ export interface WorkoutsRepository {
   upsertWorkout(w: { id: string; userId: string; clientUpdatedAt: Date } & WorkoutData): Promise<void>;
   softDeleteWorkout(id: string, clientUpdatedAt: Date): Promise<void>;
   listRecent(userId: string, limit: number): Promise<WorkoutRecord[]>;
+  /** Changed since `since` (inclusive), deleted ones included, oldest change first. */
+  listChanged(userId: string, since: Date, limit: number): Promise<(WorkoutRecord & { updatedAt: Date })[]>;
 }
 
 const include = {
@@ -106,5 +108,15 @@ export function prismaWorkoutsRepository(prisma: PrismaClient): WorkoutsReposito
           take: limit,
         })
       ).map(toRecord),
+
+    listChanged: async (userId, since, limit) =>
+      (
+        await prisma.workout.findMany({
+          where: { userId, updatedAt: { gte: since } },
+          include,
+          orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+          take: limit,
+        })
+      ).map((r) => ({ ...toRecord(r), updatedAt: r.updatedAt })),
   };
 }

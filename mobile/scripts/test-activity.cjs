@@ -28,6 +28,11 @@ function load(file) {
         TurboModuleRegistry: { get: () => (healthNative?.linked ? {} : null) },
       };
     if (name === "expo-location") return native;
+    // Sync: offline, so finishing an activity only queues its outbox op.
+    if (name === "@/core/network/network")
+      return { useNetwork: { getState: () => ({ online: false }), subscribe() {} } };
+    if (name === "expo-sqlite/kv-store")
+      return { __esModule: true, default: { getItemSync: () => null, setItemSync() {}, removeItemSync() {} } };
     if (name === "react-native-health-connect") return healthNative;
     if (name === "expo-task-manager")
       return { defineTask: (name, fn) => tasks.set(name, fn), isAvailableAsync: async () => true };
@@ -153,10 +158,13 @@ test("Expo Go and older builds report missing Health Connect without loading or 
 
 test("all migrations apply and only one recording/paused session can exist across profiles", () => {
   store.createActivity("a", "run", 70, false);
-  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 7);
+  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 8);
   assert.throws(() => store.createActivity("b", "walk", 70, false), /Finish/);
   assert.throws(
-    () => sql.prepare("INSERT INTO activities VALUES(?,?,?,?,?)").run("other", "b", "paused", "2026-10-11", "{}"),
+    () =>
+      sql
+        .prepare("INSERT INTO activities(id,user_id,status,local_date,data) VALUES(?,?,?,?,?)")
+        .run("other", "b", "paused", "2026-10-11", "{}"),
     /UNIQUE/,
   );
 });
@@ -225,6 +233,52 @@ test("completion across midnight updates the indexed day as well as metadata", a
   assert.equal(store.getActivity(a.id).localDate, "2026-10-12");
   assert.equal(store.dayCredit("a", "2026-10-11").kcal, 0);
   assert.ok(store.dayCredit("a", "2026-10-12").kcal > 0);
+});
+test("a finished session is queued for the server with its route and restored by a pull", async () => {
+  const a = store.createActivity("a", "run", 70, false);
+  await recorder.resumeRecorder(a.id);
+  store.appendFixes(a.id, [point(0)]);
+  tick += 10000;
+  store.appendFixes(a.id, [point(30)]);
+  await recorder.stopRecorder(a.id);
+  const ops = sql.prepare("SELECT * FROM outbox WHERE entity = 'activity'").all();
+  assert.equal(ops.length, 1);
+  const payload = JSON.parse(ops[0].payload);
+  assert.equal(payload.kind, "run");
+  assert.equal(payload.elapsedMs, 10000);
+  assert.deepEqual(
+    payload.points.map((p) => p.length),
+    [6, 6],
+  );
+
+  const pull = load(path.join(mobileRoot, "src/core/sync/pull.ts"));
+  const respond = (changes) => async () => ({
+    ok: true,
+    json: async () => ({ changes, cursor: new Date(tick).toISOString(), more: false }),
+  });
+  const realFetch = global.fetch;
+  process.env.EXPO_PUBLIC_API_URL = "http://kimbo.test";
+  try {
+    // A new phone for profile "b": the server's copy comes back as a finished session with its route.
+    const id = randomUUID();
+    const remote = { ...payload, id, clientUpdatedAt: ops[0].client_updated_at };
+    global.fetch = respond([{ entity: "activity", id, deleted: false, data: remote }]);
+    await pull.pullChanges("b");
+    const restored = store.getActivity(id);
+    assert.equal(restored.status, "done");
+    assert.equal(store.routePoints(id).length, 2);
+    assert.ok(store.dayCredit("b", restored.localDate).kcal > 0);
+    assert.equal(sql.prepare("SELECT count(*) AS n FROM outbox WHERE user_id = 'b'").get().n, 0);
+
+    // A pull never overwrites a session that hasn't reached the server yet, nor queues it twice.
+    global.fetch = respond([{ entity: "activity", id: a.id, deleted: false, data: { ...remote, kind: "walk" } }]);
+    await pull.pullChanges("a");
+    assert.equal(store.getActivity(a.id).kind, "run");
+    assert.equal(sql.prepare("SELECT count(*) AS n FROM outbox WHERE entity = 'activity'").get().n, 1);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.EXPO_PUBLIC_API_URL;
+  }
 });
 test("background task saves batches without a mounted screen and ignores repeated events", async () => {
   const a = store.createActivity("a", "run", 70, true);

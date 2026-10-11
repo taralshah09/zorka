@@ -20,6 +20,7 @@ import { healthRoutes, type DbPing } from "./modules/health/health.routes.js";
 import { routinesRoutes } from "./modules/routines/routines.routes.js";
 import type { RoutinesService } from "./modules/routines/routines.service.js";
 import type { SyncService } from "./modules/sync/sync.service.js";
+import { changesRoutes, type ChangesService } from "./modules/sync/changes.js";
 import { syncRoutes } from "./modules/sync/sync.routes.js";
 import type { UsersService } from "./modules/users/users.service.js";
 import { usersRoutes } from "./modules/users/users.routes.js";
@@ -31,6 +32,7 @@ export type AppDeps = {
   pingDb: DbPing;
   users: UsersService;
   sync: SyncService;
+  changes: ChangesService;
   foods: FoodsService;
   meals: MealsService;
   parse: ParseService;
@@ -46,13 +48,23 @@ export type AppDeps = {
 const smallJson = express.json({ limit: "256kb" });
 // Voice notes and meal photos arrive as base64 JSON (D32/D33), so those paths (and gym voice, P22) get more room.
 const largeJson = express.json({ limit: "6mb" });
+// Sync batches can carry finished GPS activities with their whole route.
+const syncJson = express.json({ limit: "20mb" });
+const SYNC_PATH = /^\/v1\/users\/[^/]+\/sync$/;
 
 export function createApp(deps: AppDeps) {
-  const { logger, pingDb, users, sync, foods, meals, parse, exercises, workouts, routines, gymParse, ai, devRoutes } = deps;
+  const { logger, pingDb, users, sync, changes, foods, meals, parse, exercises, workouts, routines, gymParse, ai, devRoutes } =
+    deps;
   const app = express();
   app.disable("x-powered-by");
   app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/v1/health" } }));
-  app.use((req, res, next) => (LARGE_BODY_PATHS.test(req.path) || GYM_LARGE_BODY_PATH.test(req.path) ? largeJson : smallJson)(req, res, next));
+  app.use((req, res, next) =>
+    (SYNC_PATH.test(req.path)
+      ? syncJson
+      : LARGE_BODY_PATHS.test(req.path) || GYM_LARGE_BODY_PATH.test(req.path)
+        ? largeJson
+        : smallJson)(req, res, next),
+  );
 
   app.get("/", (_req, res) => {
     res.json({ name: "kimbo-api", status: "ok" });
@@ -62,6 +74,7 @@ export function createApp(deps: AppDeps) {
   v1.use(healthRoutes(pingDb));
   v1.use(usersRoutes(users));
   v1.use(syncRoutes(sync));
+  v1.use(changesRoutes(changes));
   v1.use(foodsRoutes(foods));
   v1.use(mealsRoutes(meals));
   v1.use(parseRoutes(parse));

@@ -1,5 +1,6 @@
 // Meal logs: the "meal_log" sync handler (P12) and a per-day list.
 import { notFound } from "../../http/errors.js";
+import type { ChangeFeed } from "../sync/changes.js";
 import { lwwGuard, parseOpData, type EntityHandler } from "../sync/lww.js";
 import type { MealRecord, MealsRepository } from "./meals.repository.js";
 import { MealLogData, type MealLogDto } from "./meals.schemas.js";
@@ -43,6 +44,14 @@ export function mealsService(repo: MealsRepository, existingFoodIds: (ids: strin
       if (!(await repo.userExists(userId))) throw notFound("User");
       return (await repo.listMeals(userId, localDate)).map(toDto);
     },
+
+    changes: (async (userId, since, limit) =>
+      (await repo.listChanged(userId, since, limit)).map(({ updatedAt, ...r }) => ({
+        id: r.id,
+        updatedAt,
+        deleted: !!r.deletedAt,
+        data: toDto(r),
+      }))) satisfies ChangeFeed,
   };
 }
 

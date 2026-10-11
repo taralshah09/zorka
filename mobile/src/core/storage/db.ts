@@ -184,6 +184,14 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       steps INTEGER NOT NULL, hourly TEXT NOT NULL, read_at INTEGER NOT NULL,
       PRIMARY KEY(user_id, local_date));
   `),
+
+  // v8 — finished GPS activities sync to the server as "activity". Existing rows start unsynced and are
+  // queued by the first full pull (features/activity/store.ts).
+  (db) =>
+    db.execSync(`
+      ALTER TABLE activities ADD COLUMN client_updated_at TEXT;
+      ALTER TABLE activities ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

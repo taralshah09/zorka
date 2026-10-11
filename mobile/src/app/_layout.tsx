@@ -18,6 +18,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { startNetworkMonitoring } from "@/core/network/network";
 import { getDb } from "@/core/storage/db";
 import { startSyncEngine } from "@/core/sync/engine";
+import { usePullSync } from "@/core/sync/pull";
 import { ThemeProvider, useTheme } from "@/core/theme";
 import { ErrorState, Screen, ToastProvider } from "@/core/ui";
 // Registers the dev sync-probe entity with the sync engine (P07).
@@ -29,7 +30,10 @@ import "@/features/meals/store";
 import { useExerciseCatalogSync } from "@/features/gym/catalog";
 import "@/features/gym/routines";
 import "@/features/gym/store";
+// Registers the activity entity (GPS sessions) for push and pull.
+import "@/features/activity/store";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
+import { useActiveUser } from "@/features/users/activeUser";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -50,6 +54,8 @@ function RootStack() {
   const { colors, isDark } = useTheme();
   useCatalogSync();
   useExerciseCatalogSync();
+  // Restores the user's meals, workouts, routines and activities from the server (new phone, reinstall).
+  usePullSync(useActiveUser((s) => s.userId));
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style={isDark ? "light" : "dark"} />
