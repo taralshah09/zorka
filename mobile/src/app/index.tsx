@@ -1,5 +1,5 @@
 // Entry route: S00 splash while the active user's profile loads, then Today — or the S01
-// profile picker on first launch. (Onboarding S02–S09 slots in here at P09.)
+// profile picker on first launch, or onboarding (S02–S09, P09) when the profile isn't set up.
 import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 
@@ -22,5 +22,7 @@ export default function Index() {
 
   if (!userId) return <Redirect href="/profiles" />;
   if (profile.isFetching && !timedOut) return <SplashView />;
+  // Offline with no cached profile: Today shows the error state with a retry.
+  if (profile.data && !profile.data.onboardedAt) return <Redirect href="/onboarding" />;
   return <Redirect href="/today" />;
 }

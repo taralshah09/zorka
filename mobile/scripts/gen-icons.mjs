@@ -64,6 +64,8 @@ const ICONS = [
   "remove",
   "cloud_done",
   "schedule",
+  // P10 quick-log sheet (S11)
+  "search",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

@@ -1,9 +1,9 @@
 // Server state for users and profiles (TanStack Query). The last profile seen is cached on the
 // device so the app still shows it offline.
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/core/api/client";
-import type { Profile, UserSummary } from "@/core/api/types";
+import type { Profile, ProfileUpdate, UserSummary } from "@/core/api/types";
 import { kv } from "@/core/storage/kv";
 
 export const userKeys = {
@@ -40,5 +40,19 @@ export function useProfile(userId: string | null) {
       return profile;
     },
     placeholderData: () => (userId ? readCachedProfile(userId) : undefined),
+  });
+}
+
+/** The profile is server-owned (D23), so saving it needs the network. */
+export function useUpdateProfile(userId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (update: ProfileUpdate) =>
+      (await api<{ profile: Profile }>(`/users/${userId}/profile`, { method: "PUT", body: update })).profile,
+    onSuccess: (profile) => {
+      kv.set(cacheKey(profile.userId), JSON.stringify(profile));
+      queryClient.setQueryData(userKeys.profile(profile.userId), profile);
+      queryClient.invalidateQueries({ queryKey: userKeys.all, exact: true });
+    },
   });
 }

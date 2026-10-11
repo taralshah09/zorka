@@ -20,6 +20,7 @@ export { Screen } from "./Screen";
 export { SegmentedControl, type Segment } from "./SegmentedControl";
 export { Skeleton } from "./Skeleton";
 export { Slider } from "./Slider";
+export { StatTile } from "./StatTile";
 export { EmptyState, ErrorState, OfflineBanner } from "./States";
 export { NumberUnit, Text, type TextColor } from "./Text";
 export { TextField } from "./TextField";

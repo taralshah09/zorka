@@ -45,9 +45,11 @@ function RootStack() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: "fade" }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="profiles" />
+        <Stack.Screen name="onboarding" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="quick-log" options={{ presentation: "transparentModal", animation: "fade" }} />
+        <Stack.Screen name="coming-soon" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
       </Stack>
     </View>

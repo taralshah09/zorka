@@ -1,32 +1,54 @@
-// S10 Today — P02 shell + P06 profile from the API. Rings, coach line, gap card and meals arrive in
-// P10+ (each behind its own phase), so this shows the selected profile and honest empty states.
+// S10 Today Home — P10 shell. Targets come from the profile (P08/P09); consumed values are 0 until
+// logging lands. States: loading skeleton, error (offline with no cached profile), not set up yet,
+// and the empty day. Layout follows the S10 export (D11); no bell in the header (brand §8).
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
-import type { Profile } from "@/core/api/types";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
-import { Button, Card, EmptyState, ErrorState, ListItem, Screen, Skeleton, Text } from "@/core/ui";
+import { EmptyState, ErrorState, Screen, Skeleton, Text } from "@/core/ui";
+import { CoachLine } from "@/features/coach/CoachLine";
 import { AppHeader } from "@/features/shell/AppHeader";
-import { useActiveUser } from "@/features/users/activeUser";
-import { useProfile } from "@/features/users/api";
-import { profileRows } from "@/features/users/profileFormat";
+import { useTargets } from "@/features/targets/targets";
+import { formatDayLong, greeting } from "@/features/targets/format";
+import { DateStrip } from "@/features/today/DateStrip";
+import {
+  MacroBalance,
+  MealSlots,
+  MetricTiles,
+  NextActionCard,
+  NOTHING_CONSUMED,
+  RemainingHero,
+  StreakChip,
+} from "@/features/today/TodayCards";
 
 export default function Today() {
-  const userId = useActiveUser((s) => s.userId);
-  const profile = useProfile(userId);
+  const { profile, targets } = useTargets();
+  const now = new Date();
+  const consumed = NOTHING_CONSUMED;
+  const name = profile.data?.displayName;
 
   return (
     <Screen withDock header={<AppHeader eyebrow="Today" />}>
       <NetworkBanner />
-      <Text variant="headline-lg" accessibilityRole="header">
-        {profile.data ? `Hi, ${profile.data.displayName}` : "Today"}
-      </Text>
+
+      <View style={styles.titleRow}>
+        <View style={styles.flex}>
+          <Text variant="headline-lg" accessibilityRole="header">
+            Your activity
+          </Text>
+          <Text variant="body" color="textSecondary">
+            {`${formatDayLong(now)} · ${greeting(now)}${name ? `, ${name}` : ""}`}
+          </Text>
+        </View>
+        {targets ? <StreakChip /> : null}
+      </View>
 
       {profile.isPending ? (
         <>
-          <Skeleton variant="card" height={160} />
-          <Skeleton variant="card" height={96} />
+          <Skeleton variant="card" height={72} />
+          <Skeleton variant="card" height={200} />
+          <Skeleton variant="card" height={140} />
         </>
       ) : profile.isError && !profile.data ? (
         <ErrorState
@@ -34,39 +56,32 @@ export default function Today() {
           onRetry={() => profile.refetch()}
           retrying={profile.isRefetching}
         />
-      ) : profile.data ? (
-        <ProfileCard profile={profile.data} />
-      ) : null}
-
-      <EmptyState
-        icon="restaurant"
-        title="Nothing logged yet"
-        body="Logging meals, workouts and runs arrives in the next phases."
-      />
+      ) : !targets ? (
+        <EmptyState
+          icon="tune"
+          title="Set up your plan"
+          body="Answer a few questions and get your daily calories, protein and steps."
+          actionLabel="Set up my plan"
+          onAction={() => router.push("/onboarding")}
+        />
+      ) : (
+        <>
+          <DateStrip today={now} />
+          <RemainingHero targets={targets} consumed={consumed} />
+          <MetricTiles targets={targets} consumed={consumed} />
+          <MacroBalance targets={targets} consumed={consumed} />
+          {profile.data?.coach ? (
+            <CoachLine coach={profile.data.coach} line="Your coach speaks up here once you start logging." muted />
+          ) : null}
+          <NextActionCard title="Log your first meal of the day" onPress={() => router.push("/quick-log")} />
+          <MealSlots targets={targets} consumed={consumed} />
+        </>
+      )}
     </Screen>
   );
 }
 
-function ProfileCard({ profile }: { profile: Profile }) {
-  const rows = profileRows(profile);
-  return (
-    <Card eyebrow="Your profile">
-      {profile.onboardedAt ? null : (
-        <Text variant="body" color="textSecondary" style={styles.note}>
-          Not set up yet. Onboarding will fill this in.
-        </Text>
-      )}
-      <View style={styles.list}>
-        {rows.map((r) => (
-          <ListItem key={r.label} title={r.label} value={r.value} />
-        ))}
-      </View>
-      <Button label="Switch profile" variant="ghost" size="sm" icon="person" onPress={() => router.push("/profiles")} />
-    </Card>
-  );
-}
-
 const styles = StyleSheet.create({
-  note: { marginBottom: 8 },
-  list: { marginHorizontal: -16, marginBottom: 8 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  flex: { flex: 1 },
 });

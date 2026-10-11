@@ -1,6 +1,6 @@
-// S12 Settings — shell. Appearance (P03, persisted), Demo profile (P06), sync status (P07).
-// Profile basics, goal, diet, coach, food logging, notifications and permissions arrive with
-// their phases (P09, P10, P18, P36).
+// S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10), Demo profile (P06), sync
+// status (P07). Editing single fields, food logging, notifications and permissions arrive with their
+// phases (P18, P36); for now the plan is changed by redoing onboarding.
 import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -10,8 +10,9 @@ import { useNetwork } from "@/core/network/network";
 import { retryFailedNow, useSyncStatus } from "@/core/sync/engine";
 import { useThemeControls, type ThemeName } from "@/core/theme";
 import { Card, Header, ListItem, Screen, SegmentedControl, Text } from "@/core/ui";
-import { useActiveUser } from "@/features/users/activeUser";
-import { useProfile } from "@/features/users/api";
+import { GOAL_LABEL } from "@/features/onboarding/copy";
+import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
+import { useTargets } from "@/features/targets/targets";
 
 const APPEARANCE = [
   { value: "dark", label: "Dark", icon: "dark_mode" },
@@ -20,8 +21,7 @@ const APPEARANCE = [
 
 export default function Settings() {
   const { theme, setThemeName } = useThemeControls();
-  const userId = useActiveUser((s) => s.userId);
-  const profile = useProfile(userId);
+  const { profile, targets } = useTargets();
   const online = useNetwork((s) => s.online);
   const sync = useSyncStatus();
 
@@ -42,6 +42,36 @@ export default function Settings() {
           value={theme.name}
           onChange={setThemeName}
         />
+      </Section>
+
+      <Section title="Your plan">
+        <Card flush>
+          {targets && profile.data?.goal ? (
+            <>
+              <ListItem
+                icon="trophy"
+                title={GOAL_LABEL[profile.data.goal]}
+                subtitle={
+                  targets.goalDate && profile.data.targetWeightKg != null
+                    ? `${formatKg(profile.data.targetWeightKg)} kg by ~${formatShortDate(targets.goalDate)}`
+                    : undefined
+                }
+                divider
+              />
+              <ListItem icon="restaurant" title="Daily calories" value={`${formatInt(targets.kcal)} kcal`} divider />
+              <ListItem
+                icon="egg"
+                title="Protein · carbs · fat"
+                value={`${targets.proteinG} · ${targets.carbsG} · ${targets.fatG} g`}
+                divider
+              />
+              <ListItem icon="footprint" title="Steps" value={formatInt(targets.steps)} divider />
+              <ListItem icon="refresh" title="Redo setup" chevron onPress={() => router.push("/onboarding")} />
+            </>
+          ) : (
+            <ListItem icon="tune" title="Set up your plan" chevron onPress={() => router.push("/onboarding")} />
+          )}
+        </Card>
       </Section>
 
       <Section title="Demo profile">

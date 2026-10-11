@@ -21,10 +21,12 @@ export default function ProfilePicker() {
   const queryClient = useQueryClient();
   const canGoBack = router.canGoBack();
 
-  const pick = (id: string) => {
+  const pick = (id: string, onboarded: boolean) => {
     setUser(id);
     queryClient.invalidateQueries({ queryKey: ["users", id] });
-    router.replace("/today");
+    // A new profile goes through onboarding (P09); otherwise back to Today (popping Settings if open).
+    if (onboarded) router.dismissTo("/today");
+    else router.replace("/onboarding");
   };
 
   return (
@@ -54,7 +56,7 @@ export default function ProfilePicker() {
             return (
               <Card
                 key={u.id}
-                onPress={() => pick(u.id)}
+                onPress={() => pick(u.id, u.onboarded)}
                 accessibilityLabel={`${u.displayName}, ${u.onboarded ? "profile set up" : "new here"}${active ? ", current profile" : ""}`}
               >
                 <View style={styles.row}>
