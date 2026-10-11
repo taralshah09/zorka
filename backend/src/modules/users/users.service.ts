@@ -1,3 +1,4 @@
+import { STEP_TARGET } from "../../../../shared/domain/targets.js";
 import { notFound } from "../../http/errors.js";
 import type { UserWithProfile, UsersRepository } from "./users.repository.js";
 import type { ProfileDto, ProfileUpdate, UserSummaryDto } from "./users.schemas.js";
@@ -18,6 +19,7 @@ function toProfileDto(user: UserWithProfile): ProfileDto {
     pace: p?.pace ?? null,
     coach: p?.coach ?? null,
     oilGheePrompt: p?.oilGheePrompt ?? false,
+    stepGoal: p?.stepGoal ?? STEP_TARGET,
     onboardedAt: p?.onboardedAt?.toISOString() ?? null,
     updatedAt: p?.updatedAt?.toISOString() ?? null,
   };

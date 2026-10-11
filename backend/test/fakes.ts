@@ -57,6 +57,7 @@ export function memoryUsers(): UsersRepository & { rows: Map<string, UserWithPro
         pace: null,
         coach: null,
         oilGheePrompt: false,
+        stepGoal: 8000,
         onboardedAt: null,
         createdAt: now,
         updatedAt: now,

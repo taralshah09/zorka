@@ -1,5 +1,6 @@
 // S09 · Your plan (step 8 of 8): kcal · protein · steps, the projection, a "How we got this"
-// disclosure for geeks, a line from the chosen coach and "Start today", which saves the profile.
+// disclosure for geeks, the daily step goal (D48), a line from the chosen coach and "Start today",
+// which saves the profile.
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -14,6 +15,7 @@ import { ACTIVITY_LABEL, PACE_LABEL } from "@/features/onboarding/copy";
 import { draftTargetInput, useDraft } from "@/features/onboarding/draft";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 import { formatInt, formatKg, formatShortDate, formatThousands, formatWeeklyKg } from "@/features/targets/format";
+import { StepGoalField } from "@/features/targets/StepGoalField";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useUpdateProfile } from "@/features/users/api";
 import {
@@ -32,6 +34,8 @@ export default function PlanStep() {
   const userId = useActiveUser((s) => s.userId);
   const save = useUpdateProfile(userId);
   const toast = useToast();
+  // False while the typed step goal is invalid; the draft keeps the last valid one.
+  const [stepGoalValid, setStepGoalValid] = useState(true);
 
   const input = draftTargetInput(draft);
   if (!input || !draft.coach || !draft.diet) {
@@ -67,6 +71,7 @@ export default function PlanStep() {
         targetWeightKg: hasPace ? (input.targetWeightKg ?? null) : null,
         pace: hasPace ? (input.pace ?? null) : null,
         coach: draft.coach,
+        stepGoal: draft.stepGoal,
         onboardedAt: new Date().toISOString(),
       },
       {
@@ -83,7 +88,7 @@ export default function PlanStep() {
       subtitle="Your daily targets. They adjust each week as you log."
       cta="Start today"
       glow
-      canContinue
+      canContinue={stepGoalValid}
       loading={save.isPending}
       onNext={start}
     >
@@ -92,6 +97,14 @@ export default function PlanStep() {
         <StatTile value={formatInt(targets.proteinG)} unit="g" label="Protein" color={colors.dataProtein} />
         <StatTile value={formatThousands(targets.steps)} unit="steps" label="Move" color={colors.dataActivity} />
       </View>
+
+      <StepGoalField
+        initial={draft.stepGoal}
+        onChange={(goal) => {
+          setStepGoalValid(goal != null);
+          if (goal != null) draft.update({ stepGoal: goal });
+        }}
+      />
 
       <Projection targets={targets} targetKg={input.targetWeightKg ?? null} weightKg={input.weightKg} />
 

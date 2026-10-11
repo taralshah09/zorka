@@ -1,7 +1,13 @@
 // P08 target calculator (shared/domain/targets.ts). Lives here because backend owns the test runner.
 import { describe, expect, it } from "vitest";
 
-import { calculateTargets, mifflinStJeor, validateTargetInput, type TargetInput } from "../../shared/domain/targets.js";
+import {
+  calculateTargets,
+  clampStepGoal,
+  mifflinStJeor,
+  validateTargetInput,
+  type TargetInput,
+} from "../../shared/domain/targets.js";
 
 const TODAY = new Date(2026, 9, 11); // 11 Oct 2026, local time
 
@@ -197,5 +203,20 @@ describe("validateTargetInput", () => {
 
   it("makes calculateTargets throw on invalid input", () => {
     expect(() => calculateTargets({ ...base, targetWeightKg: 90 }, TODAY)).toThrow(/target_not_below_current/);
+  });
+});
+
+describe("step goal (D48)", () => {
+  it("defaults to 8,000 and uses the user's goal when set", () => {
+    expect(calculateTargets(base, TODAY).steps).toBe(8000);
+    expect(calculateTargets({ ...base, stepGoal: null }, TODAY).steps).toBe(8000);
+    expect(calculateTargets({ ...base, stepGoal: 12_500 }, TODAY).steps).toBe(12_500);
+  });
+
+  it("keeps the goal between 8,000 and 100,000", () => {
+    expect(clampStepGoal(5000)).toBe(8000);
+    expect(clampStepGoal(100_000)).toBe(100_000);
+    expect(clampStepGoal(250_000)).toBe(100_000);
+    expect(clampStepGoal(Number.NaN)).toBe(8000);
   });
 });

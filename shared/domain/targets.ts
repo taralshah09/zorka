@@ -41,6 +41,15 @@ export const PROTEIN_G_PER_KG: Record<Goal, number> = {
 export const FAT_SHARE_OF_KCAL = 0.25;
 export const MIN_FAT_G_PER_KG = 0.6;
 export const STEP_TARGET = 8000;
+/** User-set daily step goal (D48): the default is also the floor; anything up to the max is allowed. */
+export const STEP_GOAL_MIN = STEP_TARGET;
+export const STEP_GOAL_MAX = 100_000;
+
+/** A stored or typed step goal, made safe: missing → the default; out of range → the nearest bound. */
+export function clampStepGoal(goal: number | null | undefined): number {
+  if (goal == null || !Number.isFinite(goal)) return STEP_TARGET;
+  return Math.min(STEP_GOAL_MAX, Math.max(STEP_GOAL_MIN, Math.round(goal)));
+}
 
 const KCAL_ROUND = 50;
 const MACRO_ROUND = 5;
@@ -56,6 +65,8 @@ export type TargetInput = {
   targetWeightKg?: number | null;
   /** Required for lose_fat and build_muscle; ignored otherwise. */
   pace?: Pace | null;
+  /** The user's daily step goal; missing means STEP_TARGET. */
+  stepGoal?: number | null;
 };
 
 export type Targets = {
@@ -187,7 +198,7 @@ export function calculateTargets(input: TargetInput, today: Date = new Date()): 
     proteinG,
     carbsG,
     fatG,
-    steps: STEP_TARGET,
+    steps: clampStepGoal(input.stepGoal),
     weeklyChangeKg,
     paceCapped,
     floorApplied,

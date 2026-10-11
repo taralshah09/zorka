@@ -67,6 +67,23 @@ describe("PUT /v1/users/:id/profile", () => {
     expect(extra.status).toBe(422);
   });
 
+  it("defaults the step goal to 8,000 and accepts 8,000–100,000 whole steps (D48)", async () => {
+    const { app } = testApp();
+    const fresh = await request(app).get(`/v1/users/${RIYA}/profile`);
+    expect(fresh.body.profile.stepGoal).toBe(8000);
+
+    const saved = await request(app).put(`/v1/users/${RIYA}/profile`).send({ stepGoal: 12_500 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.profile.stepGoal).toBe(12_500);
+
+    for (const stepGoal of [7999, 100_001, 9000.5]) {
+      const bad = await request(app).put(`/v1/users/${RIYA}/profile`).send({ stepGoal });
+      expect(bad.status).toBe(422);
+    }
+    const max = await request(app).put(`/v1/users/${RIYA}/profile`).send({ stepGoal: 100_000 });
+    expect(max.body.profile.stepGoal).toBe(100_000);
+  });
+
   it("404s for an unknown user", async () => {
     const res = await request(testApp().app).put(`/v1/users/${UNKNOWN}/profile`).send({ age: 30 });
     expect(res.status).toBe(404);

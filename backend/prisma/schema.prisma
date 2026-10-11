@@ -87,6 +87,8 @@ model Profile {
   coach          Coach?
   /// P18: ask how much oil/ghee went into home-cooked food on the confirm sheet (D34).
   oilGheePrompt  Boolean        @default(false) @map("oil_ghee_prompt")
+  /// Daily step goal (D48): 8,000 default and minimum, 100,000 maximum.
+  stepGoal       Int            @default(8000) @map("step_goal")
   onboardedAt    DateTime?      @map("onboarded_at") @db.Timestamptz(3)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)

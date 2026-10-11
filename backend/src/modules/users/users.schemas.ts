@@ -1,6 +1,8 @@
 // Request schemas and response DTOs for /v1/users. Enum values mirror prisma/schema.prisma.
 import { z } from "zod";
 
+import { STEP_GOAL_MAX, STEP_GOAL_MIN } from "../../../../shared/domain/targets.js";
+
 export const GOALS = ["lose_fat", "build_muscle", "maintain", "get_fitter"] as const;
 export const SEXES = ["male", "female", "unspecified"] as const;
 export const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
@@ -25,6 +27,8 @@ export const ProfileUpdateBody = z
     coach: z.enum(COACHES).nullable(),
     /** P18 (D34): ask about oil/ghee for home-cooked food. */
     oilGheePrompt: z.boolean(),
+    /** D48: daily step goal. */
+    stepGoal: z.number().int().min(STEP_GOAL_MIN).max(STEP_GOAL_MAX),
     onboardedAt: z.string().datetime().nullable(),
   })
   .partial()
@@ -46,6 +50,7 @@ export type ProfileDto = {
   pace: (typeof PACES)[number] | null;
   coach: (typeof COACHES)[number] | null;
   oilGheePrompt: boolean;
+  stepGoal: number;
   onboardedAt: string | null;
   updatedAt: string | null;
 };

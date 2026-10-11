@@ -1,21 +1,34 @@
-// S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10), Food logging (P18: the
-// oil/ghee prompt), Demo profile (P06), sync status (P07). Editing single fields, notifications and
+// S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10, plus the daily step goal,
+// D48), Food logging (P18: the oil/ghee prompt), Demo profile (P06), sync status (P07). Editing single fields, notifications and
 // permissions arrive with their phases (P36); for now the plan is changed by redoing onboarding.
 import { router } from "expo-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { apiBaseUrl, describeError } from "@/core/api/client";
 import { useNetwork } from "@/core/network/network";
 import { retryFailedNow, useSyncStatus } from "@/core/sync/engine";
 import { useThemeControls, type ThemeName } from "@/core/theme";
-import { Card, Header, ListItem, Screen, SegmentedControl, Text, Toggle, useToast } from "@/core/ui";
+import {
+  BottomSheet,
+  Button,
+  Card,
+  Header,
+  ListItem,
+  Screen,
+  SegmentedControl,
+  Text,
+  Toggle,
+  useToast,
+} from "@/core/ui";
 import { HealthConnectSettings } from "@/features/activity/HealthConnectSettings";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
+import { StepGoalField } from "@/features/targets/StepGoalField";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useUpdateProfile } from "@/features/users/api";
+import { STEP_GOAL_MAX, STEP_GOAL_MIN } from "@shared/domain/targets";
 
 const APPEARANCE = [
   { value: "dark", label: "Dark", icon: "dark_mode" },
@@ -30,6 +43,7 @@ export default function Settings() {
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const updateProfile = useUpdateProfile(userId);
+  const [stepSheet, setStepSheet] = useState(false);
   const oilPrompt = updateProfile.isPending ? !!updateProfile.variables?.oilGheePrompt : !!profile.data?.oilGheePrompt;
 
   // The profile is server-owned (D23), so this setting needs the network.
@@ -79,7 +93,14 @@ export default function Settings() {
                 value={`${targets.proteinG} · ${targets.carbsG} · ${targets.fatG} g`}
                 divider
               />
-              <ListItem icon="footprint" title="Steps" value={formatInt(targets.steps)} divider />
+              <ListItem
+                icon="footprint"
+                title="Daily step goal"
+                value={formatInt(targets.steps)}
+                chevron
+                divider
+                onPress={() => setStepSheet(true)}
+              />
               <ListItem icon="refresh" title="Redo setup" chevron onPress={() => router.push("/onboarding")} />
             </>
           ) : (
@@ -87,6 +108,15 @@ export default function Settings() {
           )}
         </Card>
       </Section>
+
+      {profile.data ? (
+        <StepGoalSheet
+          visible={stepSheet}
+          onClose={() => setStepSheet(false)}
+          current={profile.data.stepGoal}
+          online={online}
+        />
+      ) : null}
 
       <Section title="Food logging">
         <Card flush>
@@ -160,6 +190,60 @@ export default function Settings() {
   );
 }
 
+/** Edits the daily step goal (D48). Server-owned like the rest of the profile, so it needs the network. */
+function StepGoalSheet({
+  visible,
+  onClose,
+  current,
+  online,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  current: number;
+  online: boolean;
+}) {
+  const userId = useActiveUser((s) => s.userId);
+  const updateProfile = useUpdateProfile(userId);
+  const toast = useToast();
+  const [goal, setGoal] = useState<number | null>(current);
+  // Each time the sheet opens, start again from the saved goal.
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setGoal(current);
+  }
+
+  const save = () => {
+    if (goal == null) return;
+    if (goal === current) return onClose();
+    updateProfile.mutate(
+      { stepGoal: goal },
+      {
+        onSuccess: () => {
+          toast({ message: `Step goal set to ${formatInt(goal)}` });
+          onClose();
+        },
+        onError: (e) => toast({ kind: "error", message: describeError(e).title }),
+      },
+    );
+  };
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title="Daily step goal">
+      <View style={styles.sheet}>
+        <Text variant="body" color="textSecondary">
+          {online
+            ? `At least ${formatInt(STEP_GOAL_MIN)} steps a day, up to ${formatInt(STEP_GOAL_MAX)}.`
+            : "Connect to change your step goal."}
+        </Text>
+        {/* Remount on open so the field starts from the saved goal. */}
+        {visible ? <StepGoalField initial={current} onChange={setGoal} disabled={!online} /> : null}
+        <Button label="Save" onPress={save} loading={updateProfile.isPending} disabled={!online || goal == null} />
+      </View>
+    </BottomSheet>
+  );
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
@@ -173,4 +257,5 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const styles = StyleSheet.create({
   section: { gap: 8, marginBottom: 12 },
+  sheet: { gap: 16 },
 });

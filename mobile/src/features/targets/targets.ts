@@ -20,6 +20,7 @@ export function targetInputFromProfile(p: Profile): TargetInput | null {
     activityLevel,
     targetWeightKg: p.targetWeightKg,
     pace: p.pace,
+    stepGoal: p.stepGoal,
   };
   return validateTargetInput(input).length ? null : input;
 }

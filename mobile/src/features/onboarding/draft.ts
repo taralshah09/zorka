@@ -3,7 +3,7 @@
 import { create } from "zustand";
 
 import type { ActivityLevel, CoachId, DietPref, Goal, Pace, Profile, Sex } from "@/core/api/types";
-import { goalHasPace, validateTargetInput, type TargetInput } from "@shared/domain/targets";
+import { goalHasPace, STEP_TARGET, validateTargetInput, type TargetInput } from "@shared/domain/targets";
 
 export type Draft = {
   goal: Goal | null;
@@ -16,6 +16,7 @@ export type Draft = {
   targetWeightKg: number | null;
   pace: Pace;
   coach: CoachId | null;
+  stepGoal: number;
 };
 
 /** Sanity bounds, same as the API (D21). */
@@ -36,6 +37,7 @@ const EMPTY: Draft = {
   targetWeightKg: null,
   pace: "steady",
   coach: null,
+  stepGoal: STEP_TARGET,
 };
 
 type DraftState = Draft & {
@@ -61,6 +63,7 @@ export const useDraft = create<DraftState>((set) => ({
             targetWeightKg: p.targetWeightKg,
             pace: p.pace ?? EMPTY.pace,
             coach: p.coach,
+            stepGoal: p.stepGoal ?? EMPTY.stepGoal,
           }
         : null),
     }),
@@ -79,6 +82,7 @@ export function draftTargetInput(d: Draft): TargetInput | null {
     activityLevel: d.activityLevel,
     targetWeightKg: goalHasPace(d.goal) ? d.targetWeightKg : null,
     pace: goalHasPace(d.goal) ? d.pace : null,
+    stepGoal: d.stepGoal,
   };
   return validateTargetInput(input).length ? null : input;
 }
