@@ -16,6 +16,7 @@
       "permissions": [
         "android.permission.health.READ_STEPS",
         "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
@@ -59,7 +60,7 @@
         {
           "cameraPermission": "Kimbo uses the camera to log a meal from a photo.",
           "photosPermission": "Kimbo opens your photos so you can log a meal from one.",
-          "microphonePermission": false
+          "microphonePermission": "Kimbo uses the microphone while you hold the button to log a meal by voice."
         }
       ],
       "expo-asset",
