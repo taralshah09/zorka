@@ -1,18 +1,20 @@
-// S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10), Demo profile (P06), sync
-// status (P07). Editing single fields, food logging, notifications and permissions arrive with their
-// phases (P18, P36); for now the plan is changed by redoing onboarding.
+// S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10), Food logging (P18: the
+// oil/ghee prompt), Demo profile (P06), sync status (P07). Editing single fields, notifications and
+// permissions arrive with their phases (P36); for now the plan is changed by redoing onboarding.
 import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { apiBaseUrl } from "@/core/api/client";
+import { apiBaseUrl, describeError } from "@/core/api/client";
 import { useNetwork } from "@/core/network/network";
 import { retryFailedNow, useSyncStatus } from "@/core/sync/engine";
 import { useThemeControls, type ThemeName } from "@/core/theme";
-import { Card, Header, ListItem, Screen, SegmentedControl, Text } from "@/core/ui";
+import { Card, Header, ListItem, Screen, SegmentedControl, Text, Toggle, useToast } from "@/core/ui";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
+import { useActiveUser } from "@/features/users/activeUser";
+import { useUpdateProfile } from "@/features/users/api";
 
 const APPEARANCE = [
   { value: "dark", label: "Dark", icon: "dark_mode" },
@@ -24,6 +26,17 @@ export default function Settings() {
   const { profile, targets } = useTargets();
   const online = useNetwork((s) => s.online);
   const sync = useSyncStatus();
+  const toast = useToast();
+  const userId = useActiveUser((s) => s.userId);
+  const updateProfile = useUpdateProfile(userId);
+  const oilPrompt = updateProfile.isPending ? !!updateProfile.variables?.oilGheePrompt : !!profile.data?.oilGheePrompt;
+
+  // The profile is server-owned (D23), so this setting needs the network.
+  const setOilPrompt = (next: boolean) =>
+    updateProfile.mutate(
+      { oilGheePrompt: next },
+      { onError: (e) => toast({ kind: "error", message: describeError(e).title }) },
+    );
 
   const syncValue = sync.failed
     ? `${sync.failed} not synced`
@@ -71,6 +84,26 @@ export default function Settings() {
           ) : (
             <ListItem icon="tune" title="Set up your plan" chevron onPress={() => router.push("/onboarding")} />
           )}
+        </Card>
+      </Section>
+
+      <Section title="Food logging">
+        <Card flush>
+          <ListItem
+            icon="restaurant"
+            title="Ask about oil/ghee for home-cooked food"
+            subtitle={
+              online ? "Little, normal or heavy. When off, standard recipe values are used." : "Connect to change this."
+            }
+            trailing={
+              <Toggle
+                value={oilPrompt}
+                onValueChange={setOilPrompt}
+                disabled={!online || !profile.data || updateProfile.isPending}
+                accessibilityLabel="Ask about oil or ghee for home-cooked food"
+              />
+            }
+          />
         </Card>
       </Section>
 

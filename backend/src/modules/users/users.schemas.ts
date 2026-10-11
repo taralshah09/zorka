@@ -23,6 +23,8 @@ export const ProfileUpdateBody = z
     targetWeightKg: z.number().min(30).max(300).nullable(),
     pace: z.enum(PACES).nullable(),
     coach: z.enum(COACHES).nullable(),
+    /** P18 (D34): ask about oil/ghee for home-cooked food. */
+    oilGheePrompt: z.boolean(),
     onboardedAt: z.string().datetime().nullable(),
   })
   .partial()
@@ -43,6 +45,7 @@ export type ProfileDto = {
   targetWeightKg: number | null;
   pace: (typeof PACES)[number] | null;
   coach: (typeof COACHES)[number] | null;
+  oilGheePrompt: boolean;
   onboardedAt: string | null;
   updatedAt: string | null;
 };

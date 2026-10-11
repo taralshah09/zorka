@@ -17,6 +17,7 @@ function toProfileDto(user: UserWithProfile): ProfileDto {
     targetWeightKg: p?.targetWeightKg ?? null,
     pace: p?.pace ?? null,
     coach: p?.coach ?? null,
+    oilGheePrompt: p?.oilGheePrompt ?? false,
     onboardedAt: p?.onboardedAt?.toISOString() ?? null,
     updatedAt: p?.updatedAt?.toISOString() ?? null,
   };

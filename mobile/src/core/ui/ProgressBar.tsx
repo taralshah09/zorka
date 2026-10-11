@@ -36,9 +36,9 @@ export function MacroBar({ protein, carbs, fat, accessibilityLabel }: MacroProps
   const { colors, radius } = useTheme();
   const total = protein + carbs + fat;
   const parts = [
-    { key: "p", value: protein, color: colors.dataProtein },
-    { key: "c", value: carbs, color: colors.dataCarbs },
-    { key: "f", value: fat, color: colors.dataFat },
+    { key: "p", share: protein, color: colors.dataProtein },
+    { key: "c", share: carbs, color: colors.dataCarbs },
+    { key: "f", share: fat, color: colors.dataFat },
   ];
   return (
     <View accessibilityLabel={accessibilityLabel} style={[styles.track, styles.macro, { borderRadius: radius.xs }]}>
@@ -46,8 +46,8 @@ export function MacroBar({ protein, carbs, fat, accessibilityLabel }: MacroProps
         <View style={[styles.fill, { backgroundColor: colors.surfaceHigh, borderRadius: radius.xs }]} />
       ) : (
         parts
-          .filter((p) => p.value > 0)
-          .map((p) => <View key={p.key} style={{ flex: p.value, backgroundColor: p.color, borderRadius: radius.xs }} />)
+          .filter((p) => p.share > 0)
+          .map((p) => <View key={p.key} style={{ flex: p.share, backgroundColor: p.color, borderRadius: radius.xs }} />)
       )}
     </View>
   );

@@ -32,7 +32,22 @@
         {
           "backgroundColor": "#16181B"
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Kimbo uses the microphone while you hold the button to log a meal by voice."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Kimbo uses the camera to log a meal from a photo.",
+          "photosPermission": "Kimbo opens your photos so you can log a meal from one.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

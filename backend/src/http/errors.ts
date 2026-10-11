@@ -9,6 +9,10 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "SERVICE_UNAVAILABLE"
+  | "PAYLOAD_TOO_LARGE"
+  | "RATE_LIMITED"
+  | "AI_UNAVAILABLE"
+  | "AI_TIMEOUT"
   | "INTERNAL";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -17,6 +21,10 @@ const STATUS: Record<ErrorCode, number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   SERVICE_UNAVAILABLE: 503,
+  PAYLOAD_TOO_LARGE: 413,
+  RATE_LIMITED: 429,
+  AI_UNAVAILABLE: 503,
+  AI_TIMEOUT: 504,
   INTERNAL: 500,
 };
 
@@ -57,6 +65,10 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // Malformed JSON body from express.json().
   if (err?.type === "entity.parse.failed") {
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "Malformed JSON body" } });
+    return;
+  }
+  if (err?.type === "entity.too.large") {
+    res.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "That upload is too big" } });
     return;
   }
   req.log?.error({ err }, "Unhandled error");

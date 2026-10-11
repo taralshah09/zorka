@@ -1,4 +1,5 @@
 // API contract types — mirror backend/src/modules/*/…schemas.ts. Keep the two in step.
+import type { FoodUnit, Macros } from "@shared/domain/food";
 
 export type Goal = "lose_fat" | "build_muscle" | "maintain" | "get_fitter";
 export type Sex = "male" | "female" | "unspecified";
@@ -22,13 +23,15 @@ export type Profile = {
   targetWeightKg: number | null;
   pace: Pace | null;
   coach: CoachId | null;
+  /** P18: ask about oil/ghee for home-cooked food on the confirm sheet. */
+  oilGheePrompt: boolean;
   onboardedAt: string | null;
   updatedAt: string | null;
 };
 
 export type ProfileUpdate = Partial<Omit<Profile, "userId" | "displayName" | "updatedAt">>;
 
-export type SyncEntity = "sync_probe";
+export type SyncEntity = "sync_probe" | "meal_log" | "custom_food";
 export type SyncOp = {
   opId: string;
   entity: SyncEntity;
@@ -38,3 +41,68 @@ export type SyncOp = {
   data?: unknown;
 };
 export type SyncResult = { opId: string; status: "applied" | "stale" | "rejected"; message?: string };
+
+// ── Foods (P11–P13) — mirrors backend/src/modules/foods/foods.schemas.ts ─────────────────────────
+
+export type Cuisine = "indian" | "indo_chinese" | "italian" | "continental" | "other";
+export type FoodCategory =
+  | "home_meal"
+  | "restaurant"
+  | "bread"
+  | "rice"
+  | "protein"
+  | "dairy"
+  | "drink"
+  | "snack"
+  | "sweet"
+  | "fruit"
+  | "vegetable";
+
+export type Food = {
+  id: string;
+  name: string;
+  aliases: string[];
+  cuisine: Cuisine;
+  category: FoodCategory;
+  diet: DietPref;
+  homeCooked: boolean;
+  liquid: boolean;
+  per100g: Macros;
+  defaultUnit: FoodUnit;
+  units: { unit: FoodUnit; grams: number; label: string | null }[];
+  source: string;
+  custom: boolean;
+  updatedAt: string;
+};
+
+// ── Meal parsing (P15–P17) — mirrors backend/src/modules/mealParse/parse.schemas.ts ──────────────
+
+export type UncertainReason = "low_confidence" | "no_match" | "vague_quantity" | "unit_unknown";
+
+export type ParsedItem = {
+  query: string;
+  food: Food | null;
+  matchScore: number | null;
+  quantity: number;
+  unit: FoodUnit;
+  grams: number;
+  macros: Macros;
+  confidence: number;
+  uncertain: boolean;
+  reasons: UncertainReason[];
+};
+
+export type FollowUp = {
+  question: string;
+  itemIndexes: number[];
+  options: { label: string; quantity: number; unit: FoodUnit }[];
+};
+
+export type ParseResult = {
+  source: "text" | "voice" | "photo";
+  transcript: string | null;
+  items: ParsedItem[];
+  followUp: FollowUp | null;
+  timings: { sttMs: number | null; aiMs: number; matchMs: number; totalMs: number };
+  ai: { slot: string; model: string; attempts: number };
+};

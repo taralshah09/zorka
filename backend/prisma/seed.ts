@@ -1,9 +1,12 @@
 // P05 seed: the 3 dummy users (D5). Idempotent — safe to run any number of times.
 // Users are upserted by fixed id; profiles are created empty and never overwritten, so a re-run
 // keeps whatever onboarding (P09) has saved. Full demo history arrives at P40.
+// P11: the curated food catalog (prisma/data/foods.ts), upserted by slug with stable ids.
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client.js";
+import { foodsFromRows } from "../src/modules/foods/catalog.js";
+import { FOOD_SOURCE, FOODS } from "./data/foods.js";
 
 export const DUMMY_USERS = [
   { id: "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11", displayName: "Riya" },
@@ -27,9 +30,52 @@ async function main() {
     }
     const count = await prisma.user.count({ where: { id: { in: DUMMY_USERS.map((u) => u.id) } } });
     console.log(`Seed done: ${count} dummy users present.`);
+
+    await seedFoods(prisma);
   } finally {
     await prisma.$disconnect();
   }
+}
+
+/** Creates new curated foods, updates changed ones, and rewrites their units. A handful of queries, not
+ *  one per food, so a re-run over Neon stays quick. User-created foods (P13) are never touched. */
+async function seedFoods(prisma: PrismaClient) {
+  const foods = foodsFromRows(FOODS);
+  const existing = new Map(
+    (await prisma.food.findMany({ where: { slug: { in: foods.map((f) => f.slug) } } })).map((f) => [f.slug, f]),
+  );
+
+  const toCreate = foods.filter((f) => !existing.has(f.slug));
+  const toUpdate = foods.filter((f) => {
+    const e = existing.get(f.slug);
+    if (!e) return false;
+    return (
+      e.id !== f.id ||
+      e.name !== f.name ||
+      e.aliases.join("|") !== f.aliases.join("|") ||
+      e.cuisine !== f.cuisine ||
+      e.category !== f.category ||
+      e.diet !== f.diet ||
+      e.homeCooked !== f.homeCooked ||
+      e.liquid !== f.liquid ||
+      e.kcalPer100g !== f.kcalPer100g ||
+      e.proteinPer100g !== f.proteinPer100g ||
+      e.carbsPer100g !== f.carbsPer100g ||
+      e.fatPer100g !== f.fatPer100g ||
+      e.defaultUnit !== f.defaultUnit
+    );
+  });
+  const data = ({ units: _units, ...f }: (typeof foods)[number]) => ({ ...f, source: FOOD_SOURCE });
+
+  await prisma.$transaction([
+    prisma.food.createMany({ data: toCreate.map(data), skipDuplicates: true }),
+    ...toUpdate.map((f) => prisma.food.update({ where: { slug: f.slug }, data: data(f) })),
+    prisma.foodUnitOption.deleteMany({ where: { foodId: { in: foods.map((f) => f.id) } } }),
+    prisma.foodUnitOption.createMany({ data: foods.flatMap((f) => f.units.map((u) => ({ foodId: f.id, ...u }))) }),
+  ]);
+
+  const total = await prisma.food.count({ where: { source: FOOD_SOURCE } });
+  console.log(`Foods: ${toCreate.length} created, ${toUpdate.length} updated, ${total} curated foods present.`);
 }
 
 main().catch((err) => {

@@ -1,6 +1,6 @@
-// S10 Today Home building blocks (P10 shell). Consumed values are 0 until meal, step and activity
-// logging land (P12, P23, P24); the coach line, next action and streak are placeholders until
-// P30/P31/P37. Layout follows the S10 export; colours follow D14.
+// S10 Today Home building blocks. Food comes from the day's logged meals (P12); steps and activity are
+// still 0 until P23/P24; the coach line, next action and streak are placeholders until P30/P31/P37.
+// Layout follows the S10 export; colours follow D14.
 import { router } from "expo-router";
 import { useId } from "react";
 import { StyleSheet, View } from "react-native";
@@ -9,12 +9,20 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Card, NumberUnit, PressableScale, ProgressBar, ProgressRing, Text } from "@/core/ui";
+import { MEAL_LABEL } from "@/features/food/format";
+import { mealTotals, type Meal } from "@/features/meals/store";
 import { formatInt } from "@/features/targets/format";
+import { MEAL_TYPES, sumMacros } from "@shared/domain/food";
 import type { Targets } from "@shared/domain/targets";
 
-/** Today's intake / burn. Everything is 0 until logging exists. */
+/** Today's intake / burn. Steps stay 0 until P23. */
 export type Consumed = { kcal: number; proteinG: number; carbsG: number; fatG: number; steps: number };
 export const NOTHING_CONSUMED: Consumed = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, steps: 0 };
+
+/** Sum of the day's meals (P12). */
+export function consumedFrom(meals: readonly Meal[]): Consumed {
+  return { ...sumMacros(meals.map(mealTotals)), steps: 0 };
+}
 
 const pct = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 
@@ -240,10 +248,16 @@ export function NextActionCard({ title, onPress }: { title: string; onPress: () 
   );
 }
 
-const MEALS = ["Breakfast", "Lunch", "Snacks", "Dinner"] as const;
-
-/** Meals timeline with every slot empty (P12 fills it). */
-export function MealSlots({ targets, consumed }: { targets: Targets; consumed: Consumed }) {
+/** Meals timeline (P12): logged meals per slot, open S21; empty slots open quick-log for that meal. */
+export function MealSlots({
+  targets,
+  consumed,
+  meals,
+}: {
+  targets: Targets;
+  consumed: Consumed;
+  meals: readonly Meal[];
+}) {
   const { colors, radius, layout } = useTheme();
   return (
     <View style={styles.meals}>
@@ -255,33 +269,71 @@ export function MealSlots({ targets, consumed }: { targets: Targets; consumed: C
           {`${formatInt(consumed.kcal)} / ${formatInt(targets.kcal)} kcal`}
         </Text>
       </View>
-      {MEALS.map((meal) => (
-        <PressableScale
-          key={meal}
-          onPress={() => router.push("/quick-log")}
-          accessibilityRole="button"
-          accessibilityLabel={`Log ${meal.toLowerCase()}`}
-          style={[
-            styles.slot,
-            {
-              borderRadius: radius.lg,
-              borderColor: colors.outline,
-              backgroundColor: colors.surfaceLow,
-              padding: layout.cardPadding,
-            },
-          ]}
-        >
-          <View style={[styles.slotPlus, { borderRadius: radius.md, borderColor: colors.outline }]}>
-            <Icon name="add" color={colors.textSecondary} />
-          </View>
-          <View style={styles.flex}>
-            <Text variant="title">{`Log ${meal.toLowerCase()}`}</Text>
-            <Text variant="caption" color="textSecondary">
-              Nothing logged yet
-            </Text>
-          </View>
-        </PressableScale>
-      ))}
+      {MEAL_TYPES.map((type) => {
+        const logged = meals.filter((m) => m.mealType === type);
+        const label = MEAL_LABEL[type];
+        if (!logged.length) {
+          return (
+            <PressableScale
+              key={type}
+              onPress={() => router.push({ pathname: "/quick-log", params: { mealType: type } })}
+              accessibilityRole="button"
+              accessibilityLabel={`Log ${label.toLowerCase()}`}
+              style={[
+                styles.slot,
+                styles.slotEmpty,
+                {
+                  borderRadius: radius.lg,
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceLow,
+                  padding: layout.cardPadding,
+                },
+              ]}
+            >
+              <View style={[styles.slotPlus, { borderRadius: radius.md, borderColor: colors.outline }]}>
+                <Icon name="add" color={colors.textSecondary} />
+              </View>
+              <View style={styles.flex}>
+                <Text variant="title">{`Log ${label.toLowerCase()}`}</Text>
+                <Text variant="caption" color="textSecondary">
+                  Nothing logged yet
+                </Text>
+              </View>
+            </PressableScale>
+          );
+        }
+        return logged.map((m) => {
+          const t = mealTotals(m);
+          const time = new Date(m.loggedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+          return (
+            <PressableScale
+              key={m.id}
+              onPress={() => router.push({ pathname: "/log/meal/[id]", params: { id: m.id } })}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}, ${formatInt(t.kcal)} kcal: ${m.items.map((i) => i.name).join(", ")}`}
+              style={[
+                styles.slot,
+                { borderRadius: radius.lg, backgroundColor: colors.surfaceLow, padding: layout.cardPadding },
+              ]}
+            >
+              <View
+                style={[styles.slotPlus, { borderRadius: radius.md, backgroundColor: colors.tertiary, borderWidth: 0 }]}
+              >
+                <Icon name="restaurant" color={colors.ink} />
+              </View>
+              <View style={styles.flex}>
+                <Text variant="title">{`${label} · ${time}`}</Text>
+                <Text variant="caption" color="textSecondary" numberOfLines={1}>
+                  {m.items.map((i) => i.name).join(", ")}
+                </Text>
+              </View>
+              <Text variant="label" color="primaryText" tabular>
+                {`${formatInt(t.kcal)} kcal`}
+              </Text>
+            </PressableScale>
+          );
+        });
+      })}
     </View>
   );
 }
@@ -307,7 +359,8 @@ const styles = StyleSheet.create({
   nbaChevron: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   meals: { gap: 12, marginTop: 12 },
   mealsHead: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  slot: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderStyle: "dashed" },
+  slot: { flexDirection: "row", alignItems: "center", gap: 12 },
+  slotEmpty: { borderWidth: 1, borderStyle: "dashed" },
   slotPlus: {
     width: 44,
     height: 44,

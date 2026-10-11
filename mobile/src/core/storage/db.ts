@@ -32,6 +32,70 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       );
       CREATE INDEX sync_probes_user ON sync_probes (user_id, client_updated_at);
     `),
+
+  // v2 · P12 — food catalog cache (search works offline) + local-first meal logs.
+  //   foods.owner_user_id: NULL for the curated catalog, the user's id for their own foods (P13).
+  //   foods.synced = 0 for a user-created food that hasn't reached the server yet.
+  //   meal_items.diet / category are display snapshots (diet marker, icon tile).
+  (db) =>
+    db.execSync(`
+      CREATE TABLE foods (
+        id TEXT PRIMARY KEY NOT NULL,
+        owner_user_id TEXT,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX foods_owner ON foods (owner_user_id);
+      CREATE TABLE meal_logs (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        meal_type TEXT NOT NULL,
+        logged_at TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        source TEXT NOT NULL,
+        oil_level TEXT,
+        photo_uri TEXT,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX meal_logs_day ON meal_logs (user_id, local_date);
+      CREATE TABLE meal_items (
+        id TEXT PRIMARY KEY NOT NULL,
+        meal_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        food_id TEXT,
+        name TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT NOT NULL,
+        grams REAL NOT NULL,
+        kcal REAL NOT NULL,
+        protein_g REAL NOT NULL,
+        carbs_g REAL NOT NULL,
+        fat_g REAL NOT NULL,
+        diet TEXT,
+        category TEXT
+      );
+      CREATE INDEX meal_items_meal ON meal_items (meal_id, position);
+      CREATE INDEX meal_items_food ON meal_items (food_id);
+    `),
+
+  // v3 · P16 — voice notes recorded offline, read once the phone is back online.
+  (db) =>
+    db.execSync(`
+      CREATE TABLE voice_queue (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        uri TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        meal_type TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX voice_queue_user ON voice_queue (user_id, created_at);
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

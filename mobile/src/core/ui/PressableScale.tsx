@@ -14,9 +14,11 @@ import { useTheme } from "@/core/theme";
 
 type Props = Omit<PressableProps, "style"> & {
   style?: StyleProp<ViewStyle> | ((state: PressableStateCallbackType) => StyleProp<ViewStyle>);
+  /** Layout style for the outer Pressable (e.g. `flex: 1` in a row) — `style` only reaches the inner view. */
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
-export function PressableScale({ style, onPressIn, onPressOut, disabled, children, ...rest }: Props) {
+export function PressableScale({ style, containerStyle, onPressIn, onPressOut, disabled, children, ...rest }: Props) {
   const { motion } = useTheme();
   const scale = useState(() => new Animated.Value(1))[0];
 
@@ -31,6 +33,7 @@ export function PressableScale({ style, onPressIn, onPressOut, disabled, childre
   return (
     <Pressable
       disabled={disabled}
+      style={containerStyle}
       onPressIn={(e) => {
         if (!disabled) to(motion.press.scale);
         onPressIn?.(e);

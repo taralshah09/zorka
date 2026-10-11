@@ -1,0 +1,313 @@
+// Meal logs on the phone (P12/P13). Local-first (D23): every write goes to SQLite together with an outbox
+// op in one transaction, so logging works offline and syncs later as entity "meal_log".
+import { randomUUID } from "expo-crypto";
+import { useMemo } from "react";
+import { create } from "zustand";
+
+import type { DietPref, FoodCategory } from "@/core/api/types";
+import { getDb } from "@/core/storage/db";
+import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/engine";
+import { enqueue } from "@/core/sync/outbox";
+import { localDate, sumMacros, type FoodUnit, type Macros, type MealType, type OilLevel } from "@shared/domain/food";
+
+export type MealSource = "search" | "text" | "voice" | "photo" | "repeat";
+
+export type MealItem = {
+  id: string;
+  foodId: string | null;
+  name: string;
+  quantity: number;
+  unit: FoodUnit;
+  grams: number;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  diet: DietPref | null;
+  category: FoodCategory | null;
+};
+
+export type Meal = {
+  id: string;
+  userId: string;
+  mealType: MealType;
+  loggedAt: string;
+  localDate: string;
+  source: MealSource;
+  oilLevel: OilLevel | null;
+  /** The user's own photo (S14/S21). Stays on the phone; never uploaded with the meal. */
+  photoUri: string | null;
+  items: MealItem[];
+  synced: boolean;
+};
+
+/** Bumped on every local meal change so hooks re-read. */
+export const useMealsVersion = create<{ v: number }>(() => ({ v: 0 }));
+const bump = () => useMealsVersion.setState((s) => ({ v: s.v + 1 }));
+
+onAcknowledged("meal_log", (row) => {
+  getDb().runSync(
+    `UPDATE meal_logs SET synced = 1 WHERE id = ? AND client_updated_at = ?`,
+    row.record_id,
+    row.client_updated_at,
+  );
+});
+
+type MealRow = {
+  id: string;
+  user_id: string;
+  meal_type: MealType;
+  logged_at: string;
+  local_date: string;
+  source: MealSource;
+  oil_level: OilLevel | null;
+  photo_uri: string | null;
+  synced: number;
+};
+type ItemRow = {
+  id: string;
+  meal_id: string;
+  food_id: string | null;
+  name: string;
+  quantity: number;
+  unit: FoodUnit;
+  grams: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  diet: DietPref | null;
+  category: FoodCategory | null;
+};
+
+function hydrate(rows: MealRow[]): Meal[] {
+  if (!rows.length) return [];
+  const items = getDb().getAllSync<ItemRow>(
+    `SELECT * FROM meal_items WHERE meal_id IN (${rows.map(() => "?").join(",")}) ORDER BY position`,
+    ...rows.map((r) => r.id),
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    mealType: r.meal_type,
+    loggedAt: r.logged_at,
+    localDate: r.local_date,
+    source: r.source,
+    oilLevel: r.oil_level,
+    photoUri: r.photo_uri,
+    synced: !!r.synced,
+    items: items
+      .filter((i) => i.meal_id === r.id)
+      .map((i) => ({
+        id: i.id,
+        foodId: i.food_id,
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        grams: i.grams,
+        kcal: i.kcal,
+        proteinG: i.protein_g,
+        carbsG: i.carbs_g,
+        fatG: i.fat_g,
+        diet: i.diet,
+        category: i.category,
+      })),
+  }));
+}
+
+export function getMeal(id: string): Meal | null {
+  const row = getDb().getFirstSync<MealRow>(`SELECT * FROM meal_logs WHERE id = ? AND deleted = 0`, id);
+  return row ? hydrate([row])[0]! : null;
+}
+
+export function mealsForDay(userId: string, date: string): Meal[] {
+  return hydrate(
+    getDb().getAllSync<MealRow>(
+      `SELECT * FROM meal_logs WHERE user_id = ? AND local_date = ? AND deleted = 0 ORDER BY logged_at`,
+      userId,
+      date,
+    ),
+  );
+}
+
+/** Creates or replaces a meal (with all its items) and queues it for sync. */
+export function saveMeal(meal: Omit<Meal, "synced">): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    db.runSync(
+      `INSERT OR REPLACE INTO meal_logs
+         (id, user_id, meal_type, logged_at, local_date, source, oil_level, photo_uri, client_updated_at, deleted, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+      meal.id,
+      meal.userId,
+      meal.mealType,
+      meal.loggedAt,
+      meal.localDate,
+      meal.source,
+      meal.oilLevel,
+      meal.photoUri,
+      now,
+    );
+    db.runSync(`DELETE FROM meal_items WHERE meal_id = ?`, meal.id);
+    meal.items.forEach((i, position) =>
+      db.runSync(
+        `INSERT INTO meal_items (id, meal_id, position, food_id, name, quantity, unit, grams, kcal, protein_g, carbs_g, fat_g, diet, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        i.id,
+        meal.id,
+        position,
+        i.foodId,
+        i.name,
+        i.quantity,
+        i.unit,
+        i.grams,
+        i.kcal,
+        i.proteinG,
+        i.carbsG,
+        i.fatG,
+        i.diet,
+        i.category,
+      ),
+    );
+    enqueue({
+      op_id: randomUUID(),
+      user_id: meal.userId,
+      entity: "meal_log",
+      action: "upsert",
+      record_id: meal.id,
+      payload: JSON.stringify({
+        mealType: meal.mealType,
+        loggedAt: meal.loggedAt,
+        localDate: meal.localDate,
+        source: meal.source,
+        oilLevel: meal.oilLevel,
+        items: meal.items.map(({ diet: _d, category: _c, ...i }) => i),
+      }),
+      client_updated_at: now,
+    });
+  });
+  bump();
+  notifyLocalWrite();
+}
+
+export function deleteMeal(meal: Meal): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    db.runSync(`UPDATE meal_logs SET deleted = 1, synced = 0, client_updated_at = ? WHERE id = ?`, now, meal.id);
+    enqueue({
+      op_id: randomUUID(),
+      user_id: meal.userId,
+      entity: "meal_log",
+      action: "delete",
+      record_id: meal.id,
+      payload: null,
+      client_updated_at: now,
+    });
+  });
+  bump();
+  notifyLocalWrite();
+}
+
+/** Undo for a just-deleted meal (toast "Undo"): saves it again with a fresh write. */
+export const restoreMeal = (meal: Meal) => saveMeal(meal);
+
+// ── P13 · Repeat ─────────────────────────────────────────────────────────────────────────────────
+
+/** A copy of `meal` logged now (new ids), as the given meal type. */
+export function repeatMeal(meal: Meal, mealType: MealType = meal.mealType, at = new Date()): Meal {
+  const copy: Meal = {
+    ...meal,
+    id: randomUUID(),
+    mealType,
+    loggedAt: at.toISOString(),
+    localDate: localDate(at),
+    source: "repeat",
+    photoUri: null,
+    synced: false,
+    items: meal.items.map((i) => ({ ...i, id: randomUUID() })),
+  };
+  saveMeal(copy);
+  return copy;
+}
+
+/** Yesterday's meal of this type (the latest one if there were several), for S11's repeat row. */
+export function yesterdaysMeal(userId: string, mealType: MealType, today = new Date()): Meal | null {
+  const y = new Date(today);
+  y.setDate(y.getDate() - 1);
+  const row = getDb().getFirstSync<MealRow>(
+    `SELECT * FROM meal_logs WHERE user_id = ? AND local_date = ? AND meal_type = ? AND deleted = 0
+     ORDER BY logged_at DESC LIMIT 1`,
+    userId,
+    localDate(y),
+    mealType,
+  );
+  return row ? hydrate([row])[0]! : null;
+}
+
+/** Recent distinct meals (by their item list), newest first. */
+export function recentMeals(userId: string, limit = 8): Meal[] {
+  const meals = hydrate(
+    getDb().getAllSync<MealRow>(
+      `SELECT * FROM meal_logs WHERE user_id = ? AND deleted = 0 ORDER BY logged_at DESC LIMIT 60`,
+      userId,
+    ),
+  );
+  const seen = new Set<string>();
+  const out: Meal[] = [];
+  for (const m of meals) {
+    const key = m.items
+      .map((i) => `${i.foodId ?? i.name}:${i.quantity}:${i.unit}`)
+      .sort()
+      .join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(m);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+// ── Totals and hooks ─────────────────────────────────────────────────────────────────────────────
+
+export const mealTotals = (meal: Pick<Meal, "items">): Macros => sumMacros(meal.items);
+
+/** Re-reads on local writes and when sync status changes (e.g. synced ticks). */
+function useMealsStamp() {
+  const v = useMealsVersion((s) => s.v);
+  const sync = useSyncStatus((s) => `${s.pending}:${s.lastSyncedAt}`);
+  return `${v}:${sync}`;
+}
+
+export function useDayMeals(userId: string | null, date: string): Meal[] {
+  const stamp = useMealsStamp();
+  return useMemo(() => {
+    void stamp;
+    return userId ? mealsForDay(userId, date) : [];
+  }, [userId, date, stamp]);
+}
+
+export function useMeal(id: string | undefined): Meal | null {
+  const stamp = useMealsStamp();
+  return useMemo(() => {
+    void stamp;
+    return id ? getMeal(id) : null;
+  }, [id, stamp]);
+}
+
+export function useYesterdaysMeal(userId: string | null, mealType: MealType): Meal | null {
+  const stamp = useMealsStamp();
+  return useMemo(() => {
+    void stamp;
+    return userId ? yesterdaysMeal(userId, mealType) : null;
+  }, [userId, mealType, stamp]);
+}
+
+export function useRecentMeals(userId: string | null, limit = 8): Meal[] {
+  const stamp = useMealsStamp();
+  return useMemo(() => {
+    void stamp;
+    return userId ? recentMeals(userId, limit) : [];
+  }, [userId, limit, stamp]);
+}

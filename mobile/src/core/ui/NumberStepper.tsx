@@ -37,7 +37,7 @@ export function NumberStepper({ label, value, onChange, min, max, step = 1, unit
         disabled={value <= min}
         onPress={() => onChange(clamp(value - step))}
       />
-      <Text variant="headline-md" tabular style={styles.value}>
+      <Text variant="headline-md" tabular style={styles.valueText}>
         {format(value)}
         {unit ? (
           <Text variant="unit" color="textSecondary">
@@ -58,5 +58,5 @@ export function NumberStepper({ label, value, onChange, min, max, step = 1, unit
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", padding: 6, borderWidth: 1, alignSelf: "flex-start", gap: 8 },
-  value: { minWidth: 96, textAlign: "center" },
+  valueText: { minWidth: 96, textAlign: "center" },
 });

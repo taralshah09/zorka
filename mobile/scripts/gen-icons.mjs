@@ -66,6 +66,15 @@ const ICONS = [
   "schedule",
   // P10 quick-log sheet (S11)
   "search",
+  // P12–P18 food logging (S13–S21)
+  "edit",
+  "delete",
+  "photo_library",
+  "add_circle",
+  "history",
+  "mic_off",
+  "no_photography",
+  "hourglass_top",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

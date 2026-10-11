@@ -21,14 +21,23 @@ export function apiBaseUrl(): string | null {
   return url ? url.replace(/\/+$/, "") : null;
 }
 
-type Options = { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; signal?: AbortSignal };
+type Options = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+  signal?: AbortSignal;
+  /** Defaults to 10 s. AI parsing (P15–P17) waits longer because the server may try several keys. */
+  timeoutMs?: number;
+};
 
-export async function api<T>(path: string, { method = "GET", body, signal }: Options = {}): Promise<T> {
+export async function api<T>(
+  path: string,
+  { method = "GET", body, signal, timeoutMs = TIMEOUT_MS }: Options = {},
+): Promise<T> {
   const base = apiBaseUrl();
   if (!base) throw new ApiError("config", "API URL isn't set. Add EXPO_PUBLIC_API_URL to mobile/.env.");
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   signal?.addEventListener("abort", () => controller.abort());
 
   let res: Response;
@@ -65,6 +74,12 @@ export function describeError(err: unknown): { title: string; body: string } {
       case "timeout":
         return { title: "That took too long", body: "The server is slow right now. Try again." };
       case "http":
+        // AI errors (P14) carry plain-language messages from the server.
+        if (err.code === "RATE_LIMITED") return { title: "AI is busy right now", body: err.message };
+        if (err.code === "AI_UNAVAILABLE") return { title: "Can't read meals right now", body: err.message };
+        if (err.code === "AI_TIMEOUT") return { title: "That took too long", body: err.message };
+        if (err.code === "PAYLOAD_TOO_LARGE")
+          return { title: "That's too big to send", body: "Try a shorter voice note or another photo." };
         return { title: "Something went wrong", body: err.message };
     }
   }

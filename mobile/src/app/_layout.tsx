@@ -22,6 +22,9 @@ import { ThemeProvider, useTheme } from "@/core/theme";
 import { ErrorState, Screen, ToastProvider } from "@/core/ui";
 // Registers the dev sync-probe entity with the sync engine (P07).
 import "@/features/dev/syncProbes";
+// Register the meal_log (P12) and custom_food (P13) entities with the sync engine at boot.
+import { useCatalogSync } from "@/features/food/catalog";
+import "@/features/meals/store";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -39,6 +42,7 @@ function bootstrap() {
 
 function RootStack() {
   const { colors, isDark } = useTheme();
+  useCatalogSync();
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style={isDark ? "light" : "dark"} />
@@ -50,6 +54,7 @@ function RootStack() {
         <Stack.Screen name="settings" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="quick-log" options={{ presentation: "transparentModal", animation: "fade" }} />
         <Stack.Screen name="coming-soon" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="log" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
       </Stack>
     </View>

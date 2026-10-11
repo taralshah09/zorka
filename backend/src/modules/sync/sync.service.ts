@@ -1,8 +1,12 @@
 import { notFound } from "../../http/errors.js";
+import type { EntityHandler } from "./lww.js";
 import type { SyncRepository } from "./sync.repository.js";
-import { SyncProbeData, type SyncOp, type SyncResult } from "./sync.schemas.js";
+import { SyncProbeData, type SyncEntity, type SyncOp, type SyncResult } from "./sync.schemas.js";
 
-export function syncService(repo: SyncRepository) {
+/** Handlers for the real local-first entities, registered by their modules (P12 meals, P13 foods). */
+export type EntityHandlers = Record<Exclude<SyncEntity, "sync_probe">, EntityHandler>;
+
+export function syncService(repo: SyncRepository, handlers: EntityHandlers) {
   async function applyProbe(userId: string, op: SyncOp): Promise<SyncResult> {
     const incomingAt = new Date(op.clientUpdatedAt);
     const existing = await repo.findProbe(op.id);
@@ -34,11 +38,7 @@ export function syncService(repo: SyncRepository) {
       if (!(await repo.userExists(userId))) throw notFound("User");
       const results: SyncResult[] = [];
       for (const op of ops) {
-        switch (op.entity) {
-          case "sync_probe":
-            results.push(await applyProbe(userId, op));
-            break;
-        }
+        results.push(op.entity === "sync_probe" ? await applyProbe(userId, op) : await handlers[op.entity](userId, op));
       }
       return results;
     },

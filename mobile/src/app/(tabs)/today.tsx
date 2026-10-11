@@ -1,5 +1,5 @@
-// S10 Today Home — P10 shell. Targets come from the profile (P08/P09); consumed values are 0 until
-// logging lands. States: loading skeleton, error (offline with no cached profile), not set up yet,
+// S10 Today Home. Targets come from the profile (P08/P09); food consumed comes from today's logged meals
+// (P12, local-first). States: loading skeleton, error (offline with no cached profile), not set up yet,
 // and the empty day. Layout follows the S10 export (D11); no bell in the header (brand §8).
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
@@ -11,21 +11,29 @@ import { CoachLine } from "@/features/coach/CoachLine";
 import { AppHeader } from "@/features/shell/AppHeader";
 import { useTargets } from "@/features/targets/targets";
 import { formatDayLong, greeting } from "@/features/targets/format";
+import { useVoiceQueue } from "@/features/log/voiceQueue";
+import { useDayMeals } from "@/features/meals/store";
 import { DateStrip } from "@/features/today/DateStrip";
 import {
+  consumedFrom,
   MacroBalance,
   MealSlots,
   MetricTiles,
   NextActionCard,
-  NOTHING_CONSUMED,
   RemainingHero,
   StreakChip,
 } from "@/features/today/TodayCards";
+import { VoiceQueueCard } from "@/features/today/VoiceQueueCard";
+import { useActiveUser } from "@/features/users/activeUser";
+import { localDate } from "@shared/domain/food";
 
 export default function Today() {
   const { profile, targets } = useTargets();
+  const userId = useActiveUser((s) => s.userId);
   const now = new Date();
-  const consumed = NOTHING_CONSUMED;
+  const meals = useDayMeals(userId, localDate(now));
+  const voiceNotes = useVoiceQueue(userId);
+  const consumed = consumedFrom(meals);
   const name = profile.data?.displayName;
 
   return (
@@ -73,8 +81,12 @@ export default function Today() {
           {profile.data?.coach ? (
             <CoachLine coach={profile.data.coach} line="Your coach speaks up here once you start logging." muted />
           ) : null}
-          <NextActionCard title="Log your first meal of the day" onPress={() => router.push("/quick-log")} />
-          <MealSlots targets={targets} consumed={consumed} />
+          <VoiceQueueCard notes={voiceNotes} />
+          <NextActionCard
+            title={meals.length ? "Log your next meal" : "Log your first meal of the day"}
+            onPress={() => router.push("/quick-log")}
+          />
+          <MealSlots targets={targets} consumed={consumed} meals={meals} />
         </>
       )}
     </Screen>

@@ -2,7 +2,7 @@
 // Each op is idempotent (client-generated ids) and resolved last-write-wins by clientUpdatedAt.
 import { z } from "zod";
 
-export const SYNC_ENTITIES = ["sync_probe"] as const;
+export const SYNC_ENTITIES = ["sync_probe", "meal_log", "custom_food"] as const;
 export type SyncEntity = (typeof SYNC_ENTITIES)[number];
 
 export const SyncOp = z.object({

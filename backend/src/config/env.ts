@@ -7,6 +7,27 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   /** Neon POOLED connection string (host contains "-pooler"). Used by the app at runtime. */
   DATABASE_URL: z.string().url(),
+
+  // P14 · AI providers (D30). Comma-separated keys, one per account. Any of them may be empty; the
+  // AI features then answer "AI isn't set up" and the app falls back to search.
+  GROQ_API_KEYS: z.string().optional(),
+  GEMINI_API_KEYS: z.string().optional(),
+  OPENROUTER_API_KEYS: z.string().optional(),
+  /** Which provider's keys are tried first. */
+  AI_PROVIDER_ORDER: z
+    .string()
+    .default("groq,gemini,openrouter")
+    .transform((s) => s.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean))
+    .pipe(z.array(z.enum(["groq", "gemini", "openrouter"])).min(1)),
+  // Optional model overrides, <PROVIDER>_<CAPABILITY>_MODEL. Defaults are in modules/ai/ai.config.ts.
+  GROQ_TEXT_MODEL: z.string().optional(),
+  GROQ_VISION_MODEL: z.string().optional(),
+  GROQ_STT_MODEL: z.string().optional(),
+  GEMINI_TEXT_MODEL: z.string().optional(),
+  GEMINI_VISION_MODEL: z.string().optional(),
+  GEMINI_STT_MODEL: z.string().optional(),
+  OPENROUTER_TEXT_MODEL: z.string().optional(),
+  OPENROUTER_VISION_MODEL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

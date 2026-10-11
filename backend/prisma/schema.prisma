@@ -64,6 +64,8 @@ model User {
 
   profile    Profile?
   syncProbes SyncProbe[]
+  mealLogs   MealLog[]
+  foods      Food[]
 
   @@map("users")
 }
@@ -80,6 +82,8 @@ model Profile {
   targetWeightKg Float?         @map("target_weight_kg")
   pace           Pace?
   coach          Coach?
+  /// P18: ask how much oil/ghee went into home-cooked food on the confirm sheet (D34).
+  oilGheePrompt  Boolean        @default(false) @map("oil_ghee_prompt")
   onboardedAt    DateTime?      @map("onboarded_at") @db.Timestamptz(3)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -108,4 +112,167 @@ model SyncProbe {
 
   @@index([userId])
   @@map("sync_probes")
+}
+
+// ---------------------------------------------------------------------------
+// P11 · Food database (D29). Values are per 100 g (per 100 ml for liquids). Curated foods are
+// seeded from prisma/data/foods.ts and keyed by `slug` so the seed can upsert them.
+// ---------------------------------------------------------------------------
+
+enum Cuisine {
+  indian
+  indo_chinese
+  italian
+  continental
+  other
+}
+
+/// Drives the category icon tile (D15, brand §10).
+enum FoodCategory {
+  home_meal
+  restaurant
+  bread
+  rice
+  protein
+  dairy
+  drink
+  snack
+  sweet
+  fruit
+  vegetable
+}
+
+enum FoodUnitKind {
+  g
+  ml
+  piece
+  katori
+  bowl
+  plate_half
+  plate_full
+  glass
+  cup
+  tbsp
+  tsp
+  slice
+  serving
+}
+
+model Food {
+  id              String       @id @db.Uuid
+  slug            String       @unique
+  name            String
+  aliases         String[]     @default([])
+  cuisine         Cuisine
+  category        FoodCategory
+  diet            Diet
+  /// Gets the oil/ghee question when the P18 setting is on.
+  homeCooked      Boolean      @default(false) @map("home_cooked")
+  liquid          Boolean      @default(false)
+  kcalPer100g     Float        @map("kcal_per_100g")
+  proteinPer100g  Float        @map("protein_per_100g")
+  carbsPer100g    Float        @map("carbs_per_100g")
+  fatPer100g      Float        @map("fat_per_100g")
+  defaultUnit     FoodUnitKind @map("default_unit")
+  /// Where the numbers come from, e.g. "kimbo-curated-v1", or "user" for a created food.
+  source          String
+  /// P13: set for a user-created food (visible only to that user); null for the shared catalog.
+  ownerUserId     String?      @map("owner_user_id") @db.Uuid
+  /// P13: user-created foods sync from the phone (last-write-wins, D23).
+  clientUpdatedAt DateTime?    @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner     User?            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  units     FoodUnitOption[]
+  mealItems MealItem[]
+
+  @@index([ownerUserId])
+  @@map("foods")
+}
+
+/// One way to measure a food: 1 `unit` = `grams` g (or ml).
+model FoodUnitOption {
+  foodId String       @map("food_id") @db.Uuid
+  unit   FoodUnitKind
+  grams  Float
+  /// Optional display label, e.g. "1 roti (40 g)".
+  label  String?
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@id([foodId, unit])
+  @@map("food_units")
+}
+
+// ---------------------------------------------------------------------------
+// P12 · Meal logs (local-first, D23). Written on the phone first and pushed through
+// POST /v1/users/:id/sync (entity "meal_log"). Items keep a snapshot of their macros so editing a
+// food later never rewrites history.
+// ---------------------------------------------------------------------------
+
+enum MealType {
+  breakfast
+  lunch
+  snack
+  dinner
+}
+
+enum MealSource {
+  search
+  text
+  voice
+  photo
+  repeat
+}
+
+enum OilLevel {
+  little
+  normal
+  heavy
+}
+
+model MealLog {
+  id              String     @id @db.Uuid
+  userId          String     @map("user_id") @db.Uuid
+  mealType        MealType   @map("meal_type")
+  loggedAt        DateTime   @map("logged_at") @db.Timestamptz(3)
+  /// The user's local calendar day (YYYY-MM-DD), so "today" doesn't depend on the server's time zone.
+  localDate       String     @map("local_date")
+  source          MealSource
+  /// P18: the oil/ghee answer for home-cooked items, if asked.
+  oilLevel        OilLevel?  @map("oil_level")
+  clientUpdatedAt DateTime   @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items MealItem[]
+
+  @@index([userId, localDate])
+  @@map("meal_logs")
+}
+
+model MealItem {
+  id        String       @id @db.Uuid
+  mealLogId String       @map("meal_log_id") @db.Uuid
+  /// null when the food was deleted or never matched.
+  foodId    String?      @map("food_id") @db.Uuid
+  position  Int
+  name      String
+  quantity  Float
+  unit      FoodUnitKind
+  grams     Float
+  kcal      Float
+  proteinG  Float        @map("protein_g")
+  carbsG    Float        @map("carbs_g")
+  fatG      Float        @map("fat_g")
+
+  mealLog MealLog @relation(fields: [mealLogId], references: [id], onDelete: Cascade)
+  food    Food?   @relation(fields: [foodId], references: [id], onDelete: SetNull)
+
+  @@index([mealLogId])
+  @@map("meal_items")
 }

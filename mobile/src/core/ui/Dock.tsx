@@ -8,7 +8,9 @@ import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { PressableScale } from "./PressableScale";
 
-export type DockTab = { route: string; icon: IconName; label: string };
+const TAB_SIZE = 52;
+
+export type DockTab ={ route: string; icon: IconName; label: string };
 
 type Props = BottomTabBarProps & {
   tabs: readonly DockTab[];
@@ -37,12 +39,15 @@ export function Dock({ state, navigation, insets, tabs, fabAfter, onFabPress }: 
         }}
         style={styles.slot}
       >
-        <View
-          style={[
-            styles.tab,
-            { borderRadius: radius.full, backgroundColor: focused ? colors.dockActiveBg : "transparent" },
-          ]}
-        >
+        <View style={styles.tab}>
+          {/* Always mounted with a fixed colour + exact radius; only opacity toggles. Flipping
+              backgroundColor from transparent on a 9999-radius view renders square on Android. */}
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { borderRadius: TAB_SIZE / 2, backgroundColor: colors.dockActiveBg, opacity: focused ? 1 : 0 },
+            ]}
+          />
           <Icon name={tab.icon} size={28} color={focused ? colors.ink : colors.dockIcon} filled={focused} />
         </View>
       </Pressable>
@@ -91,6 +96,6 @@ const styles = StyleSheet.create({
   host: { position: "absolute" },
   dock: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   slot: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 48 },
-  tab: { width: 52, height: 52, alignItems: "center", justifyContent: "center" },
+  tab: { width: TAB_SIZE, height: TAB_SIZE, alignItems: "center", justifyContent: "center" },
   fab: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
 });
