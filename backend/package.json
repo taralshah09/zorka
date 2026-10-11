@@ -1,5 +1,5 @@
 {
-  "name": "kimbo-backend",
+  "name": "zorka-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,11 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed:arjun": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts --write",
+    "db:seed:arjun:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts",
+    "db:seed:demo": "tsx --env-file-if-exists=.env prisma/seed-demo-personas.ts --write",
+    "db:seed:demo:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-personas.ts"
   },
   "engines": {
     "node": ">=22"

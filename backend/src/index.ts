@@ -98,7 +98,7 @@ const app = createApp({
 });
 
 const server = app.listen(env.PORT, () => {
-  logger.info(`kimbo-api listening on http://localhost:${env.PORT}`);
+  logger.info(`zorka-api listening on http://localhost:${env.PORT}`);
   // Slot ids only (e.g. "groq#1"), never keys.
   logger.info({ aiSlots: aiSlots.map((s) => s.id) }, aiSlots.length ? "AI slots ready" : "No AI keys set: AI logging is off");
   // Service names only, never keys.

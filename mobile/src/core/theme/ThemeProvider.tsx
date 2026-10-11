@@ -62,6 +62,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
+/** Renders its children in a fixed theme, whatever the app's choice (P38 share cards are always dark, brand §14). */
+export function ThemeScope({ name, children }: { name: ThemeName; children: ReactNode }) {
+  const parent = useContext(ThemeContext);
+  const value = useMemo(
+    () => ({ theme: buildTheme(name), setThemeName: parent?.setThemeName ?? (() => {}) }),
+    [name, parent?.setThemeName],
+  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
 export function useTheme(): Theme {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");

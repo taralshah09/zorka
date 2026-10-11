@@ -18,14 +18,14 @@ type Copy = {
   deniedBody: string;
 };
 
-const VOICE_DENIED = "Microphone is off for Kimbo";
+const VOICE_DENIED = "Microphone is off for Zorka";
 
 const COPY: Record<PermissionKind, Copy> = {
   microphone: {
     icon: "mic",
     title: "Talk to log your meals",
     reasons: ['Say what you ate, like "2 roti and a katori of dal".', "You check every item before anything is saved."],
-    privacy: "Kimbo only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
+    privacy: "Zorka only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
     deniedTitle: VOICE_DENIED,
     deniedBody: "Turn it on in Settings to log by voice. You can always type or search instead.",
   },
@@ -36,16 +36,16 @@ const COPY: Record<PermissionKind, Copy> = {
       'Between sets, say "bench 80 kilos, 8 reps".',
       "The set lands in your workout and the rest timer starts.",
     ],
-    privacy: "Kimbo only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
+    privacy: "Zorka only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
     deniedTitle: VOICE_DENIED,
     deniedBody: "Turn it on in Settings to log by voice. You can always type your sets instead.",
   },
   camera: {
     icon: "photo_camera",
     title: "Snap your plate",
-    reasons: ["Take a photo and Kimbo suggests what's on the plate.", "You check every item before anything is saved."],
+    reasons: ["Take a photo and Zorka suggests what's on the plate.", "You check every item before anything is saved."],
     privacy: "Your photo stays on your phone. A smaller copy goes to an AI service to read the food.",
-    deniedTitle: "Camera is off for Kimbo",
+    deniedTitle: "Camera is off for Zorka",
     deniedBody: "Turn it on in Settings to log with a photo. You can always type or search instead.",
   },
   nearby: {
@@ -53,11 +53,11 @@ const COPY: Record<PermissionKind, Copy> = {
     title: "Find options near you",
     reasons: [
       "See high-protein dishes on Zomato and Blinkit around you.",
-      "Kimbo only checks your area when you open this screen.",
+      "Zorka only checks your area when you open this screen.",
     ],
     privacy:
-      "Your exact location stays on your phone. Only your area's name is used to search. Kimbo never tracks you.",
-    deniedTitle: "Location is off for Kimbo",
+      "Your exact location stays on your phone. Only your area's name is used to search. Zorka never tracks you.",
+    deniedTitle: "Location is off for Zorka",
     deniedBody: "Turn it on in Settings, or enter your pincode instead.",
   },
   notifications: {
@@ -68,7 +68,7 @@ const COPY: Record<PermissionKind, Copy> = {
       "4 a day at most, never in your quiet hours.",
     ],
     privacy: "Nudges are planned on your phone. You choose which ones you get in Settings.",
-    deniedTitle: "Notifications are off for Kimbo",
+    deniedTitle: "Notifications are off for Zorka",
     deniedBody: "Turn them on in Settings to get nudges from your coach.",
   },
 };

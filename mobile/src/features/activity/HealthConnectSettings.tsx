@@ -10,7 +10,7 @@ const STATUS: Record<HealthState, string> = {
   permission: "Not connected · Allow Steps access to show your daily ring",
   missing: "Install or update Health Connect to connect your steps",
   unsupported: "Health Connect is unavailable on this device",
-  build: "Open the installed Kimbo app. Health Connect is unavailable in Expo Go.",
+  build: "Open the installed Zorka app. Health Connect is unavailable in Expo Go.",
   error: "Could not check Health Connect. Try again.",
 };
 
@@ -75,7 +75,7 @@ export function HealthConnectSettings({
           {STATUS[status]}
         </Text>
         <Text variant="caption" color="textSecondary">
-          Kimbo reads Steps shared by Google Fit or another compatible app. No Google account sign-in is needed here.
+          Zorka reads Steps shared by Google Fit or another compatible app. No Google account sign-in is needed here.
         </Text>
         {status === "permission" ? (
           <Button
@@ -132,7 +132,7 @@ export function HealthConnectSettings({
         title="Read your steps"
       >
         <Text variant="body">
-          Kimbo reads only Steps from Health Connect to show your daily ring and seven-day history. It never writes
+          Zorka reads only Steps from Health Connect to show your daily ring and seven-day history. It never writes
           health data. Step totals stay on this phone.
         </Text>
         <Text variant="caption" color="textSecondary">

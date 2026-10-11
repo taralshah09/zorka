@@ -6,7 +6,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { Chip, EmptyState, Header, Screen, SegmentedControl, Skeleton, Text, useToast } from "@/core/ui";
+import { describeError } from "@/core/api/client";
+import { NetworkBanner } from "@/core/network/NetworkBanner";
+import { Chip, EmptyState, ErrorState, Header, Screen, SegmentedControl, Skeleton, Text, useToast } from "@/core/ui";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { coachLine } from "@/features/coach/lines";
 import { useActivityClock } from "@/features/activity/store";
@@ -68,6 +70,12 @@ export default function GapCloser() {
             <Skeleton variant="card" height={160} />
             <Skeleton variant="card" height={120} />
           </>
+        ) : profile.isError && !profile.data ? (
+          <ErrorState
+            {...describeError(profile.error)}
+            onRetry={() => profile.refetch()}
+            retrying={profile.isRefetching}
+          />
         ) : (
           <EmptyState
             icon="tune"
@@ -137,6 +145,7 @@ export default function GapCloser() {
 
   return (
     <Screen header={header}>
+      <NetworkBanner />
       <Text variant="body" color="textSecondary">
         {late
           ? "Late evening. Gentle options only."

@@ -1,0 +1,49 @@
+# P42 · Zorka API on Render's free web service (D68). The database stays on Neon.
+# Deploy: Render dashboard → New → Blueprint → pick this repo. Fill the `sync: false` values in the dashboard
+# (they are secrets and never live in git). Free instances sleep after 15 min idle; the app wakes the API at launch.
+# Migrations are not run here: apply them from your machine with `npm run db:migrate` (backend/) before deploying.
+services:
+  - type: web
+    # Neutral service name: the hosted URL must not carry the app name (ASSIGNMENT.md deliverables, D70).
+    name: health-coach-api
+    runtime: node
+    plan: free
+    region: ohio # next to the Neon database (aws us-east-2)
+    rootDir: backend
+    # The build compiles ../shared too (dist/backend/src + dist/shared), so redeploy when either changes.
+    buildFilter:
+      paths:
+        - backend/**
+        - shared/**
+    # NODE_ENV=production makes npm skip devDependencies; the build needs typescript and the prisma CLI.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Neon pooled connection string (host contains "-pooler"). Secret: set in the dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # AI providers (D30) and nearby search (D59). Optional; leave empty to turn the feature off.
+      - key: GROQ_API_KEYS
+        sync: false
+      - key: GEMINI_API_KEYS
+        sync: false
+      - key: OPENROUTER_API_KEYS
+        sync: false
+      - key: AI_PROVIDER_ORDER
+        value: groq,gemini,openrouter
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: ANAKIN_API_KEY
+        sync: false
+      - key: SEARCH_PROVIDER_ORDER
+        value: tavily,firecrawl,anakin

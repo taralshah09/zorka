@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kimbo",
+    "name": "Zorka",
     "slug": "kimbo",
     "scheme": "kimbo",
     "version": "1.0.0",
@@ -52,15 +52,15 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Kimbo uses the microphone while you hold the button to log a meal by voice."
+          "microphonePermission": "Zorka uses the microphone while you hold the button to log a meal by voice."
         }
       ],
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Kimbo uses the camera to log a meal from a photo.",
-          "photosPermission": "Kimbo opens your photos so you can log a meal from one.",
-          "microphonePermission": "Kimbo uses the microphone while you hold the button to log a meal by voice."
+          "cameraPermission": "Zorka uses the camera to log a meal from a photo.",
+          "photosPermission": "Zorka opens your photos so you can log a meal from one.",
+          "microphonePermission": "Zorka uses the microphone while you hold the button to log a meal by voice."
         }
       ],
       "expo-asset",
@@ -69,8 +69,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Kimbo uses precise location while you record to save your route, distance and pace.",
-          "locationAlwaysAndWhenInUsePermission": "Kimbo uses location only during an activity you start, including when the screen is locked.",
+          "locationWhenInUsePermission": "Zorka uses precise location while you record to save your route, distance and pace.",
+          "locationAlwaysAndWhenInUsePermission": "Zorka uses location only during an activity you start, including when the screen is locked.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true,
           "isIosBackgroundLocationEnabled": true
@@ -91,7 +91,8 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "router": {},

@@ -67,7 +67,7 @@ export default function StepsScreen() {
         <Card>
           <Text variant="title">Connect your steps</Text>
           <Text variant="body" color="textSecondary">
-            Kimbo reads your step count. You choose access in Health Connect.
+            Zorka reads your step count. You choose access in Health Connect.
           </Text>
           <Button label="Connect Health Connect" onPress={() => setExplainer(true)} />
           <Button
@@ -95,7 +95,7 @@ export default function StepsScreen() {
             {health.state === "build" ? "Android development build needed" : "Health Connect isn't supported here"}
           </Text>
           <Text variant="body" color="textSecondary">
-            Steps require a supported Android phone and a Kimbo build with Health Connect. Move points from your
+            Steps require a supported Android phone and a Zorka build with Health Connect. Move points from your
             recorded activities still appear here.
           </Text>
         </Card>
@@ -140,11 +140,11 @@ export default function StepsScreen() {
       </Card>
       <BottomSheet visible={explainer} onClose={() => setExplainer(false)} title="Read your steps">
         <Text variant="body">
-          Kimbo reads only Steps from Health Connect to show your daily ring and seven-day history. It never writes
+          Zorka reads only Steps from Health Connect to show your daily ring and seven-day history. It never writes
           health data. Step totals stay on this phone.
         </Text>
         <Text variant="caption" color="textSecondary">
-          You can remove access at any time in Health Connect settings. Kimbo asks only when you connect your steps.
+          You can remove access at any time in Health Connect settings. Zorka asks only when you connect your steps.
         </Text>
         <Button label="Continue" onPress={() => void connect()} loading={busy} fullWidth />
         <Button label="Not now" variant="ghost" onPress={() => setExplainer(false)} fullWidth />

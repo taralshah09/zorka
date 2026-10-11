@@ -30,8 +30,12 @@ export function movesFor(dg: DayGap): MoveOption[] {
   });
 }
 
+/** P41: never after 21:30, when no activity is suggested (D57), so Home and the coach don't push a late walk. */
 export const lowSteps = (dg: DayGap) =>
-  dg.steps !== null && dg.minute >= LOW_ACTIVITY_MINUTE && dg.steps < dg.targets.steps * LOW_ACTIVITY_SHARE;
+  dg.steps !== null &&
+  dg.minute >= LOW_ACTIVITY_MINUTE &&
+  !isLateNight(dg.minute) &&
+  dg.steps < dg.targets.steps * LOW_ACTIVITY_SHARE;
 
 export function lineFacts(dg: DayGap, streak: Streak | null): LineFacts {
   const r = dg.gap.remaining;

@@ -48,7 +48,10 @@ const LINES: Record<CoachId, Lines> = {
       f.walkMinutes
         ? `${n(f.overKcal)} over. Walk it off: ${f.walkMinutes} minutes, tonight.`
         : `${n(f.overKcal)} over. Tomorrow we tighten up.`,
-    over_late: (f) => `${n(f.overKcal)} over. No midnight runs. Tomorrow's target drops ${n(f.easeKcal)}. Sleep.`,
+    over_late: (f) =>
+      f.easeKcal
+        ? `${n(f.overKcal)} over. No midnight runs. Tomorrow's target drops ${n(f.easeKcal)}. Sleep.`
+        : `${n(f.overKcal)} over. No midnight runs. Sleep, then back on plan tomorrow.`,
     done: () => "All targets hit. That's the standard.",
     streak_risk: (f) => `${f.streak}-day streak on the line. One log. Now.`,
     welcome_back: () => "You're back. Good. We start again today.",
@@ -64,7 +67,10 @@ const LINES: Record<CoachId, Lines> = {
       f.walkMinutes
         ? `One meal doesn't define a phase. A ${f.walkMinutes}-minute walk tonight burns about ${n(f.walkKcal)}.`
         : "One meal doesn't define a phase. Tomorrow is a fresh page.",
-    over_late: (f) => `One meal doesn't define a phase. Rest tonight; tomorrow's target eases by ${n(f.easeKcal)}.`,
+    over_late: (f) =>
+      f.easeKcal
+        ? `One meal doesn't define a phase. Rest tonight; tomorrow's target eases by ${n(f.easeKcal)}.`
+        : "One meal doesn't define a phase. Rest tonight; tomorrow is a fresh page.",
     done: () => "Everything done today. Well earned.",
     streak_risk: (f) => `Your ${f.streak}-day streak is still yours. One small log keeps it going.`,
     welcome_back: () => "Welcome back. Your trend held steady. Let's pick up from here.",
@@ -79,7 +85,10 @@ const LINES: Record<CoachId, Lines> = {
       f.walkMinutes
         ? `Shaadi ka khana, no regrets! A ${f.walkMinutes}-minute walk tonight and we're right back on track.`
         : "Big meal, big heart! Tomorrow we come back stronger!",
-    over_late: (f) => `No late-night runs, legend! Sleep well; tomorrow's target eases by ${n(f.easeKcal)}.`,
+    over_late: (f) =>
+      f.easeKcal
+        ? `No late-night runs, legend! Sleep well; tomorrow's target eases by ${n(f.easeKcal)}.`
+        : "No late-night runs, legend! Sleep well; kal phir se on track!",
     done: () => "Every target smashed! That's how legends are made!",
     streak_risk: (f) => `${f.streak} days strong! Don't let it slip tonight. One log, bas!`,
     welcome_back: () => "Arre, welcome back! Your trend held steady. Let's roll!",

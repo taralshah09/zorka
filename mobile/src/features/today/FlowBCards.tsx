@@ -16,14 +16,26 @@ import {
 } from "@/features/nudges/settings";
 
 /** S48: "Welcome back. Your trend held steady." No guilt. */
-export function WelcomeBackCard({ freezeUsed, onDismiss }: { freezeUsed: boolean; onDismiss: () => void }) {
+/** `hasTrend`: only claim the trend held when there's a weigh-in to have one (P41). */
+export function WelcomeBackCard({
+  freezeUsed,
+  hasTrend,
+  onDismiss,
+}: {
+  freezeUsed: boolean;
+  hasTrend: boolean;
+  onDismiss: () => void;
+}) {
+  const body = hasTrend
+    ? "Your trend held steady. Gaps in your logs don't break it."
+    : "No catching up needed. Start again with today.";
   return (
-    <Card variant="raised" accessibilityLabel="Welcome back. Your trend held steady.">
+    <Card variant="raised" accessibilityLabel={`Welcome back. ${body}`}>
       <View style={styles.row}>
         <View style={styles.flex}>
           <Text variant="headline-sm">Welcome back.</Text>
           <Text variant="body" color="textSecondary">
-            {"Your trend held steady. Gaps in your logs don't break it."}
+            {body}
           </Text>
           {freezeUsed ? (
             <Text variant="caption" color="secondaryText">

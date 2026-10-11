@@ -10,26 +10,26 @@ export default function BatteryGuide() {
   const [error, setError] = useState<string | null>(null);
   const advice = /xiaomi|redmi|poco/.test(brand)
     ? [
-        "Settings → Apps → Kimbo → Battery saver → No restrictions.",
-        "Enable Background autostart for Kimbo if your phone offers it.",
-        "Lock Kimbo in Recent apps so the system doesn't clear the recorder.",
+        "Settings → Apps → Zorka → Battery saver → No restrictions.",
+        "Enable Background autostart for Zorka if your phone offers it.",
+        "Lock Zorka in Recent apps so the system doesn't clear the recorder.",
       ]
     : /oppo|realme|oneplus|vivo/.test(brand)
       ? [
-          "Settings → Apps → Kimbo → Battery usage → Allow background activity.",
-          "Allow auto-launch / autostart for Kimbo if available.",
-          "Lock Kimbo in Recent apps; avoid clearing it during a run.",
+          "Settings → Apps → Zorka → Battery usage → Allow background activity.",
+          "Allow auto-launch / autostart for Zorka if available.",
+          "Lock Zorka in Recent apps; avoid clearing it during a run.",
         ]
       : /samsung/.test(brand)
         ? [
-            "Settings → Apps → Kimbo → Battery → Unrestricted.",
-            "Remove Kimbo from Sleeping / Deep sleeping apps.",
-            "Keep Kimbo in Recent apps while an activity is recording.",
+            "Settings → Apps → Zorka → Battery → Unrestricted.",
+            "Remove Zorka from Sleeping / Deep sleeping apps.",
+            "Keep Zorka in Recent apps while an activity is recording.",
           ]
         : [
-            "Settings → Apps → Kimbo → Battery → Unrestricted (or Don't optimise).",
+            "Settings → Apps → Zorka → Battery → Unrestricted (or Don't optimise).",
             "Allow background activity / autostart if your phone offers it.",
-            "Keep Kimbo in Recent apps during your activity.",
+            "Keep Zorka in Recent apps during your activity.",
           ];
   const open = async () => {
     try {
@@ -40,7 +40,7 @@ export default function BatteryGuide() {
       try {
         await Linking.openSettings();
       } catch {
-        setError("Open your phone's Settings and find Kimbo under Apps.");
+        setError("Open your phone's Settings and find Zorka under Apps.");
       }
     }
   };
@@ -48,7 +48,7 @@ export default function BatteryGuide() {
     <Screen header={<Header title="Keep runs recording" onBack={() => router.back()} />}>
       <Text variant="headline-lg">Record with your screen off</Text>
       <Text variant="body" color="textSecondary">
-        Some phones stop background apps to save power. Give Kimbo permission to keep your activity recording, then test
+        Some phones stop background apps to save power. Give Zorka permission to keep your activity recording, then test
         a short walk with the screen locked.
       </Text>
       <Card eyebrow={Device.manufacturer ?? "This phone"}>
@@ -58,15 +58,15 @@ export default function BatteryGuide() {
       </Card>
       <Text variant="caption" color="textSecondary">
         Menu names vary by Android version. Enable screen-off recording in Record setup and choose Allow all the time
-        for location. Keep precise location on. Swiping away or force-stopping Kimbo can stop recording. No internet is
+        for location. Keep precise location on. Swiping away or force-stopping Zorka can stop recording. No internet is
         needed; GPS still needs a clear view of the sky.
       </Text>
       <Button label="Open battery settings" fullWidth onPress={() => void open()} />
       <Button
-        label="Open Kimbo settings"
+        label="Open Zorka settings"
         variant="ghost"
         fullWidth
-        onPress={() => void Linking.openSettings().catch(() => setError("Open Settings → Apps → Kimbo."))}
+        onPress={() => void Linking.openSettings().catch(() => setError("Open Settings → Apps → Zorka."))}
       />
       {error ? (
         <Text variant="body" color="warn">

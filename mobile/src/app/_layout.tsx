@@ -15,6 +15,7 @@ import { useEffect } from "react";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { warmUpApi } from "@/core/api/client";
 import { startNetworkMonitoring } from "@/core/network/network";
 import { getDb } from "@/core/storage/db";
 import { startSyncEngine } from "@/core/sync/engine";
@@ -50,6 +51,7 @@ const queryClient = new QueryClient({
 });
 
 function bootstrap() {
+  warmUpApi();
   startNetworkMonitoring();
   getDb();
   startSyncEngine();
@@ -81,6 +83,8 @@ function RootStack() {
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="gap" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="notifications" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="share" options={{ animation: "slide_from_bottom" }} />
+        <Stack.Screen name="celebrate" options={{ presentation: "transparentModal", animation: "fade" }} />
       </Stack>
       {/* P34 "Ordered it?" on return from Zomato/Blinkit, and P36's on-device nudge planner. Both render nothing until needed. */}
       <OrderedItPrompt />

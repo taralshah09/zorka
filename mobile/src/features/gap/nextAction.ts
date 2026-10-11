@@ -10,7 +10,7 @@ export type NextAction = {
   title: string;
   icon: IconName;
   tone: "default" | "warning" | "success";
-  href: "/gap" | "/gap?tab=move" | "/quick-log" | "/coming-soon";
+  href: "/gap" | "/gap?tab=move" | "/quick-log" | "/share?card=day";
 };
 
 const ways = (n: number) => (n > 1 ? `${n} ways to close it` : n === 1 ? "1 way to close it" : "see your options");
@@ -38,7 +38,9 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
     case "over_late":
       return {
         eyebrow: "Close the gap · balance it",
-        title: `${formatInt(f.overKcal)} kcal over · tomorrow can ease by ${formatInt(f.easeKcal)}`,
+        title: f.easeKcal
+          ? `${formatInt(f.overKcal)} kcal over · tomorrow can ease by ${formatInt(f.easeKcal)}`
+          : `${formatInt(f.overKcal)} kcal over · rest tonight, back on plan tomorrow`,
         icon: "bedtime",
         tone: "warning",
         href: "/gap?tab=move",
@@ -49,7 +51,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: "Every target done today. Share your day",
         icon: "trophy",
         tone: "success",
-        href: "/coming-soon",
+        href: "/share?card=day",
       };
     case "protein":
       return {

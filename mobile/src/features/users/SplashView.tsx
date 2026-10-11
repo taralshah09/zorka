@@ -7,7 +7,7 @@ import { LogoMark, Wordmark } from "@/core/ui";
 export function SplashView() {
   const { colors } = useTheme();
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]} accessibilityLabel="Kimbo is loading">
+    <View style={[styles.root, { backgroundColor: colors.bg }]} accessibilityLabel="Zorka is loading">
       <LogoMark size={96} />
       <Wordmark size={40} />
       <ActivityIndicator color={colors.textSecondary} style={styles.spinner} />

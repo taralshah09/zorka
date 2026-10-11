@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { View } from "react-native";
-import { Button, Card, Header, Screen, Text } from "@/core/ui";
+import { Button, Card, EmptyState, Header, Screen, Text } from "@/core/ui";
 import { RouteMap } from "@/features/activity/components";
 import { getActivity, routePoints, useActivityClock } from "@/features/activity/store";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -14,7 +14,13 @@ export default function ActivitySummary() {
   if (!a || a.userId !== userId || a.status !== "done")
     return (
       <Screen header={<Header title="Activity summary" onBack={() => router.back()} />}>
-        <Text variant="body">No saved activity for this profile.</Text>
+        <EmptyState
+          icon="directions_run"
+          title="Activity not found"
+          body="No saved activity with this id for this profile."
+          actionLabel="Back to Train"
+          onAction={() => router.replace("/(tabs)/train")}
+        />
       </Screen>
     );
   const points = routePoints(id);
@@ -71,6 +77,13 @@ export default function ActivitySummary() {
           Splits interpolate kilometre crossings. GPS gaps stay disconnected; average pace includes all unpaused time.
         </Text>
       </Card>
+      <Button
+        label="Share"
+        icon="ios_share"
+        variant="secondary"
+        fullWidth
+        onPress={() => router.push({ pathname: "/share", params: { card: "run", id: a.id } })}
+      />
       <Button label="Done" fullWidth onPress={() => router.replace("/(tabs)/train")} />
     </Screen>
   );

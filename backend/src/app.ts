@@ -92,7 +92,7 @@ export function createApp(deps: AppDeps) {
   );
 
   app.get("/", (_req, res) => {
-    res.json({ name: "kimbo-api", status: "ok" });
+    res.json({ name: "zorka-api", status: "ok" });
   });
 
   const v1 = express.Router();

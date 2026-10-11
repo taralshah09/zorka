@@ -1,7 +1,7 @@
 // P11 · Curated food catalog (D29). Values are per 100 g (per 100 ml for liquids) for a typical
 // home or restaurant recipe as eaten in India.
 //
-// SOURCE: "kimbo-curated-v1": approximate typical-recipe values compiled for Kimbo. They are NOT
+// SOURCE: "kimbo-curated-v1": approximate typical-recipe values compiled for Zorka. They are NOT
 // copied from IFCT 2017 or INDB, and are good enough for logging but should be spot-checked before
 // they are treated as reference data. Cooked dishes vary a lot by recipe; the confirm sheet and the
 // oil/ghee prompt (P18) exist because of that.

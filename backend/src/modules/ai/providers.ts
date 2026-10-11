@@ -111,7 +111,7 @@ export async function chat(
     authorization: `Bearer ${slot.apiKey}`,
     "content-type": "application/json",
   };
-  if (slot.provider === "openrouter") headers["x-title"] = "Kimbo";
+  if (slot.provider === "openrouter") headers["x-title"] = "Zorka";
 
   const res = await send(fetchImpl, `${CHAT_BASE[slot.provider]}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) }, signal);
   if (!res.ok) throw await failure(res);

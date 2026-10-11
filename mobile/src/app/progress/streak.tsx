@@ -1,18 +1,18 @@
 // S40 · Streak detail (P30). No export yet (D53): built from DESIGN.md §6.7 — current and best streak, a month
 // calendar with logged days filled and frozen days marked with a snowflake, freezes available, the next milestone, and
-// what counts as a day (D52).
+// what counts as a day (D52). P38: Share (streak card) from 7 days.
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Card, Header, IconButton, Screen, Text } from "@/core/ui";
+import { Button, Card, Header, IconButton, Screen, Text } from "@/core/ui";
 import { useActivityClock } from "@/features/activity/store";
 import { StreakCalendar } from "@/features/progress/components";
 import { streakDays } from "@/features/progress/copy";
 import { useProgress } from "@/features/progress/hooks";
-import { AT_RISK_HOUR, FREEZE_EARN_DAYS, MAX_FREEZES } from "@shared/domain/streak";
+import { AT_RISK_HOUR, FREEZE_EARN_DAYS, MAX_FREEZES, STREAK_MILESTONES } from "@shared/domain/streak";
 
 const MONTHS = [
   "January",
@@ -67,6 +67,15 @@ export default function StreakScreen() {
             <Text variant="label" color="primaryText">
               Today counts ✓
             </Text>
+          ) : null}
+          {(s?.current ?? 0) >= STREAK_MILESTONES[0] ? (
+            <Button
+              label="Share streak"
+              icon="ios_share"
+              variant="secondary"
+              size="sm"
+              onPress={() => router.push({ pathname: "/share", params: { card: "streak" } })}
+            />
           ) : null}
         </View>
       </Card>

@@ -63,6 +63,15 @@ export async function api<T>(
   return json as T;
 }
 
+/**
+ * Wakes a sleeping free-tier API at launch (D68: Render sleeps after 15 min idle, ~30–50 s cold start), so the first
+ * real request doesn't hit the 10 s timeout. Fire-and-forget; failures are ignored.
+ */
+export function warmUpApi(): void {
+  if (!apiBaseUrl()) return;
+  api("/health", { timeoutMs: 60_000 }).catch(() => {});
+}
+
 /** Plain-language copy for an error, for ErrorState / toasts. */
 export function describeError(err: unknown): { title: string; body: string } {
   if (err instanceof ApiError) {
@@ -70,7 +79,7 @@ export function describeError(err: unknown): { title: string; body: string } {
       case "config":
         return { title: "App isn't configured", body: err.message };
       case "network":
-        return { title: "Can't reach Kimbo", body: "Check your connection and try again." };
+        return { title: "Can't reach Zorka", body: "Check your connection and try again." };
       case "timeout":
         return { title: "That took too long", body: "The server is slow right now. Try again." };
       case "http":

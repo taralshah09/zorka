@@ -1,5 +1,5 @@
 {
-  "name": "kimbo-shared",
+  "name": "zorka-shared",
   "private": true,
   "type": "module",
   "description": "Dependency-free domain logic shared by mobile and backend. Tests run from backend/ (npm test)."

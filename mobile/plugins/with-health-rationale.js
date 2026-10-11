@@ -50,7 +50,7 @@ class HealthPrivacyActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val text = TextView(this)
-    text.text = "Kimbo · Health Connect privacy\\n\\nKimbo reads only Steps to show your daily progress, hourly totals and seven-day history. It never writes health data. Step totals are cached on this phone and are not sent to Kimbo's server.\\n\\nAll demo profiles on this phone see the same Health Connect steps. GPS activities are stored separately per selected profile.\\n\\nAccess is optional. You can revoke it in Health Connect settings at any time. Previously cached totals stay on your phone until Kimbo's app data is cleared."
+    text.text = "Zorka · Health Connect privacy\\n\\nZorka reads only Steps to show your daily progress, hourly totals and seven-day history. It never writes health data. Step totals are cached on this phone and are not sent to Zorka's server.\\n\\nAll demo profiles on this phone see the same Health Connect steps. GPS activities are stored separately per selected profile.\\n\\nAccess is optional. You can revoke it in Health Connect settings at any time. Previously cached totals stay on your phone until Zorka's app data is cleared."
     text.textSize = 18f
     val padding = (24 * resources.displayMetrics.density).toInt()
     text.setPadding(padding, padding, padding, padding)

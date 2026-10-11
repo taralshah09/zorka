@@ -3,7 +3,8 @@
 // and the empty day. Since P28–P30: the real streak flame, the weekly check-in card while it's unanswered, and
 // targets from the active phase or the last accepted check-in. Since P31–P37 (Flow B): the coach line in the coach's voice,
 // the next-best-action card in every state (morning, under, over, done, on track, streak at risk, low steps), Welcome back
-// (S48) after 5 days away, and "Turn on nudges". Layout follows the S10 export (D11); no bell in the header (brand §8).
+// (S48) after 5 days away, and "Turn on nudges". P39: a streak milestone or all goals hit opens the celebration (S47)
+// once. Layout follows the S10 export (D11); no bell in the header (brand §8).
 import { router, useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
@@ -11,6 +12,7 @@ import { StyleSheet, View } from "react-native";
 import { describeError } from "@/core/api/client";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { EmptyState, ErrorState, Screen, Skeleton, Text } from "@/core/ui";
+import { useCelebrateOnFocus } from "@/features/celebrate/celebrations";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { coachLine } from "@/features/coach/lines";
 import { useEatOptions } from "@/features/gap/eat";
@@ -45,7 +47,7 @@ import { dayCredit, useActivityClock } from "@/features/activity/store";
 
 export default function Today() {
   const clock = useActivityClock();
-  const { profile, targets, streak, pending } = useProgress(clock);
+  const { profile, targets, streak, pending, latest } = useProgress(clock);
   const userId = useActiveUser((s) => s.userId);
   const now = new Date(clock);
   const day = localDate(now);
@@ -72,6 +74,17 @@ export default function Today() {
   const action = situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
   // A notification tap that cold-started the app is routed once Today is showing (P36).
   useFocusEffect(useCallback(() => consumePendingRoute(), []));
+  // P39: celebrate a streak milestone reached today, else all goals hit, once each (re-checked on focus, so it fires
+  // when the user comes back from the log that did it).
+  const milestone = streak?.milestoneToday ?? null;
+  useCelebrateOnFocus(
+    userId,
+    milestone
+      ? { key: `streak:${day}:${milestone}`, kind: "streak", value: String(milestone) }
+      : dg?.gap.state === "done"
+        ? { key: `day:${day}`, kind: "day" }
+        : null,
+  );
 
   return (
     <Screen withDock header={<AppHeader eyebrow="Today" />}>
@@ -128,7 +141,9 @@ export default function Today() {
           <MetricTiles targets={targets} consumed={consumed} />
           <ActivityStrip userId={userId} day={day} stepGoal={targets.steps} healthState={health.state} />
           <MacroBalance targets={dailyTargets!} consumed={consumed} />
-          {welcome.show ? <WelcomeBackCard freezeUsed={welcome.freezeUsed} onDismiss={welcome.dismiss} /> : null}
+          {welcome.show ? (
+            <WelcomeBackCard freezeUsed={welcome.freezeUsed} hasTrend={!!latest} onDismiss={welcome.dismiss} />
+          ) : null}
           {profile.data?.coach && situation && facts ? (
             <CoachLine coach={profile.data.coach} line={coachLine(profile.data.coach, situation, facts)} />
           ) : null}

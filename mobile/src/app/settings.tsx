@@ -7,6 +7,7 @@ import { StyleSheet, View } from "react-native";
 
 import { apiBaseUrl, describeError } from "@/core/api/client";
 import { useNetwork } from "@/core/network/network";
+import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { retryFailedNow, useSyncStatus } from "@/core/sync/engine";
 import { useThemeControls, type ThemeName } from "@/core/theme";
 import {
@@ -89,6 +90,8 @@ export default function Settings() {
 
   return (
     <Screen header={<Header title="Settings" onBack={() => router.back()} />}>
+      {/* P41: profile changes need the network; the banner explains the disabled rows. */}
+      <NetworkBanner />
       <Section title="Appearance">
         <SegmentedControl<ThemeName>
           accessibilityLabel="Appearance"
@@ -255,7 +258,7 @@ export default function Settings() {
 
       <Section title="About">
         <Card flush>
-          <ListItem icon="info" title="Kimbo" subtitle={`API: ${apiBaseUrl() ?? "not configured"}`} />
+          <ListItem icon="info" title="Zorka" subtitle={`API: ${apiBaseUrl() ?? "not configured"}`} />
         </Card>
       </Section>
     </Screen>

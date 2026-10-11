@@ -1,7 +1,7 @@
 // S38 · Phase detail (active) and S39 · Phase summary (closed) (P29). No exports yet (D53): built from DESIGN.md §6.7.
 // Active: progress to goal, week-by-week targets (the phase's check-ins), weight chart, key stats, and the "Goal
 // reached! Close this phase?" banner once the trend crosses the target. Closed: the frozen summary line, its chart and
-// stats, Share (P38, coming soon) and "Start next phase".
+// stats, Share (P38 phase card) and "Start next phase".
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -9,6 +9,7 @@ import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/core/theme";
 import { Button, Card, Dialog, EmptyState, Header, ProgressBar, Screen, StatTile, Text, useToast } from "@/core/ui";
 import { useActivityClock } from "@/features/activity/store";
+import { celebrate } from "@/features/celebrate/celebrations";
 import { phaseProgress, phaseWeek, summaryLine } from "@/features/progress/components";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { useProgress } from "@/features/progress/hooks";
@@ -55,6 +56,7 @@ export default function PhaseDetail() {
     closePhase(phase, p.series);
     setConfirmClose(false);
     toast({ kind: "success", message: `${phase.name} closed` });
+    celebrate(phase.userId, `phase:${phase.id}`, { kind: "phase", id: phase.id, detail: phase.name });
   };
 
   return (
@@ -183,7 +185,7 @@ export default function PhaseDetail() {
             label="Share"
             icon="ios_share"
             variant="secondary"
-            onPress={() => router.push({ pathname: "/coming-soon", params: { feature: "Share cards" } })}
+            onPress={() => router.push({ pathname: "/share", params: { card: "phase", id: phase.id } })}
           />
           <Button label="Start next phase" icon="add" onPress={() => router.push("/progress/phase-edit")} fullWidth />
         </>

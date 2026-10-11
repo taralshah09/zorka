@@ -1,15 +1,17 @@
 // Toast — brand §8: floating surface-highest pill, icon + text + optional "Undo" in primary-text.
-// Variants: success, info, error. One at a time; auto-hides after 3.5 s.
+// Variants: success, info, error. One at a time; auto-hides after 3.5 s. A success toast is how the app says "saved",
+// so it also gives the light save tap (brand §9); `haptic: "success"` swaps in the PR/milestone pattern.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { haptics } from "@/core/haptics";
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Text } from "./Text";
 
 export type ToastKind = "success" | "info" | "error";
-type ToastInput = { message: string; kind?: ToastKind; onUndo?: () => void };
+type ToastInput = { message: string; kind?: ToastKind; onUndo?: () => void; haptic?: "tap" | "success" | "none" };
 type ToastState = ToastInput & { id: number };
 
 const ToastContext = createContext<((t: ToastInput) => void) | null>(null);
@@ -37,6 +39,14 @@ function ToastView({ toast, onDone }: { toast: ToastState; onDone: () => void })
   const { colors, radius, elevation, layout, motion } = useTheme();
   const insets = useSafeAreaInsets();
   const anim = useState(() => new Animated.Value(0))[0];
+
+  useEffect(() => {
+    const haptic = toast.haptic ?? (toast.kind === "error" || toast.kind === "info" ? "none" : "tap");
+    if (haptic === "success") haptics.success();
+    else if (haptic === "tap") haptics.tap();
+    // Once per toast (the provider remounts this view for each one).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     Animated.timing(anim, { toValue: 1, duration: motion.sheet, useNativeDriver: true }).start();

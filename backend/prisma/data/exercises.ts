@@ -1,5 +1,5 @@
-// P19 · Curated exercise list (D38). FitNotes-style categories and set types, written for Kimbo (names
-// and aliases are Kimbo's own, not copied from FitNotes' data).
+// P19 · Curated exercise list (D38). FitNotes-style categories and set types, written for Zorka (names
+// and aliases are Zorka's own, not copied from FitNotes' data).
 //
 // SOURCE: "kimbo-curated-v1". Every exercise links to its MuscleWiki page (how to do it, muscles worked).
 // The slugs were checked against MuscleWiki's public sitemap (https://musclewiki.com/sitemap.xml) on

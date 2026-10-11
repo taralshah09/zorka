@@ -1,13 +1,14 @@
 // S25 · Workout summary (P19, PRs P20). No export yet: built from DESIGN.md §6.5 (D41). Stat tiles (duration,
-// volume, sets, PRs), the PR list with trophies, every exercise's sets, Share (share cards arrive in P38)
-// and Done. Also where a finished workout is deleted.
+// volume, sets, PRs), the PR list with trophies, every exercise's sets, Share (P38: the PR cards, shown when the
+// workout set a record) and Done. Also where a finished workout is deleted.
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Button, Card, Dialog, EmptyState, Header, Screen, StatTile, Text, useToast } from "@/core/ui";
+import { celebrate } from "@/features/celebrate/celebrations";
 import { ExerciseTile, PRBadge } from "@/features/gym/components";
 import { formatDay } from "@/features/gym/format";
 import { deleteWorkout, useWorkout, workoutStats } from "@/features/gym/store";
@@ -20,6 +21,18 @@ export default function WorkoutSummary() {
   const workout = useWorkout(id);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [openedAt] = useState(() => Date.now());
+  const justFinished = !!workout?.endedAt && openedAt - new Date(workout.endedAt).getTime() < 10 * 60_000;
+  const firstPr = workout && justFinished ? workoutStats(workout).prs[0] : undefined;
+
+  // P39: a workout that just set a record opens the PR celebration once.
+  useEffect(() => {
+    if (!workout || !firstPr) return;
+    celebrate(workout.userId, `pr:${workout.id}`, {
+      kind: "pr",
+      id: workout.id,
+      detail: `${firstPr.exerciseName} · ${formatSet(firstPr.type, firstPr.set)}`,
+    });
+  }, [workout, firstPr]);
 
   if (!workout) {
     return (
@@ -30,7 +43,6 @@ export default function WorkoutSummary() {
   }
 
   const stats = workoutStats(workout);
-  const justFinished = !!workout.endedAt && openedAt - new Date(workout.endedAt).getTime() < 10 * 60_000;
 
   return (
     <Screen header={<Header title={justFinished ? "Workout complete" : workout.name} onBack={() => router.back()} />}>
@@ -117,15 +129,17 @@ export default function WorkoutSummary() {
       ))}
 
       <View style={styles.actions}>
-        <View style={styles.flex}>
-          <Button
-            label="Share"
-            icon="ios_share"
-            variant="secondary"
-            fullWidth
-            onPress={() => router.push({ pathname: "/coming-soon", params: { feature: "Share cards" } })}
-          />
-        </View>
+        {stats.prs.length ? (
+          <View style={styles.flex}>
+            <Button
+              label="Share PR"
+              icon="ios_share"
+              variant="secondary"
+              fullWidth
+              onPress={() => router.push({ pathname: "/share", params: { card: "pr", id: workout.id } })}
+            />
+          </View>
+        ) : null}
         <View style={styles.flex}>
           <Button label="Done" icon="check" fullWidth onPress={() => router.back()} />
         </View>

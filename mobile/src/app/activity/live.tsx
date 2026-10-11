@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useTheme } from "@/core/theme";
-import { Button, Card, Header, PressableScale, Screen, Text } from "@/core/ui";
+import { Button, Card, EmptyState, Header, PressableScale, Screen, Text } from "@/core/ui";
 import { RouteMap } from "@/features/activity/components";
 import {
   liveStats,
@@ -31,12 +31,18 @@ export default function LiveActivity() {
   if (!a || a.userId !== userId)
     return (
       <Screen header={<Header title="Recorder" onBack={() => router.back()} />}>
-        <Text variant="body">This activity belongs to another profile or was not found.</Text>
+        <EmptyState
+          icon="directions_run"
+          title="Recording not found"
+          body="It belongs to another profile or was deleted."
+          actionLabel="Back to Train"
+          onAction={() => router.replace("/(tabs)/train")}
+        />
       </Screen>
     );
   if (a.status === "done")
     return (
-      <Screen>
+      <Screen header={<Header title="Recorder" onBack={() => router.back()} />}>
         <Button
           label="View saved summary"
           onPress={() => router.replace({ pathname: "/activity/summary/[id]", params: { id } })}
@@ -108,7 +114,7 @@ export default function LiveActivity() {
       <Text variant="caption" color="textSecondary">
         {a.background
           ? "You can lock your phone. Keep the recording notification active."
-          : "Foreground only: leaving Kimbo or locking your phone pauses this activity."}
+          : "Foreground only: leaving Zorka or locking your phone pauses this activity."}
       </Text>
       <Button label={map ? "Hide route" : "Show route"} variant="ghost" onPress={() => setMap(!map)} />
       {map ? <RouteMap points={stats.points} mode="live" /> : null}

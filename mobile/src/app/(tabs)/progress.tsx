@@ -6,7 +6,19 @@ import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
-import { Button, Card, EmptyState, IconButton, Screen, SegmentedControl, Skeleton, Text, useToast } from "@/core/ui";
+import { describeError } from "@/core/api/client";
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Screen,
+  SegmentedControl,
+  Skeleton,
+  Text,
+  useToast,
+} from "@/core/ui";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { useActivityClock } from "@/features/activity/store";
 import { formatKg, formatShortDate } from "@/features/targets/format";
@@ -57,6 +69,13 @@ export default function Progress() {
           <Skeleton variant="card" height={240} />
           <Skeleton variant="card" height={96} />
         </>
+      ) : p.profile.isError && !p.profile.data ? (
+        // P41: first open offline with no cached profile — not the same as "no plan yet".
+        <ErrorState
+          {...describeError(p.profile.error)}
+          onRetry={() => p.profile.refetch()}
+          retrying={p.profile.isRefetching}
+        />
       ) : !p.plan ? (
         <EmptyState
           icon="tune"

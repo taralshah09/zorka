@@ -64,7 +64,7 @@ export default function RecordSetup() {
         if (disposed) w.remove();
         else watch = w;
       })
-      .catch(() => setError("Turn on Location and allow precise location for Kimbo."));
+      .catch(() => setError("Turn on Location and allow precise location for Zorka."));
     return () => {
       disposed = true;
       watch?.remove();
@@ -161,8 +161,8 @@ export default function RecordSetup() {
             <Text variant="title">{background ? "Screen-off recording enabled" : "Foreground recording only"}</Text>
             <Text variant="body" color="textSecondary">
               {background
-                ? "Your route keeps recording when you lock the phone. Keep Kimbo in recent apps."
-                : "Leaving Kimbo or locking the screen pauses the recorder. Enable screen-off recording for a full run."}
+                ? "Your route keeps recording when you lock the phone. Keep Zorka in recent apps."
+                : "Leaving Zorka or locking the screen pauses the recorder. Enable screen-off recording for a full run."}
             </Text>
             {Platform.OS !== "web" ? (
               <Button
@@ -211,8 +211,8 @@ export default function RecordSetup() {
       >
         <Text variant="body">
           {sheet === "background"
-            ? "Allow location all the time so Kimbo can record an activity you start, even while the screen is locked. Android may open Settings; choose Allow all the time."
-            : "Kimbo uses precise location while you record to calculate distance and pace and save your route."}
+            ? "Allow location all the time so Zorka can record an activity you start, even while the screen is locked. Android may open Settings; choose Allow all the time."
+            : "Zorka uses precise location while you record to calculate distance and pace and save your route."}
         </Text>
         <Text variant="caption" color="textSecondary">
           Routes stay on this phone and work offline. Location is used only while recording an activity. Pause or stop
@@ -220,7 +220,7 @@ export default function RecordSetup() {
         </Text>
         {sheet === "background" ? (
           <Text variant="caption" color="textSecondary">
-            Kimbo also asks to show a recording notification with distance and time so you can return to your recorder
+            Zorka also asks to show a recording notification with distance and time so you can return to your recorder
             from the lock screen.
           </Text>
         ) : null}

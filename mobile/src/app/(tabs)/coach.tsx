@@ -10,7 +10,7 @@ import { useNetwork } from "@/core/network/network";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Avatar, Button, Chip, EmptyState, IconButton, Screen, Text } from "@/core/ui";
+import { Avatar, Button, Chip, EmptyState, ErrorState, IconButton, Screen, Skeleton, Text } from "@/core/ui";
 import { useActivityClock } from "@/features/activity/store";
 import { dayContext, sendToCoach, useChat } from "@/features/coach/chat";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
@@ -60,7 +60,7 @@ export default function Coach() {
     } catch (e) {
       const d = describeError(e);
       setError(
-        d.title === "Can't reach Kimbo"
+        d.title === "Can't reach Zorka"
           ? "You're offline. Your message is saved; retry when you're back."
           : "Coach is offline right now.",
       );
@@ -71,6 +71,25 @@ export default function Coach() {
   const lastIsUser = messages.length > 0 && messages[messages.length - 1]!.role === "user";
 
   if (!coach || !persona || !dg) {
+    // P41: loading and "offline with no cached profile" aren't "no plan yet".
+    if (profile.isPending || (profile.isError && !profile.data))
+      return (
+        <Screen withDock header={<AppHeader eyebrow="Coach" />}>
+          <NetworkBanner />
+          {profile.isPending ? (
+            <>
+              <Skeleton variant="card" height={72} />
+              <Skeleton variant="card" height={160} />
+            </>
+          ) : (
+            <ErrorState
+              {...describeError(profile.error)}
+              onRetry={() => profile.refetch()}
+              retrying={profile.isRefetching}
+            />
+          )}
+        </Screen>
+      );
     return (
       <Screen withDock header={<AppHeader eyebrow="Coach" />}>
         <EmptyState

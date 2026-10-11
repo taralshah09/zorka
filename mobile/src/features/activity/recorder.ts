@@ -32,8 +32,8 @@ function backgroundOptions(a: Activity): Location.LocationTaskOptions {
     activityType: a.kind === "ride" ? Location.ActivityType.OtherNavigation : Location.ActivityType.Fitness,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: `${ACTIVITY_LABEL[a.kind]} recording · Kimbo`,
-      notificationBody: `${kilometres.toFixed(2)} km · ${clockLabel(seconds)} · Open Kimbo to pause or stop`,
+      notificationTitle: `${ACTIVITY_LABEL[a.kind]} recording · Zorka`,
+      notificationBody: `${kilometres.toFixed(2)} km · ${clockLabel(seconds)} · Open Zorka to pause or stop`,
       killServiceOnDestroy: false,
     },
   };

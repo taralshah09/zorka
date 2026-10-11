@@ -9,6 +9,7 @@ import { Linking, ScrollView, StyleSheet, View } from "react-native";
 
 import { ApiError, describeError } from "@/core/api/client";
 import { Icon } from "@/core/icons/Icon";
+import { haptics } from "@/core/haptics";
 import { useTheme } from "@/core/theme";
 import {
   BottomSheet,
@@ -101,7 +102,9 @@ export default function ActiveWorkout() {
 
   const onCompleted = (we: WorkoutExercise) => (values: SetValues, kinds: PrKind[]) => {
     restTimer.start(restFor(userId, we.exerciseId), we.name);
-    if (kinds.length) toast({ kind: "success", message: `New PR · ${we.name} ${formatSet(we.type, values)}` });
+    if (kinds.length)
+      toast({ kind: "success", message: `New PR · ${we.name} ${formatSet(we.type, values)}`, haptic: "success" });
+    else haptics.tap();
   };
 
   const finish = () => {

@@ -89,6 +89,9 @@ const ICONS = [
   "notifications",
   "send",
   "bedtime",
+  // P38–P39 share + celebrations (S46, S47)
+  "flag",
+  "celebration",
 ];
 
 // Brand name → file name, for symbols missing from this package version.
