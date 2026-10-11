@@ -32,6 +32,10 @@ import "@/features/gym/routines";
 import "@/features/gym/store";
 // Registers the activity entity (GPS sessions) for push and pull.
 import "@/features/activity/store";
+// Register weight_log (P27), checkin (P28) and phase (P29) for push and pull.
+import "@/features/progress/checkins";
+import "@/features/progress/phases";
+import "@/features/progress/weights";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
 import { useActiveUser } from "@/features/users/activeUser";
 
@@ -54,7 +58,7 @@ function RootStack() {
   const { colors, isDark } = useTheme();
   useCatalogSync();
   useExerciseCatalogSync();
-  // Restores the user's meals, workouts, routines and activities from the server (new phone, reinstall).
+  // Restores the user's meals, workouts, routines, activities, weigh-ins, check-ins and phases from the server (new phone, reinstall).
   usePullSync(useActiveUser((s) => s.userId));
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -66,10 +70,12 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="quick-log" options={{ presentation: "transparentModal", animation: "fade" }} />
+        <Stack.Screen name="log-weight" options={{ presentation: "transparentModal", animation: "fade" }} />
         <Stack.Screen name="coming-soon" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="log" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="train" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="progress" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
       </Stack>
     </View>

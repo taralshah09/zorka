@@ -26,17 +26,6 @@ export function consumedFrom(meals: readonly Meal[]): Consumed {
 
 const pct = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 
-/** Streak chip — brand §8. Placeholder until the streak service (P30). */
-export function StreakChip() {
-  const { colors, radius } = useTheme();
-  return (
-    <View style={[styles.streak, { backgroundColor: colors.surfaceHigh, borderRadius: radius.full }]}>
-      <Icon name="local_fire_department" size={16} color={colors.streak} filled />
-      <Text variant="label">No streak yet</Text>
-    </View>
-  );
-}
-
 /** Hero card: calories left today, with the calorie ring. */
 export function RemainingHero({ targets, consumed }: { targets: Targets; consumed: Consumed }) {
   const { colors, radius } = useTheme();
@@ -340,7 +329,6 @@ export function MealSlots({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  streak: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
   heroTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
   heroEyebrow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" },
   heroPill: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },

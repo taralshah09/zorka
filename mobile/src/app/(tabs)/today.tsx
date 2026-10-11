@@ -1,6 +1,7 @@
 // S10 Today Home. Targets come from the profile (P08/P09); food consumed comes from today's logged meals
 // (P12, local-first). States: loading skeleton, error (offline with no cached profile), not set up yet,
-// and the empty day. Layout follows the S10 export (D11); no bell in the header (brand §8).
+// and the empty day. Since P28–P30: the real streak flame, the weekly check-in card while it's unanswered, and
+// targets from the active phase or the last accepted check-in. Layout follows the S10 export (D11); no bell in the header (brand §8).
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -9,7 +10,6 @@ import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { EmptyState, ErrorState, Screen, Skeleton, Text } from "@/core/ui";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { AppHeader } from "@/features/shell/AppHeader";
-import { useTargets } from "@/features/targets/targets";
 import { formatDayLong, greeting } from "@/features/targets/format";
 import { useVoiceQueue } from "@/features/log/voiceQueue";
 import { useDayMeals } from "@/features/meals/store";
@@ -21,8 +21,10 @@ import {
   MetricTiles,
   NextActionCard,
   RemainingHero,
-  StreakChip,
 } from "@/features/today/TodayCards";
+import { checkinCopy } from "@/features/progress/copy";
+import { CheckinReadyCard, StreakChip } from "@/features/progress/components";
+import { useProgress } from "@/features/progress/hooks";
 import { VoiceQueueCard } from "@/features/today/VoiceQueueCard";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
@@ -31,9 +33,10 @@ import { cachedSteps, useHealthSteps } from "@/features/activity/health";
 import { dayCredit, useActivityClock } from "@/features/activity/store";
 
 export default function Today() {
-  const { profile, targets } = useTargets();
+  const clock = useActivityClock();
+  const { profile, targets, streak, pending } = useProgress(clock);
   const userId = useActiveUser((s) => s.userId);
-  const now = new Date(useActivityClock());
+  const now = new Date(clock);
   const day = localDate(now);
   const health = useHealthSteps(userId, day);
   const credit = dayCredit(userId, day);
@@ -56,7 +59,7 @@ export default function Today() {
             {`${formatDayLong(now)} · ${greeting(now)}${name ? `, ${name}` : ""}`}
           </Text>
         </View>
-        {targets ? <StreakChip /> : null}
+        {targets ? <StreakChip streak={streak} /> : null}
       </View>
 
       {profile.isPending ? (
@@ -82,6 +85,12 @@ export default function Today() {
       ) : (
         <>
           <DateStrip today={now} />
+          {pending ? (
+            <CheckinReadyCard
+              title={checkinCopy(pending, !!profile.data?.checkinDetailed).title}
+              onPress={() => router.push("/progress/checkin")}
+            />
+          ) : null}
           <RemainingHero targets={dailyTargets!} consumed={consumed} />
           {credit.kcal > 0 ? (
             <Text

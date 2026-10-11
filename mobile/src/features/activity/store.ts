@@ -22,6 +22,8 @@ import {
 
 const version = create<{ n: number }>(() => ({ n: 0 }));
 export const activityChanged = () => version.setState((s) => ({ n: s.n + 1 }));
+/** Changes whenever a local activity is written (P30 streak). */
+export const useActivityVersion = () => version((s) => s.n);
 export function useActivityClock() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

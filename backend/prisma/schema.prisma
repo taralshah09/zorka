@@ -70,29 +70,34 @@ model User {
   workouts   Workout[]
   routines   Routine[]
   activities Activity[]
+  weightLogs WeightLog[]
+  checkins   Checkin[]
+  phases     Phase[]
 
   @@map("users")
 }
 
 model Profile {
-  userId         String         @id @map("user_id") @db.Uuid
-  goal           Goal?
-  age            Int?
-  sex            Sex?
-  heightCm       Float?         @map("height_cm")
-  weightKg       Float?         @map("weight_kg")
-  activityLevel  ActivityLevel? @map("activity_level")
-  diet           Diet?
-  targetWeightKg Float?         @map("target_weight_kg")
-  pace           Pace?
-  coach          Coach?
+  userId          String         @id @map("user_id") @db.Uuid
+  goal            Goal?
+  age             Int?
+  sex             Sex?
+  heightCm        Float?         @map("height_cm")
+  weightKg        Float?         @map("weight_kg")
+  activityLevel   ActivityLevel? @map("activity_level")
+  diet            Diet?
+  targetWeightKg  Float?         @map("target_weight_kg")
+  pace            Pace?
+  coach           Coach?
   /// P18: ask how much oil/ghee went into home-cooked food on the confirm sheet (D34).
-  oilGheePrompt  Boolean        @default(false) @map("oil_ghee_prompt")
+  oilGheePrompt   Boolean        @default(false) @map("oil_ghee_prompt")
   /// Daily step goal (D48): 8,000 default and minimum, 100,000 maximum.
-  stepGoal       Int            @default(8000) @map("step_goal")
-  onboardedAt    DateTime?      @map("onboarded_at") @db.Timestamptz(3)
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  stepGoal        Int            @default(8000) @map("step_goal")
+  /// P28: the weekly check-in shows the detailed (geek) version instead of the simple one (D50).
+  checkinDetailed Boolean        @default(false) @map("checkin_detailed")
+  onboardedAt     DateTime?      @map("onboarded_at") @db.Timestamptz(3)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -463,4 +468,100 @@ model Activity {
 
   @@index([userId, updatedAt])
   @@map("activities")
+}
+
+// ---------------------------------------------------------------------------
+// P27 · Weigh-ins. Local-first (D23), synced as entity "weight_log". Several on one day are averaged for the
+// trend (D49).
+
+model WeightLog {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  /// The local day the weigh-in is for (the user can pick an earlier day on S34).
+  localDate       String    @map("local_date")
+  kg              Float
+  loggedAt        DateTime  @map("logged_at") @db.Timestamptz(3)
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, localDate])
+  @@map("weight_logs")
+}
+
+// ---------------------------------------------------------------------------
+// P28 · Weekly check-ins = the target history (D26, D50). One row per user per check-in Sunday, written by the
+// phone when the user answers it (computed lazily on the device). "accepted" rows set the target from
+// checkin_date on; "kept" and "skipped" (not enough data) rows record the week without changing it.
+
+enum CheckinStatus {
+  accepted
+  kept
+  skipped
+}
+
+model Checkin {
+  id                String        @id @db.Uuid
+  userId            String        @map("user_id") @db.Uuid
+  /// The phase active at the check-in (P29). Not a foreign key: phases sync on their own.
+  phaseId           String?       @map("phase_id") @db.Uuid
+  /// The Sunday this check-in belongs to; the week covered is the 7 days before it.
+  checkinDate       String        @map("checkin_date")
+  status            CheckinStatus
+  loggedDays        Int           @map("logged_days")
+  previousKcal      Int           @map("previous_kcal")
+  /// null for skipped weeks. For "kept" weeks: what was offered.
+  newKcal           Int?          @map("new_kcal")
+  proteinG          Int?          @map("protein_g")
+  carbsG            Int?          @map("carbs_g")
+  fatG              Int?          @map("fat_g")
+  avgIntakeKcal     Float?        @map("avg_intake_kcal")
+  estimatedBurnKcal Float?        @map("estimated_burn_kcal")
+  trendStartKg      Float?        @map("trend_start_kg")
+  trendEndKg        Float?        @map("trend_end_kg")
+  capped            Boolean       @default(false)
+  clientUpdatedAt   DateTime      @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, checkinDate])
+  @@map("checkins")
+}
+
+// ---------------------------------------------------------------------------
+// P29 · Phases as projects (D51). One active phase per user (closed_at IS NULL), enforced on the phone. Logs
+// belong to whichever phase covered their date. kcal / protein_g null = follow the plan from the profile.
+// summary is frozen when the phase is closed (shared/domain/progress.ts PhaseSummary).
+
+model Phase {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  name            String
+  goal            Goal
+  startDate       String    @map("start_date")
+  /// Planned end; null = open-ended.
+  endDate         String?   @map("end_date")
+  targetWeightKg  Float?    @map("target_weight_kg")
+  kcal            Int?
+  proteinG        Int?      @map("protein_g")
+  /// The local day the phase was closed; null while active.
+  closedDate      String?   @map("closed_date")
+  summary         Json?
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@map("phases")
 }

@@ -20,6 +20,7 @@ function toProfileDto(user: UserWithProfile): ProfileDto {
     coach: p?.coach ?? null,
     oilGheePrompt: p?.oilGheePrompt ?? false,
     stepGoal: p?.stepGoal ?? STEP_TARGET,
+    checkinDetailed: p?.checkinDetailed ?? false,
     onboardedAt: p?.onboardedAt?.toISOString() ?? null,
     updatedAt: p?.updatedAt?.toISOString() ?? null,
   };

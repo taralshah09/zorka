@@ -29,6 +29,8 @@ export const ProfileUpdateBody = z
     oilGheePrompt: z.boolean(),
     /** D48: daily step goal. */
     stepGoal: z.number().int().min(STEP_GOAL_MIN).max(STEP_GOAL_MAX),
+    /** P28 (D50): show the detailed weekly check-in. */
+    checkinDetailed: z.boolean(),
     onboardedAt: z.string().datetime().nullable(),
   })
   .partial()
@@ -51,6 +53,7 @@ export type ProfileDto = {
   coach: (typeof COACHES)[number] | null;
   oilGheePrompt: boolean;
   stepGoal: number;
+  checkinDetailed: boolean;
   onboardedAt: string | null;
   updatedAt: string | null;
 };

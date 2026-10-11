@@ -4,6 +4,8 @@ import { createLogger } from "./lib/logger.js";
 import { disconnectPrisma, getPrisma } from "./lib/prisma.js";
 import { prismaActivitiesRepository } from "./modules/activities/activities.repository.js";
 import { activitiesService } from "./modules/activities/activities.service.js";
+import { prismaCheckinsRepository } from "./modules/checkins/checkins.repository.js";
+import { checkinsService } from "./modules/checkins/checkins.service.js";
 import { createAiClient } from "./modules/ai/ai.client.js";
 import { aiSlotsFromEnv } from "./modules/ai/ai.config.js";
 import { prismaExercisesRepository } from "./modules/exercises/exercises.repository.js";
@@ -14,6 +16,8 @@ import { gymParseService } from "./modules/gymParse/gymParse.service.js";
 import { parseService } from "./modules/mealParse/parse.service.js";
 import { prismaMealsRepository } from "./modules/meals/meals.repository.js";
 import { mealsService } from "./modules/meals/meals.service.js";
+import { prismaPhasesRepository } from "./modules/phases/phases.repository.js";
+import { phasesService } from "./modules/phases/phases.service.js";
 import { prismaRoutinesRepository } from "./modules/routines/routines.repository.js";
 import { routinesService } from "./modules/routines/routines.service.js";
 import { changesService } from "./modules/sync/changes.js";
@@ -21,6 +25,8 @@ import { prismaSyncRepository } from "./modules/sync/sync.repository.js";
 import { syncService } from "./modules/sync/sync.service.js";
 import { prismaUsersRepository } from "./modules/users/users.repository.js";
 import { usersService } from "./modules/users/users.service.js";
+import { prismaWeightsRepository } from "./modules/weights/weights.repository.js";
+import { weightsService } from "./modules/weights/weights.service.js";
 import { prismaWorkoutsRepository } from "./modules/workouts/workouts.repository.js";
 import { workoutsService } from "./modules/workouts/workouts.service.js";
 
@@ -36,6 +42,9 @@ const exercises = exercisesService(exercisesRepo);
 const routines = routinesService(prismaRoutinesRepository(prisma), exercises.existingIds);
 const workouts = workoutsService(prismaWorkoutsRepository(prisma), exercises.existingIds, routines.existingIds);
 const activities = activitiesService(prismaActivitiesRepository(prisma));
+const weights = weightsService(prismaWeightsRepository(prisma));
+const checkins = checkinsService(prismaCheckinsRepository(prisma));
+const phases = phasesService(prismaPhasesRepository(prisma));
 const syncRepo = prismaSyncRepository(prisma);
 const aiSlots = aiSlotsFromEnv(env);
 const ai = createAiClient({ slots: aiSlots, logger });
@@ -53,12 +62,18 @@ const app = createApp({
     workout: workouts.syncWorkout,
     routine: routines.syncRoutine,
     activity: activities.syncActivity,
+    weight_log: weights.syncWeight,
+    checkin: checkins.syncCheckin,
+    phase: phases.syncPhase,
   }),
   changes: changesService(syncRepo.userExists, {
     meal_log: meals.changes,
     workout: workouts.changes,
     routine: routines.changes,
     activity: activities.changes,
+    weight_log: weights.changes,
+    checkin: checkins.changes,
+    phase: phases.changes,
   }),
   foods,
   meals,

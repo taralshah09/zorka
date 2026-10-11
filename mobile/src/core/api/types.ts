@@ -28,6 +28,8 @@ export type Profile = {
   oilGheePrompt: boolean;
   /** D48: daily step goal, 8,000–100,000. */
   stepGoal: number;
+  /** P28 (D50): show the detailed weekly check-in instead of the simple one. */
+  checkinDetailed: boolean;
   onboardedAt: string | null;
   updatedAt: string | null;
 };
@@ -35,10 +37,19 @@ export type Profile = {
 export type ProfileUpdate = Partial<Omit<Profile, "userId" | "displayName" | "updatedAt">>;
 
 export type SyncEntity =
-  "sync_probe" | "meal_log" | "custom_food" | "custom_exercise" | "workout" | "routine" | "activity";
+  | "sync_probe"
+  | "meal_log"
+  | "custom_food"
+  | "custom_exercise"
+  | "workout"
+  | "routine"
+  | "activity"
+  | "weight_log"
+  | "checkin"
+  | "phase";
 
 /** GET /users/:id/changes (backend/src/modules/sync/changes.ts). */
-export type PullEntity = "meal_log" | "workout" | "routine" | "activity";
+export type PullEntity = "meal_log" | "workout" | "routine" | "activity" | "weight_log" | "checkin" | "phase";
 export type Change = { entity: PullEntity; id: string; deleted: boolean; data: unknown };
 export type ChangesPage = { changes: Change[]; cursor: string; more: boolean };
 export type SyncOp = {

@@ -1,6 +1,6 @@
 // S11 · Quick-log sheet. No export yet (D27): built from DESIGN.md §6.3. The big mic is the hero;
 // Camera · Type · Search under it; the "Repeat yesterday's …" row (P13, matches the time of day);
-// Workout · Run · Weight at the bottom (Workout opens S24 since P19; Run and Weight are "coming soon" until P25/P27).
+// Workout · Run · Weight at the bottom (Workout opens S24 since P19, Run S28 since P25, Weight S34 since P27).
 import { router, useLocalSearchParams } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -15,8 +15,6 @@ import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
 
 type Entry = { icon: IconName; label: string; go: () => void; hint?: string };
-
-const comingSoon = (feature: string) => router.replace({ pathname: "/coming-soon", params: { feature } });
 
 export default function QuickLog() {
   const { colors, radius, elevation, isDark, layout } = useTheme();
@@ -54,7 +52,7 @@ export default function QuickLog() {
       label: "Run",
       go: () => router.replace({ pathname: "/activity/record", params: { kind: "run" } }),
     },
-    { icon: "monitor_weight", label: "Weight", go: () => comingSoon("Weight logging"), hint: "Coming soon" },
+    { icon: "monitor_weight", label: "Weight", go: () => router.replace("/log-weight") },
   ];
 
   const repeat = () => {

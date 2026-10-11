@@ -138,6 +138,17 @@ function addDays(today: Date, days: number): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+/** Rounds a kcal target the same way as calculateTargets: nearest 50, never under the floor. */
+export const roundTargetKcal = (kcal: number, floorKcal: number) => roundKcal(Math.max(kcal, floorKcal), floorKcal);
+
+/** Fat and carbs for a kcal target and a protein amount (D25): fat = max(25% of kcal, 0.6 g/kg), carbs = rest. */
+export function macrosFor(kcal: number, proteinG: number, weightKg: number) {
+  const protein = roundTo(proteinG, MACRO_ROUND);
+  const fatG = roundTo(Math.max((FAT_SHARE_OF_KCAL * kcal) / 9, MIN_FAT_G_PER_KG * weightKg), MACRO_ROUND);
+  const carbsG = Math.max(0, roundTo((kcal - protein * 4 - fatG * 9) / 4, MACRO_ROUND));
+  return { proteinG: protein, fatG, carbsG };
+}
+
 /**
  * Starting targets: Mifflin-St Jeor × activity, then the goal-pace adjustment, the calorie floor,
  * macros, steps and a projected goal date. Throws on input that fails validateTargetInput.
@@ -177,9 +188,7 @@ export function calculateTargets(input: TargetInput, today: Date = new Date()): 
   }
 
   const kcal = roundKcal(kcalExact, floorKcal);
-  const proteinG = roundTo(PROTEIN_G_PER_KG[input.goal] * input.weightKg, MACRO_ROUND);
-  const fatG = roundTo(Math.max((FAT_SHARE_OF_KCAL * kcal) / 9, MIN_FAT_G_PER_KG * input.weightKg), MACRO_ROUND);
-  const carbsG = Math.max(0, roundTo((kcal - proteinG * 4 - fatG * 9) / 4, MACRO_ROUND));
+  const { proteinG, fatG, carbsG } = macrosFor(kcal, PROTEIN_G_PER_KG[input.goal] * input.weightKg, input.weightKg);
 
   let weeksToGoal: number | null = null;
   let goalDate: string | null = null;
@@ -204,5 +213,103 @@ export function calculateTargets(input: TargetInput, today: Date = new Date()): 
     floorApplied,
     weeksToGoal,
     goalDate,
+  };
+}
+
+// ── Weekly adaptive targets (P28) ────────────────────────────────────────────────────────────────
+// Constants accepted at the P28 gate (docs/DECISIONS.md D50).
+
+/** The adjustment only runs when at least this many of the 7 days have food logged. */
+export const MIN_LOGGED_DAYS = 5;
+/** Largest change to the calorie target in one week, either way. */
+export const MAX_WEEKLY_CHANGE_KCAL = 150;
+/** Weekly trend change treated as "holding steady" for maintain / get fitter. */
+const STEADY_KG_PER_WEEK = 0.25;
+
+export type CheckinInput = {
+  goal: Goal;
+  /** kcal eaten on each day of the week that has food logged (days without a log are left out). */
+  loggedKcal: readonly number[];
+  /** Trend weight at the end of the day before the week, and at the end of the week. */
+  trendStartKg: number | null;
+  trendEndKg: number | null;
+  /** At least one weigh-in during the week (otherwise the trend didn't really move, it just held). */
+  weighedInWeek: boolean;
+  /** The target in force during the week. */
+  currentKcal: number;
+  floorKcal: number;
+  /** The plan's deficit (−) or surplus (+) per day for this goal and pace (Targets.adjustmentKcal). */
+  adjustmentKcal: number;
+};
+
+export type CheckinResult =
+  | { status: "not_enough_data"; reason: "days" | "weight"; loggedDays: number }
+  | {
+      status: "ready";
+      loggedDays: number;
+      avgIntakeKcal: number;
+      trendChangeKg: number;
+      /** What the body actually burned per day, from intake and the trend: intake − Δtrend × 7700 / 7. */
+      estimatedBurnKcal: number;
+      previousKcal: number;
+      newKcal: number;
+      changeKcal: number;
+      /** The change wanted was bigger than MAX_WEEKLY_CHANGE_KCAL. */
+      capped: boolean;
+      floorApplied: boolean;
+      /** The trend moved the way the goal wants (casual "On track ✓"). */
+      onTrack: boolean;
+      proteinG: number;
+      carbsG: number;
+      fatG: number;
+    };
+
+/**
+ * The Sunday check-in: estimates real daily burn from what was eaten and how the trend weight moved, then moves
+ * the calorie target toward burn + the plan's deficit/surplus, by at most MAX_WEEKLY_CHANGE_KCAL, never under the
+ * floor. Protein follows the goal's g/kg at the current trend weight; fat and carbs follow D25.
+ */
+export function weeklyCheckin(input: CheckinInput): CheckinResult {
+  const loggedDays = input.loggedKcal.length;
+  if (loggedDays < MIN_LOGGED_DAYS) return { status: "not_enough_data", reason: "days", loggedDays };
+  const { trendStartKg, trendEndKg } = input;
+  if (!input.weighedInWeek || trendStartKg == null || trendEndKg == null) {
+    return { status: "not_enough_data", reason: "weight", loggedDays };
+  }
+
+  const avgIntakeKcal = input.loggedKcal.reduce((s, k) => s + k, 0) / loggedDays;
+  const trendChangeKg = trendEndKg - trendStartKg;
+  const estimatedBurnKcal = avgIntakeKcal - (trendChangeKg * KCAL_PER_KG) / 7;
+
+  const wanted = estimatedBurnKcal + input.adjustmentKcal - input.currentKcal;
+  const capped = Math.abs(wanted) > MAX_WEEKLY_CHANGE_KCAL;
+  const step = Math.max(-MAX_WEEKLY_CHANGE_KCAL, Math.min(MAX_WEEKLY_CHANGE_KCAL, wanted));
+  const floorApplied = input.currentKcal + step < input.floorKcal;
+  let newKcal = roundTargetKcal(input.currentKcal + step, input.floorKcal);
+  // Rounding a target that isn't a multiple of 50 must not push the change past the cap.
+  if (Math.abs(newKcal - input.currentKcal) > MAX_WEEKLY_CHANGE_KCAL && !floorApplied) {
+    newKcal = input.currentKcal + Math.sign(step) * MAX_WEEKLY_CHANGE_KCAL;
+  }
+
+  const onTrack =
+    input.goal === "lose_fat"
+      ? trendChangeKg < 0
+      : input.goal === "build_muscle"
+        ? trendChangeKg > 0
+        : Math.abs(trendChangeKg) <= STEADY_KG_PER_WEEK;
+
+  return {
+    status: "ready",
+    loggedDays,
+    avgIntakeKcal,
+    trendChangeKg,
+    estimatedBurnKcal,
+    previousKcal: input.currentKcal,
+    newKcal,
+    changeKcal: newKcal - input.currentKcal,
+    capped,
+    floorApplied,
+    onTrack,
+    ...macrosFor(newKcal, PROTEIN_G_PER_KG[input.goal] * trendEndKg, trendEndKg),
   };
 }

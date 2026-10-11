@@ -192,6 +192,44 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       ALTER TABLE activities ADD COLUMN client_updated_at TEXT;
       ALTER TABLE activities ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
     `),
+
+  // v9 · P27–P29 — weigh-ins ("weight_log"), answered weekly check-ins ("checkin", the target history) and
+  // phases ("phase"). All local-first and synced. phases.summary is the frozen closing summary (JSON).
+  (db) =>
+    db.execSync(`
+      CREATE TABLE weight_logs (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        kg REAL NOT NULL,
+        logged_at TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX weight_logs_day ON weight_logs (user_id, local_date);
+      CREATE TABLE checkins (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        checkin_date TEXT NOT NULL,
+        data TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX checkins_user ON checkins (user_id, checkin_date);
+      CREATE TABLE phases (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        closed_date TEXT,
+        data TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX phases_user ON phases (user_id, start_date);
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

@@ -32,6 +32,7 @@ const ICONS = [
   "arrow_back",
   "close",
   "chevron_right",
+  "chevron_left",
   "local_fire_department",
   "ac_unit",
   "trophy",

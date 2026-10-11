@@ -4,7 +4,7 @@ import type { SyncRepository } from "./sync.repository.js";
 import { SyncProbeData, type SyncEntity, type SyncOp, type SyncResult } from "./sync.schemas.js";
 
 /** Handlers for the real local-first entities, registered by their modules (P12 meals, P13 foods,
- *  P19 exercises + workouts, P21 routines). */
+ *  P19 exercises + workouts, P21 routines, P25 activities, P27 weigh-ins, P28 check-ins, P29 phases). */
 export type EntityHandlers = Record<Exclude<SyncEntity, "sync_probe">, EntityHandler>;
 
 export function syncService(repo: SyncRepository, handlers: EntityHandlers) {

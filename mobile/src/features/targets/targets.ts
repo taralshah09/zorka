@@ -1,39 +1,30 @@
-// Targets are derived from the profile on the device, never stored (D26). The calculator itself is
-// shared with the backend (D24).
+// The active user's targets. The plan is derived from the profile (D26); since P28/P29 an active phase with its
+// own targets, or an accepted weekly check-in, takes over from it (features/progress/checkins.ts).
 import { useMemo } from "react";
 
-import type { Profile } from "@/core/api/types";
+import { effectiveTargets, useCheckins } from "@/features/progress/checkins";
+import { usePhases } from "@/features/progress/phases";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useProfile } from "@/features/users/api";
-import { calculateTargets, validateTargetInput, type TargetInput, type Targets } from "@shared/domain/targets";
+import { localDate } from "@shared/domain/food";
+import { targetsFromProfile } from "./targetInput";
 
-/** null when the profile is missing a field the calculator needs (e.g. not onboarded yet). */
-export function targetInputFromProfile(p: Profile): TargetInput | null {
-  const { goal, sex, age, heightCm, weightKg, activityLevel } = p;
-  if (!goal || !sex || age == null || heightCm == null || weightKg == null || !activityLevel) return null;
-  const input: TargetInput = {
-    goal,
-    sex,
-    age,
-    heightCm,
-    weightKg,
-    activityLevel,
-    targetWeightKg: p.targetWeightKg,
-    pace: p.pace,
-    stepGoal: p.stepGoal,
-  };
-  return validateTargetInput(input).length ? null : input;
-}
+export { targetInputFromProfile, targetsFromProfile } from "./targetInput";
 
-export function targetsFromProfile(p: Profile, today = new Date()): Targets | null {
-  const input = targetInputFromProfile(p);
-  return input ? calculateTargets(input, today) : null;
-}
-
-/** The active user's profile query plus the targets derived from it. */
+/**
+ * The active user's profile query, the targets in force today, and the plan they started from.
+ * `source` says where today's targets come from (S12 / S33 copy).
+ */
 export function useTargets() {
   const userId = useActiveUser((s) => s.userId);
   const profile = useProfile(userId);
-  const targets = useMemo(() => (profile.data ? targetsFromProfile(profile.data) : null), [profile.data]);
-  return { profile, targets };
+  const phases = usePhases(userId);
+  const checkins = useCheckins(userId);
+  const day = localDate(new Date());
+  const plan = useMemo(() => (profile.data ? targetsFromProfile(profile.data) : null), [profile.data]);
+  const effective = useMemo(
+    () => (plan && profile.data ? effectiveTargets(plan, profile.data, phases, checkins, day) : null),
+    [plan, profile.data, phases, checkins, day],
+  );
+  return { profile, targets: effective?.targets ?? null, plan, source: effective?.source ?? "plan" };
 }

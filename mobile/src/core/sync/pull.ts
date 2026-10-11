@@ -38,6 +38,9 @@ export const usePullStatus = create<{ pulling: boolean; lastPulledAt: number | n
 const cursorKey = (userId: string) => `kimbo.pullCursor.${userId}`;
 const fullAtKey = (userId: string) => `kimbo.pullFullAt.${userId}`;
 const FULL_EVERY_MS = 24 * 60 * 60 * 1000;
+
+/** A full pull has finished for this user on this phone, so its local copy holds everything the server had. */
+export const hasPulledOnce = (userId: string) => kv.get(fullAtKey(userId)) != null;
 /** The next pull starts a little before the cursor, so a write that committed late isn't skipped. */
 const OVERLAP_MS = 5_000;
 const MAX_PAGES = 500;

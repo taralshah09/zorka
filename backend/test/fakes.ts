@@ -10,6 +10,8 @@ import type { Fetch } from "../src/modules/ai/providers.js";
 import { exercisesFromRows } from "../src/modules/exercises/catalog.js";
 import type { ActivitiesRepository, ActivityRecord } from "../src/modules/activities/activities.repository.js";
 import { activitiesService } from "../src/modules/activities/activities.service.js";
+import type { CheckinRecord, CheckinsRepository } from "../src/modules/checkins/checkins.repository.js";
+import { checkinsService } from "../src/modules/checkins/checkins.service.js";
 import type { ExerciseRecord, ExercisesRepository } from "../src/modules/exercises/exercises.repository.js";
 import { exercisesService } from "../src/modules/exercises/exercises.service.js";
 import { foodsFromRows } from "../src/modules/foods/catalog.js";
@@ -19,6 +21,8 @@ import { gymParseService } from "../src/modules/gymParse/gymParse.service.js";
 import { parseService } from "../src/modules/mealParse/parse.service.js";
 import type { MealRecord, MealsRepository } from "../src/modules/meals/meals.repository.js";
 import { mealsService } from "../src/modules/meals/meals.service.js";
+import type { PhaseRecord, PhasesRepository } from "../src/modules/phases/phases.repository.js";
+import { phasesService } from "../src/modules/phases/phases.service.js";
 import type { RoutineRecord, RoutinesRepository } from "../src/modules/routines/routines.repository.js";
 import { routinesService } from "../src/modules/routines/routines.service.js";
 import type { SyncRepository, ProbeRecord } from "../src/modules/sync/sync.repository.js";
@@ -26,6 +30,8 @@ import { changesService } from "../src/modules/sync/changes.js";
 import { syncService } from "../src/modules/sync/sync.service.js";
 import type { UsersRepository, UserWithProfile } from "../src/modules/users/users.repository.js";
 import { usersService } from "../src/modules/users/users.service.js";
+import type { WeightLogRecord, WeightsRepository } from "../src/modules/weights/weights.repository.js";
+import { weightsService } from "../src/modules/weights/weights.service.js";
 import type { WorkoutRecord, WorkoutsRepository } from "../src/modules/workouts/workouts.repository.js";
 import { workoutsService } from "../src/modules/workouts/workouts.service.js";
 
@@ -61,6 +67,7 @@ export function memoryUsers(): UsersRepository & { rows: Map<string, UserWithPro
         coach: null,
         oilGheePrompt: false,
         stepGoal: 8000,
+        checkinDetailed: false,
         onboardedAt: null,
         createdAt: now,
         updatedAt: now,
@@ -271,6 +278,40 @@ export function memoryActivities(): ActivitiesRepository & { rows: Map<string, A
   };
 }
 
+/** A simple LWW-synced entity in memory (P27 weigh-ins, P28 check-ins, P29 phases). */
+function memoryEntity<R extends { id: string; userId: string; clientUpdatedAt: Date; deletedAt: Date | null; updatedAt: Date }>(
+  toRecord: (input: { id: string; userId: string; clientUpdatedAt: Date } & Record<string, unknown>) => Omit<R, "deletedAt" | "updatedAt">,
+) {
+  const rows = new Map<string, R>();
+  return {
+    rows,
+    find: async (id: string) => rows.get(id) ?? null,
+    upsert: async (input: { id: string; userId: string; clientUpdatedAt: Date } & Record<string, unknown>) => {
+      rows.set(input.id, { ...toRecord(input), deletedAt: null, updatedAt: tick() } as R);
+    },
+    softDelete: async (id: string, at: Date) => {
+      const r = rows.get(id);
+      if (r) rows.set(id, { ...r, deletedAt: at, clientUpdatedAt: at, updatedAt: tick() });
+    },
+    listChanged: async (userId: string, since: Date, limit: number) => changed(rows, userId, since, limit),
+  };
+}
+
+export function memoryWeights(): WeightsRepository & { rows: Map<string, WeightLogRecord> } {
+  const m = memoryEntity<WeightLogRecord>(({ loggedAt, ...w }) => ({ ...w, loggedAt: new Date(loggedAt as string) }) as WeightLogRecord);
+  return { rows: m.rows, findWeight: m.find, upsertWeight: m.upsert, softDeleteWeight: m.softDelete, listChanged: m.listChanged };
+}
+
+export function memoryCheckins(): CheckinsRepository & { rows: Map<string, CheckinRecord> } {
+  const m = memoryEntity<CheckinRecord>((c) => c as unknown as CheckinRecord);
+  return { rows: m.rows, findCheckin: m.find, upsertCheckin: m.upsert, softDeleteCheckin: m.softDelete, listChanged: m.listChanged };
+}
+
+export function memoryPhases(): PhasesRepository & { rows: Map<string, PhaseRecord> } {
+  const m = memoryEntity<PhaseRecord>((p) => p as unknown as PhaseRecord);
+  return { rows: m.rows, findPhase: m.find, upsertPhase: m.upsert, softDeletePhase: m.softDelete, listChanged: m.listChanged };
+}
+
 /** Server-side change times for the in-memory repos: strictly increasing, like updated_at. */
 let clock = Date.parse("2026-10-11T00:00:00.000Z");
 const tick = () => new Date((clock += 1000));
@@ -314,6 +355,12 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
   const workouts = workoutsService(workoutsRepo, exercises.existingIds, routines.existingIds);
   const activitiesRepo = memoryActivities();
   const activities = activitiesService(activitiesRepo);
+  const weightsRepo = memoryWeights();
+  const weights = weightsService(weightsRepo);
+  const checkinsRepo = memoryCheckins();
+  const checkins = checkinsService(checkinsRepo);
+  const phasesRepo = memoryPhases();
+  const phases = phasesService(phasesRepo);
   const ai = opts.ai ?? fakeAi();
   const app = createApp({
     logger: pino({ level: "silent" }),
@@ -328,12 +375,18 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
       workout: workouts.syncWorkout,
       routine: routines.syncRoutine,
       activity: activities.syncActivity,
+      weight_log: weights.syncWeight,
+      checkin: checkins.syncCheckin,
+      phase: phases.syncPhase,
     }),
     changes: changesService(sync.userExists, {
       meal_log: meals.changes,
       workout: workouts.changes,
       routine: routines.changes,
       activity: activities.changes,
+      weight_log: weights.changes,
+      checkin: checkins.changes,
+      phase: phases.changes,
     }),
     foods,
     meals,
@@ -355,5 +408,8 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
     workouts: workoutsRepo,
     routines: routinesRepo,
     activities: activitiesRepo,
+    weights: weightsRepo,
+    checkins: checkinsRepo,
+    phases: phasesRepo,
   };
 }

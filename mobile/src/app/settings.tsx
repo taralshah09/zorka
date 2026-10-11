@@ -35,9 +35,21 @@ const APPEARANCE = [
   { value: "light", label: "Light", icon: "light_mode" },
 ] as const;
 
+type CheckinStyle = "simple" | "detailed";
+const CHECKIN_STYLES = [
+  { value: "simple", label: "Simple" },
+  { value: "detailed", label: "Detailed" },
+] as const;
+
+const TARGET_SOURCE = {
+  plan: undefined,
+  phase: "Set by your phase",
+  checkin: "Adjusted at your weekly check-in",
+} as const;
+
 export default function Settings() {
   const { theme, setThemeName } = useThemeControls();
-  const { profile, targets } = useTargets();
+  const { profile, targets, source } = useTargets();
   const online = useNetwork((s) => s.online);
   const sync = useSyncStatus();
   const toast = useToast();
@@ -45,11 +57,20 @@ export default function Settings() {
   const updateProfile = useUpdateProfile(userId);
   const [stepSheet, setStepSheet] = useState(false);
   const oilPrompt = updateProfile.isPending ? !!updateProfile.variables?.oilGheePrompt : !!profile.data?.oilGheePrompt;
+  const pendingDetail = updateProfile.isPending ? updateProfile.variables?.checkinDetailed : undefined;
+  const checkinStyle: CheckinStyle = (pendingDetail ?? profile.data?.checkinDetailed) ? "detailed" : "simple";
 
   // The profile is server-owned (D23), so this setting needs the network.
   const setOilPrompt = (next: boolean) =>
     updateProfile.mutate(
       { oilGheePrompt: next },
+      { onError: (e) => toast({ kind: "error", message: describeError(e).title }) },
+    );
+
+  // P28 (D50): Simple or Detailed weekly check-in. Server-owned like the rest of the profile.
+  const setCheckinStyle = (next: CheckinStyle) =>
+    updateProfile.mutate(
+      { checkinDetailed: next === "detailed" },
       { onError: (e) => toast({ kind: "error", message: describeError(e).title }) },
     );
 
@@ -86,7 +107,13 @@ export default function Settings() {
                 }
                 divider
               />
-              <ListItem icon="restaurant" title="Daily calories" value={`${formatInt(targets.kcal)} kcal`} divider />
+              <ListItem
+                icon="restaurant"
+                title="Daily calories"
+                subtitle={TARGET_SOURCE[source]}
+                value={`${formatInt(targets.kcal)} kcal`}
+                divider
+              />
               <ListItem
                 icon="egg"
                 title="Protein · carbs · fat"
@@ -117,6 +144,20 @@ export default function Settings() {
           online={online}
         />
       ) : null}
+
+      <Section title="Weekly check-in">
+        <SegmentedControl<CheckinStyle>
+          accessibilityLabel="Weekly check-in detail"
+          segments={CHECKIN_STYLES}
+          value={checkinStyle}
+          onChange={(v) => v !== checkinStyle && setCheckinStyle(v)}
+        />
+        <Text variant="caption" color="textSecondary">
+          {online
+            ? "Simple shows whether you're on track. Detailed shows your estimated burn and why the target changed."
+            : "Connect to change this."}
+        </Text>
+      </Section>
 
       <Section title="Food logging">
         <Card flush>
