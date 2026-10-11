@@ -8,7 +8,7 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://health-coach-api.onrender.com" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://health-coach-api-nmz6.onrender.com" }
     }
   }
 }
