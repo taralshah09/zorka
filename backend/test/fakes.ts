@@ -17,7 +17,10 @@ import { exercisesService } from "../src/modules/exercises/exercises.service.js"
 import { foodsFromRows } from "../src/modules/foods/catalog.js";
 import type { FoodRecord, FoodsRepository } from "../src/modules/foods/foods.repository.js";
 import { foodsService } from "../src/modules/foods/foods.service.js";
+import { coachService } from "../src/modules/coach/coach.service.js";
 import { gymParseService } from "../src/modules/gymParse/gymParse.service.js";
+import { nearbyService } from "../src/modules/nearby/nearby.service.js";
+import { createSearchClient, type SearchClient } from "../src/modules/nearby/search.client.js";
 import { parseService } from "../src/modules/mealParse/parse.service.js";
 import type { MealRecord, MealsRepository } from "../src/modules/meals/meals.repository.js";
 import { mealsService } from "../src/modules/meals/meals.service.js";
@@ -339,7 +342,15 @@ export function fakeAi(slots: AiSlot[] = [], fetchImpl?: Fetch, now?: () => numb
   return createAiClient({ slots, logger: pino({ level: "silent" }), fetchImpl, now });
 }
 
-export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
+/** A search client with fake HTTP (P34). No keys → "not set up". */
+export function fakeSearch(
+  fetchImpl: Fetch = async () => Response.json({ results: [] }),
+  keys: Partial<Record<"tavily" | "firecrawl" | "anakin", string>> = { tavily: "t" },
+): SearchClient {
+  return createSearchClient({ keys, order: ["tavily", "firecrawl", "anakin"], logger: pino({ level: "silent" }), fetchImpl });
+}
+
+export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchClient; now?: () => number } = {}) {
   const ids = [RIYA, ARJUN];
   const users = memoryUsers();
   const sync = memorySync(ids);
@@ -362,6 +373,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
   const phasesRepo = memoryPhases();
   const phases = phasesService(phasesRepo);
   const ai = opts.ai ?? fakeAi();
+  const search = opts.search ?? fakeSearch();
   const app = createApp({
     logger: pino({ level: "silent" }),
     pingDb: async () => {
@@ -395,7 +407,10 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
     workouts,
     routines,
     gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
+    nearby: nearbyService(ai, search, foodsRepo.userExists, opts.now),
+    coach: coachService(ai, foodsRepo.userExists),
     ai,
+    search,
     devRoutes: true,
   });
   return {

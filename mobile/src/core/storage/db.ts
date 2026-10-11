@@ -230,6 +230,35 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       );
       CREATE INDEX phases_user ON phases (user_id, start_date);
     `),
+
+  // v10 · P31–P36 — phone-only (D58): tomorrow's eased targets, coach chat history, and nearby options per area (P34,
+  // 12 h). None of these sync.
+  (db) =>
+    db.execSync(`
+      CREATE TABLE target_eases (
+        user_id TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        kcal INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, local_date)
+      );
+      CREATE TABLE coach_messages (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        coach TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX coach_messages_user ON coach_messages (user_id, created_at);
+      CREATE TABLE nearby_cache (
+        area_key TEXT NOT NULL,
+        diet TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (area_key, diet)
+      );
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

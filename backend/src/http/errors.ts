@@ -13,6 +13,7 @@ export type ErrorCode =
   | "RATE_LIMITED"
   | "AI_UNAVAILABLE"
   | "AI_TIMEOUT"
+  | "SEARCH_UNAVAILABLE"
   | "INTERNAL";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -25,6 +26,7 @@ const STATUS: Record<ErrorCode, number> = {
   RATE_LIMITED: 429,
   AI_UNAVAILABLE: 503,
   AI_TIMEOUT: 504,
+  SEARCH_UNAVAILABLE: 503,
   INTERNAL: 500,
 };
 

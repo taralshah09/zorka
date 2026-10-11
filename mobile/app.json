@@ -78,6 +78,13 @@
       ],
       "@maplibre/maplibre-react-native",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#576500"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

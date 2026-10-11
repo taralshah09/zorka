@@ -28,6 +28,18 @@ const EnvSchema = z.object({
   GEMINI_STT_MODEL: z.string().optional(),
   OPENROUTER_TEXT_MODEL: z.string().optional(),
   OPENROUTER_VISION_MODEL: z.string().optional(),
+
+  // P34 · Live search for nearby Zomato/Blinkit options (D59). Any of them may be empty; with none set the phone
+  // shows "Couldn't load nearby options" and the other options still work.
+  TAVILY_API_KEY: z.string().optional(),
+  FIRECRAWL_API_KEY: z.string().optional(),
+  ANAKIN_API_KEY: z.string().optional(),
+  /** Which search service is tried first. */
+  SEARCH_PROVIDER_ORDER: z
+    .string()
+    .default("tavily,firecrawl,anakin")
+    .transform((s) => s.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean))
+    .pipe(z.array(z.enum(["tavily", "firecrawl", "anakin"])).min(1)),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

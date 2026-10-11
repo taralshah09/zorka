@@ -1,5 +1,5 @@
 // S10 Today Home building blocks. Food comes from the day's logged meals (P12); steps and activity are
-// supplied by P23/P24; the coach line, next action and streak are placeholders until P30/P31/P37.
+// supplied by P23/P24; the next action's states come from the gap (P31/P37, features/gap/nextAction.ts).
 // Layout follows the S10 export; colours follow D14.
 import { router } from "expo-router";
 import { useId } from "react";
@@ -27,7 +27,16 @@ export function consumedFrom(meals: readonly Meal[]): Consumed {
 const pct = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 
 /** Hero card: calories left today, with the calorie ring. */
-export function RemainingHero({ targets, consumed }: { targets: Targets; consumed: Consumed }) {
+export function RemainingHero({
+  targets,
+  consumed,
+  onCloseGap,
+}: {
+  targets: Targets;
+  consumed: Consumed;
+  /** P31: the hero's action pill (the S10 export's "Details ↗") opens the Gap Closer (S41). */
+  onCloseGap?: () => void;
+}) {
   const { colors, radius } = useTheme();
   const left = targets.kcal - consumed.kcal;
   const used = pct(consumed.kcal, targets.kcal);
@@ -65,6 +74,19 @@ export function RemainingHero({ targets, consumed }: { targets: Targets; consume
       </View>
       <View style={styles.heroNumber}>
         <NumberUnit value={formatInt(left)} unit="kcal" variant="display-xl" color="ink" unitColor="ink" />
+        {onCloseGap ? (
+          <PressableScale
+            onPress={onCloseGap}
+            accessibilityRole="button"
+            accessibilityLabel="Close the gap: ways to eat or move"
+            style={[styles.heroAction, { backgroundColor: colors.ink, borderRadius: radius.full }]}
+          >
+            <Text variant="label-lg" style={{ color: colors.primary }}>
+              Close the gap
+            </Text>
+            <Icon name="chevron_right" size={20} color={colors.primary} />
+          </PressableScale>
+        ) : null}
       </View>
     </Card>
   );
@@ -201,16 +223,36 @@ export function MacroBalance({ targets, consumed }: { targets: Targets; consumed
   );
 }
 
-/** Next-best-action card — brand §8. Shell state only; the real states come in P31/P37. */
-export function NextActionCard({ title, onPress }: { title: string; onPress: () => void }) {
+/** Next-best-action card — brand §8. States (P37): default (lilac), warning (amber, over / streak at risk), success. */
+export function NextActionCard({
+  title,
+  onPress,
+  eyebrow = "Next action",
+  icon = "restaurant",
+  tone = "default",
+}: {
+  title: string;
+  onPress: () => void;
+  eyebrow?: string;
+  icon?: IconName;
+  tone?: "default" | "warning" | "success";
+}) {
   const { colors, radius, layout } = useTheme();
+  const iconBg = tone === "warning" ? colors.warn : tone === "success" ? colors.primary : colors.secondary;
   const gradientId = `nba-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Next action: ${title}`}
-      style={[styles.nba, { borderRadius: radius.lg, borderColor: colors.outline, padding: layout.cardPadding }]}
+      accessibilityLabel={`${eyebrow}: ${title}`}
+      style={[
+        styles.nba,
+        {
+          borderRadius: radius.lg,
+          borderColor: tone === "warning" ? colors.warn : colors.outline,
+          padding: layout.cardPadding,
+        },
+      ]}
     >
       <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100">
         <Defs>
@@ -221,12 +263,15 @@ export function NextActionCard({ title, onPress }: { title: string; onPress: () 
         </Defs>
         <Rect x="0" y="0" width="100" height="100" fill={`url(#${gradientId})`} />
       </Svg>
-      <View style={[styles.nbaIcon, { backgroundColor: colors.secondary, borderRadius: radius.md }]}>
-        <Icon name="restaurant" color={colors.ink} />
+      <View style={[styles.nbaIcon, { backgroundColor: iconBg, borderRadius: radius.md }]}>
+        <Icon name={icon} color={colors.ink} />
       </View>
       <View style={styles.flex}>
-        <Text variant="eyebrow" color="secondaryText">
-          Next action
+        <Text
+          variant="eyebrow"
+          color={tone === "warning" ? "warn" : tone === "success" ? "primaryText" : "secondaryText"}
+        >
+          {eyebrow}
         </Text>
         <Text variant="title">{title}</Text>
       </View>
@@ -332,7 +377,22 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
   heroEyebrow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" },
   heroPill: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
-  heroNumber: { marginTop: 16 },
+  heroNumber: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  heroAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 10,
+    paddingLeft: 16,
+    paddingRight: 10,
+  },
   tiles: { flexDirection: "row", gap: 12 },
   tile: { flex: 1, gap: 6 },
   tileHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },

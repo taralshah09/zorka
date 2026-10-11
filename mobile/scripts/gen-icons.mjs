@@ -85,6 +85,10 @@ const ICONS = [
   "show_chart",
   "self_improvement",
   "menu_book",
+  // P31–P37 close the gap + coach (S41–S45)
+  "notifications",
+  "send",
+  "bedtime",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

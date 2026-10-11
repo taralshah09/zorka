@@ -6,6 +6,8 @@ import type { Logger } from "pino";
 import { errorHandler, notFoundHandler } from "./http/errors.js";
 import type { AiClient } from "./modules/ai/ai.client.js";
 import { aiDevRoutes } from "./modules/ai/ai.routes.js";
+import { coachRoutes } from "./modules/coach/coach.routes.js";
+import type { CoachService } from "./modules/coach/coach.service.js";
 import { exercisesRoutes } from "./modules/exercises/exercises.routes.js";
 import type { ExercisesService } from "./modules/exercises/exercises.service.js";
 import { foodsRoutes } from "./modules/foods/foods.routes.js";
@@ -13,6 +15,9 @@ import type { FoodsService } from "./modules/foods/foods.service.js";
 import { LARGE_BODY_PATHS, parseRoutes } from "./modules/mealParse/parse.routes.js";
 import type { ParseService } from "./modules/mealParse/parse.service.js";
 import { mealsRoutes } from "./modules/meals/meals.routes.js";
+import { nearbyRoutes } from "./modules/nearby/nearby.routes.js";
+import type { NearbyService } from "./modules/nearby/nearby.service.js";
+import type { SearchClient } from "./modules/nearby/search.client.js";
 import type { MealsService } from "./modules/meals/meals.service.js";
 import { GYM_LARGE_BODY_PATH, gymParseRoutes } from "./modules/gymParse/gymParse.routes.js";
 import type { GymParseService } from "./modules/gymParse/gymParse.service.js";
@@ -40,7 +45,10 @@ export type AppDeps = {
   workouts: WorkoutsService;
   routines: RoutinesService;
   gymParse: GymParseService;
+  nearby: NearbyService;
+  coach: CoachService;
   ai: AiClient;
+  search: SearchClient;
   /** Mounts /v1/dev/* (never in production). */
   devRoutes: boolean;
 };
@@ -53,8 +61,25 @@ const syncJson = express.json({ limit: "20mb" });
 const SYNC_PATH = /^\/v1\/users\/[^/]+\/sync$/;
 
 export function createApp(deps: AppDeps) {
-  const { logger, pingDb, users, sync, changes, foods, meals, parse, exercises, workouts, routines, gymParse, ai, devRoutes } =
-    deps;
+  const {
+    logger,
+    pingDb,
+    users,
+    sync,
+    changes,
+    foods,
+    meals,
+    parse,
+    exercises,
+    workouts,
+    routines,
+    gymParse,
+    nearby,
+    coach,
+    ai,
+    search,
+    devRoutes,
+  } = deps;
   const app = express();
   app.disable("x-powered-by");
   app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/v1/health" } }));
@@ -82,7 +107,15 @@ export function createApp(deps: AppDeps) {
   v1.use(workoutsRoutes(workouts));
   v1.use(routinesRoutes(routines));
   v1.use(gymParseRoutes(gymParse));
-  if (devRoutes) v1.use(aiDevRoutes(ai));
+  v1.use(nearbyRoutes(nearby));
+  v1.use(coachRoutes(coach));
+  if (devRoutes) {
+    v1.use(aiDevRoutes(ai));
+    // Which search services have keys (names only) and which are cooling down.
+    v1.get("/dev/search/status", (_req, res) => {
+      res.json(search.status());
+    });
+  }
   app.use("/v1", v1);
 
   app.use(notFoundHandler);

@@ -1,5 +1,5 @@
 // Coach personas — IDEATION Flow B, DESIGN.md §6.2 S08 / §8.2, brand §3.6 accents.
-// Final persona lines are written at the P35 gate; lines marked "placeholder" are stand-ins until then.
+// Final persona lines were approved at the P35 gate (D60); the per-situation lines live in lines.ts.
 import type { CoachId } from "@/core/api/types";
 import type { Accent } from "@/core/ui";
 
@@ -10,7 +10,7 @@ export type Persona = {
   vibe: string;
   /** S08 sample line in a chat bubble. */
   sample: string;
-  /** S09 sign-off under the plan. Placeholder until P35. */
+  /** S09 sign-off under the plan. */
   planLine: string;
 };
 
@@ -36,9 +36,8 @@ export const PERSONAS: Record<CoachId, Persona> = {
     name: "Desi Legend",
     accent: "orchid",
     vibe: "Fiery and motivational",
-    // Placeholder: DESIGN.md §8.2 leaves the Desi Legend's lines to the P35 gate.
-    sample: "Big day ahead. Let's make it count!",
-    planLine: "Plan ready. Now let's show them what you've got!",
+    sample: "62 g protein baaki hai! Paneer, dal, eggs — chalo, finish strong tonight!",
+    planLine: "Plan ready! Chalo, let's show them what you've got!",
   },
 };
 

@@ -37,6 +37,8 @@ import "@/features/progress/checkins";
 import "@/features/progress/phases";
 import "@/features/progress/weights";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
+import { OrderedItPrompt } from "@/features/gap/sheets";
+import { NudgePlanner } from "@/features/nudges/NudgePlanner";
 import { useActiveUser } from "@/features/users/activeUser";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -77,7 +79,12 @@ function RootStack() {
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="progress" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="gap" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="notifications" options={{ animation: "slide_from_right" }} />
       </Stack>
+      {/* P34 "Ordered it?" on return from Zomato/Blinkit, and P36's on-device nudge planner. Both render nothing until needed. */}
+      <OrderedItPrompt />
+      <NudgePlanner />
     </View>
   );
 }

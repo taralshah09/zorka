@@ -131,6 +131,18 @@ export function mealsForDay(userId: string, date: string): Meal[] {
   );
 }
 
+/** Meals from `start` to `end` (local dates, inclusive), oldest first. P32 counts "Your usual" from these. */
+export function mealsBetween(userId: string, start: string, end: string): Meal[] {
+  return hydrate(
+    getDb().getAllSync<MealRow>(
+      `SELECT * FROM meal_logs WHERE user_id = ? AND local_date BETWEEN ? AND ? AND deleted = 0 ORDER BY logged_at`,
+      userId,
+      start,
+      end,
+    ),
+  );
+}
+
 /** Creates or replaces a meal (with all its items) and queues it for sync. */
 export function saveMeal(meal: Omit<Meal, "synced">): void {
   const db = getDb();

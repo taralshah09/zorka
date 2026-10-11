@@ -8,6 +8,7 @@ import { prismaCheckinsRepository } from "./modules/checkins/checkins.repository
 import { checkinsService } from "./modules/checkins/checkins.service.js";
 import { createAiClient } from "./modules/ai/ai.client.js";
 import { aiSlotsFromEnv } from "./modules/ai/ai.config.js";
+import { coachService } from "./modules/coach/coach.service.js";
 import { prismaExercisesRepository } from "./modules/exercises/exercises.repository.js";
 import { exercisesService } from "./modules/exercises/exercises.service.js";
 import { prismaFoodsRepository } from "./modules/foods/foods.repository.js";
@@ -16,6 +17,8 @@ import { gymParseService } from "./modules/gymParse/gymParse.service.js";
 import { parseService } from "./modules/mealParse/parse.service.js";
 import { prismaMealsRepository } from "./modules/meals/meals.repository.js";
 import { mealsService } from "./modules/meals/meals.service.js";
+import { nearbyService } from "./modules/nearby/nearby.service.js";
+import { createSearchClient } from "./modules/nearby/search.client.js";
 import { prismaPhasesRepository } from "./modules/phases/phases.repository.js";
 import { phasesService } from "./modules/phases/phases.service.js";
 import { prismaRoutinesRepository } from "./modules/routines/routines.repository.js";
@@ -48,6 +51,11 @@ const phases = phasesService(prismaPhasesRepository(prisma));
 const syncRepo = prismaSyncRepository(prisma);
 const aiSlots = aiSlotsFromEnv(env);
 const ai = createAiClient({ slots: aiSlots, logger });
+const search = createSearchClient({
+  keys: { tavily: env.TAVILY_API_KEY, firecrawl: env.FIRECRAWL_API_KEY, anakin: env.ANAKIN_API_KEY },
+  order: env.SEARCH_PROVIDER_ORDER,
+  logger,
+});
 
 const app = createApp({
   logger,
@@ -82,7 +90,10 @@ const app = createApp({
   workouts,
   routines,
   gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
+  nearby: nearbyService(ai, search, foodsRepo.userExists),
+  coach: coachService(ai, foodsRepo.userExists),
   ai,
+  search,
   devRoutes: env.NODE_ENV !== "production",
 });
 
@@ -90,6 +101,9 @@ const server = app.listen(env.PORT, () => {
   logger.info(`kimbo-api listening on http://localhost:${env.PORT}`);
   // Slot ids only (e.g. "groq#1"), never keys.
   logger.info({ aiSlots: aiSlots.map((s) => s.id) }, aiSlots.length ? "AI slots ready" : "No AI keys set: AI logging is off");
+  // Service names only, never keys.
+  const searchReady = search.status().configured;
+  logger.info({ search: searchReady }, searchReady.length ? "Search ready" : "No search keys set: nearby options are off");
 });
 
 const shutdown = (signal: string) => {

@@ -158,7 +158,8 @@ test("Expo Go and older builds report missing Health Connect without loading or 
 
 test("all migrations apply and only one recording/paused session can exist across profiles", () => {
   store.createActivity("a", "run", 70, false);
-  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 8);
+  // v10 since P31–P36 (target_eases, coach_messages, nearby_cache).
+  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 10);
   assert.throws(() => store.createActivity("b", "walk", 70, false), /Finish/);
   assert.throws(
     () =>
@@ -181,7 +182,11 @@ test("SQLite upgrade preserves an existing meal and workout", () => {
     )
     .run("workout", "a", "Gym", "active", "now", "2026-10-11", "now");
   // Recreate a v6 database to run the actual upgrade rather than merely checking fresh creation.
-  sql.exec("DROP TABLE route_points; DROP TABLE health_steps; DROP TABLE activities; PRAGMA user_version = 6");
+  sql.exec(
+    "DROP TABLE route_points; DROP TABLE health_steps; DROP TABLE activities; " +
+      "DROP TABLE weight_logs; DROP TABLE checkins; DROP TABLE phases; " +
+      "DROP TABLE target_eases; DROP TABLE coach_messages; DROP TABLE nearby_cache; PRAGMA user_version = 6",
+  );
   modules.delete(path.join(mobileRoot, "src/core/storage/db.ts"));
   load(path.join(mobileRoot, "src/core/storage/db.ts")).getDb();
   assert.equal(sql.prepare("SELECT count(*) AS n FROM meal_logs").get().n, 1);

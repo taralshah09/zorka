@@ -62,6 +62,57 @@ export type SyncOp = {
 };
 export type SyncResult = { opId: string; status: "applied" | "stale" | "rejected"; message?: string };
 
+// ── Nearby options (P34) — mirrors backend/src/modules/nearby/nearby.schemas.ts ──────────────────
+
+export type NearbyArea = { locality?: string; city?: string; pincode?: string };
+export type NearbyOption = {
+  id: string;
+  source: "zomato" | "blinkit";
+  name: string;
+  restaurant: string | null;
+  url: string;
+  macros: Macros;
+  diet: DietPref | null;
+  estimate: true;
+};
+export type NearbyResult = {
+  areaKey: string;
+  fetchedAt: string;
+  expiresAt: string;
+  options: NearbyOption[];
+  providers: string[];
+  partial: boolean;
+};
+
+// ── Coach chat (P35) — mirrors backend/src/modules/coach/coach.schemas.ts ────────────────────────
+
+export type CoachDayContext = {
+  name?: string | null;
+  goal?: Goal | null;
+  diet?: DietPref | null;
+  localTime: string;
+  state: "on_track" | "under" | "over" | "done";
+  targetKcal: number;
+  floorKcal: number;
+  kcalLeft: number;
+  proteinLeftG: number;
+  carbsLeftG: number;
+  fatLeftG: number;
+  eatenKcal: number;
+  eatenProteinG: number;
+  burnedKcal: number;
+  steps?: number | null;
+  stepGoal: number;
+  streakDays: number;
+  workoutToday: boolean;
+  mealsToday: string[];
+};
+export type CoachChatResult = {
+  reply: string;
+  kind: "ai" | "support" | "fallback";
+  ai: { slot: string; model: string; attempts: number } | null;
+};
+
 // ── Foods (P11–P13) — mirrors backend/src/modules/foods/foods.schemas.ts ─────────────────────────
 
 export type Cuisine = "indian" | "indo_chinese" | "italian" | "continental" | "other";

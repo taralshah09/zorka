@@ -21,4 +21,10 @@ export const kv = {
 export const KV_KEYS = {
   theme: "kimbo.theme",
   activeUserId: "kimbo.activeUserId",
+  /** Per profile: `${key}.${userId}`. */
+  pincode: "kimbo.pincode",
+  nudgeSettings: "kimbo.nudges",
+  nudgeLog: "kimbo.nudgeLog",
+  welcomeBackSeen: "kimbo.welcomeBackSeen",
+  pendingOrder: "kimbo.pendingOrder",
 } as const;

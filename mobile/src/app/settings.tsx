@@ -1,6 +1,6 @@
 // S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10, plus the daily step goal,
-// D48), Food logging (P18: the oil/ghee prompt), Demo profile (P06), sync status (P07). Editing single fields, notifications and
-// permissions arrive with their phases (P36); for now the plan is changed by redoing onboarding.
+// D48), Food logging (P18: the oil/ghee prompt), Coach & nudges (P35/P36: change coach, S45 notifications), Demo profile
+// (P06), sync status (P07). The plan itself is changed by redoing onboarding.
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -22,6 +22,9 @@ import {
   useToast,
 } from "@/core/ui";
 import { HealthConnectSettings } from "@/features/activity/HealthConnectSettings";
+import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
+import { PERSONAS } from "@/features/coach/personas";
+import { useNudgeSettings } from "@/features/nudges/settings";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
 import { StepGoalField } from "@/features/targets/StepGoalField";
@@ -49,13 +52,15 @@ const TARGET_SOURCE = {
 
 export default function Settings() {
   const { theme, setThemeName } = useThemeControls();
-  const { profile, targets, source } = useTargets();
+  const { profile, targets, source, ease } = useTargets();
   const online = useNetwork((s) => s.online);
   const sync = useSyncStatus();
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const updateProfile = useUpdateProfile(userId);
   const [stepSheet, setStepSheet] = useState(false);
+  const [coachSheet, setCoachSheet] = useState(false);
+  const nudges = useNudgeSettings(userId);
   const oilPrompt = updateProfile.isPending ? !!updateProfile.variables?.oilGheePrompt : !!profile.data?.oilGheePrompt;
   const pendingDetail = updateProfile.isPending ? updateProfile.variables?.checkinDetailed : undefined;
   const checkinStyle: CheckinStyle = (pendingDetail ?? profile.data?.checkinDetailed) ? "detailed" : "simple";
@@ -110,7 +115,7 @@ export default function Settings() {
               <ListItem
                 icon="restaurant"
                 title="Daily calories"
-                subtitle={TARGET_SOURCE[source]}
+                subtitle={ease ? `Eased by ${ease} kcal today` : TARGET_SOURCE[source]}
                 value={`${formatInt(targets.kcal)} kcal`}
                 divider
               />
@@ -178,6 +183,32 @@ export default function Settings() {
           />
         </Card>
       </Section>
+
+      <Section title="Coach & nudges">
+        <Card flush>
+          <ListItem
+            icon="forum"
+            title="Coach"
+            value={profile.data?.coach ? PERSONAS[profile.data.coach].name : "Not set"}
+            subtitle={online ? undefined : "Connect to change this."}
+            chevron
+            divider
+            onPress={online && profile.data ? () => setCoachSheet(true) : undefined}
+          />
+          <ListItem
+            icon="notifications"
+            title="Notifications"
+            value={nudges.enabled ? `Up to ${nudges.perDay} a day` : "Off"}
+            chevron
+            onPress={() => router.push("/notifications")}
+          />
+        </Card>
+      </Section>
+      <CoachPickerSheet
+        visible={coachSheet}
+        onClose={() => setCoachSheet(false)}
+        current={profile.data?.coach ?? null}
+      />
 
       <Section title="Health & activity">
         <HealthConnectSettings />
