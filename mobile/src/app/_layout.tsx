@@ -25,6 +25,10 @@ import "@/features/dev/syncProbes";
 // Register the meal_log (P12) and custom_food (P13) entities with the sync engine at boot.
 import { useCatalogSync } from "@/features/food/catalog";
 import "@/features/meals/store";
+// Register custom_exercise, workout (P19) and routine (P21) with the sync engine at boot.
+import { useExerciseCatalogSync } from "@/features/gym/catalog";
+import "@/features/gym/routines";
+import "@/features/gym/store";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -43,6 +47,7 @@ function bootstrap() {
 function RootStack() {
   const { colors, isDark } = useTheme();
   useCatalogSync();
+  useExerciseCatalogSync();
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style={isDark ? "light" : "dark"} />
@@ -55,6 +60,7 @@ function RootStack() {
         <Stack.Screen name="quick-log" options={{ presentation: "transparentModal", animation: "fade" }} />
         <Stack.Screen name="coming-soon" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="log" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="train" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
       </Stack>
     </View>

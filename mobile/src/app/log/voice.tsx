@@ -3,13 +3,10 @@
 // (live level bars), reading ("Reading your meal…"), no speech, saved offline (queued), error.
 // Whisper isn't streaming, so the transcript shows on the confirm sheet, not live while talking.
 import {
-  AudioQuality,
   getRecordingPermissionsAsync,
-  IOSOutputFormat,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  type RecordingOptions,
 } from "expo-audio";
 import { File } from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
@@ -23,23 +20,12 @@ import { useTheme } from "@/core/theme";
 import { Button, ErrorState, Header, PressableScale, Screen, Text } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
 import { mealTypeParam } from "@/features/log/nav";
-import { parseVoice, VOICE_MIME } from "@/features/log/parse";
+import { parseVoice, VOICE_MIME, VOICE_RECORDING } from "@/features/log/parse";
 import { queueVoice, removeVoice, useVoiceQueue, type VoiceNote } from "@/features/log/voiceQueue";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
 
-/** D32: AAC in m4a, mono, 16 kHz, 32 kbps — about 240 KB a minute. */
-const RECORDING: RecordingOptions = {
-  extension: ".m4a",
-  sampleRate: 16_000,
-  numberOfChannels: 1,
-  bitRate: 32_000,
-  isMeteringEnabled: true,
-  android: { outputFormat: "mpeg4", audioEncoder: "aac" },
-  ios: { outputFormat: IOSOutputFormat.MPEG4AAC, audioQuality: AudioQuality.MEDIUM },
-  web: { mimeType: "audio/webm" },
-};
 const MAX_MS = 60_000;
 const MIN_MS = 700;
 const BARS = 28;
@@ -62,7 +48,7 @@ export default function VoiceCapture() {
   const queue = useVoiceQueue(userId);
   const mealType = mealTypeParam(params) ?? mealTypeForTime(new Date());
 
-  const recorder = useAudioRecorder(RECORDING);
+  const recorder = useAudioRecorder(VOICE_RECORDING);
   const [phase, setPhase] = useState<Phase>(params.queued ? "reading" : "checking");
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const [hint, setHint] = useState<string | null>(null);

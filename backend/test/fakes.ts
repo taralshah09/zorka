@@ -1,21 +1,30 @@
 // In-memory repositories + a test app. No database needed.
 import { pino } from "pino";
 
+import { EXERCISE_SOURCE, EXERCISES } from "../prisma/data/exercises.js";
 import { FOOD_SOURCE, FOODS } from "../prisma/data/foods.js";
 import { createApp } from "../src/app.js";
 import { createAiClient, type AiClient } from "../src/modules/ai/ai.client.js";
 import type { AiSlot } from "../src/modules/ai/ai.config.js";
 import type { Fetch } from "../src/modules/ai/providers.js";
+import { exercisesFromRows } from "../src/modules/exercises/catalog.js";
+import type { ExerciseRecord, ExercisesRepository } from "../src/modules/exercises/exercises.repository.js";
+import { exercisesService } from "../src/modules/exercises/exercises.service.js";
 import { foodsFromRows } from "../src/modules/foods/catalog.js";
 import type { FoodRecord, FoodsRepository } from "../src/modules/foods/foods.repository.js";
 import { foodsService } from "../src/modules/foods/foods.service.js";
+import { gymParseService } from "../src/modules/gymParse/gymParse.service.js";
 import { parseService } from "../src/modules/mealParse/parse.service.js";
 import type { MealRecord, MealsRepository } from "../src/modules/meals/meals.repository.js";
 import { mealsService } from "../src/modules/meals/meals.service.js";
+import type { RoutineRecord, RoutinesRepository } from "../src/modules/routines/routines.repository.js";
+import { routinesService } from "../src/modules/routines/routines.service.js";
 import type { SyncRepository, ProbeRecord } from "../src/modules/sync/sync.repository.js";
 import { syncService } from "../src/modules/sync/sync.service.js";
 import type { UsersRepository, UserWithProfile } from "../src/modules/users/users.repository.js";
 import { usersService } from "../src/modules/users/users.service.js";
+import type { WorkoutRecord, WorkoutsRepository } from "../src/modules/workouts/workouts.repository.js";
+import { workoutsService } from "../src/modules/workouts/workouts.service.js";
 
 export const RIYA = "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11";
 export const ARJUN = "8a2d4b6f-1c3e-4d8b-8f32-6b8c4dae1f22";
@@ -165,6 +174,71 @@ export function memoryMeals(userIds: string[]): MealsRepository & { rows: Map<st
   };
 }
 
+/** The real curated exercise list, in memory, plus user-created exercises (P19). */
+export function memoryExercises(userIds: string[]): ExercisesRepository & { rows: Map<string, ExerciseRecord> } {
+  const rows = new Map<string, ExerciseRecord>(
+    exercisesFromRows(EXERCISES).map(({ slug: _s, ...e }) => [
+      e.id,
+      { ...e, source: EXERCISE_SOURCE, custom: false, ownerUserId: null, clientUpdatedAt: null, deletedAt: null, updatedAt: T0 },
+    ]),
+  );
+  return {
+    rows,
+    userExists: async (id) => userIds.includes(id),
+    listCatalog: async (userId) =>
+      [...rows.values()].filter((e) => !e.deletedAt && (e.ownerUserId === null || e.ownerUserId === userId)),
+    findExercise: async (id) => rows.get(id) ?? null,
+    existingIds: async (ids) => new Set(ids.filter((id) => rows.has(id))),
+    upsertCustomExercise: async ({ id, ownerUserId, clientUpdatedAt, ...e }) => {
+      rows.set(id, { id, ...e, aliases: [], source: "user", custom: true, ownerUserId, clientUpdatedAt, deletedAt: null, updatedAt: new Date() });
+    },
+    softDeleteCustomExercise: async (id, at) => {
+      const e = rows.get(id);
+      if (e) rows.set(id, { ...e, deletedAt: at, clientUpdatedAt: at });
+    },
+  };
+}
+
+export function memoryWorkouts(userIds: string[]): WorkoutsRepository & { rows: Map<string, WorkoutRecord> } {
+  const rows = new Map<string, WorkoutRecord>();
+  return {
+    rows,
+    userExists: async (id) => userIds.includes(id),
+    findWorkout: async (id) => rows.get(id) ?? null,
+    upsertWorkout: async ({ id, userId, clientUpdatedAt, startedAt, endedAt, ...w }) => {
+      rows.set(id, { ...w, id, userId, clientUpdatedAt, startedAt: new Date(startedAt), endedAt: new Date(endedAt), deletedAt: null });
+    },
+    softDeleteWorkout: async (id, at) => {
+      const w = rows.get(id);
+      if (w) rows.set(id, { ...w, deletedAt: at, clientUpdatedAt: at });
+    },
+    listRecent: async (userId, limit) =>
+      [...rows.values()]
+        .filter((w) => w.userId === userId && !w.deletedAt)
+        .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        .slice(0, limit),
+  };
+}
+
+export function memoryRoutines(userIds: string[]): RoutinesRepository & { rows: Map<string, RoutineRecord> } {
+  const rows = new Map<string, RoutineRecord>();
+  return {
+    rows,
+    userExists: async (id) => userIds.includes(id),
+    findRoutine: async (id) => rows.get(id) ?? null,
+    upsertRoutine: async ({ id, userId, clientUpdatedAt, ...r }) => {
+      rows.set(id, { ...r, id, userId, clientUpdatedAt, deletedAt: null });
+    },
+    softDeleteRoutine: async (id, at) => {
+      const r = rows.get(id);
+      if (r) rows.set(id, { ...r, deletedAt: at, clientUpdatedAt: at });
+    },
+    listRoutines: async (userId) =>
+      [...rows.values()].filter((r) => r.userId === userId && !r.deletedAt).sort((a, b) => a.name.localeCompare(b.name)),
+    existingIds: async (ids) => new Set(ids.filter((id) => rows.has(id))),
+  };
+}
+
 /** An AI client whose network is `fetchImpl` (default: no slots configured). */
 export function fakeAi(slots: AiSlot[] = [], fetchImpl?: Fetch, now?: () => number): AiClient {
   return createAiClient({ slots, logger: pino({ level: "silent" }), fetchImpl, now });
@@ -178,6 +252,12 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
   const mealsRepo = memoryMeals(ids);
   const foods = foodsService(foodsRepo);
   const meals = mealsService(mealsRepo, foods.existingIds);
+  const exercisesRepo = memoryExercises(ids);
+  const workoutsRepo = memoryWorkouts(ids);
+  const routinesRepo = memoryRoutines(ids);
+  const exercises = exercisesService(exercisesRepo);
+  const routines = routinesService(routinesRepo, exercises.existingIds);
+  const workouts = workoutsService(workoutsRepo, exercises.existingIds, routines.existingIds);
   const ai = opts.ai ?? fakeAi();
   const app = createApp({
     logger: pino({ level: "silent" }),
@@ -185,12 +265,31 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient } = {}) {
       if (opts.dbUp === false) throw new Error("db down");
     },
     users: usersService(users),
-    sync: syncService(sync, { meal_log: meals.syncMeal, custom_food: foods.syncCustomFood }),
+    sync: syncService(sync, {
+      meal_log: meals.syncMeal,
+      custom_food: foods.syncCustomFood,
+      custom_exercise: exercises.syncCustomExercise,
+      workout: workouts.syncWorkout,
+      routine: routines.syncRoutine,
+    }),
     foods,
     meals,
     parse: parseService(ai, foods, foodsRepo.userExists),
+    exercises,
+    workouts,
+    routines,
+    gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
     ai,
     devRoutes: true,
   });
-  return { app, users, sync, foods: foodsRepo, meals: mealsRepo };
+  return {
+    app,
+    users,
+    sync,
+    foods: foodsRepo,
+    meals: mealsRepo,
+    exercises: exercisesRepo,
+    workouts: workoutsRepo,
+    routines: routinesRepo,
+  };
 }

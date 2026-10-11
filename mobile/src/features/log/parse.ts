@@ -1,5 +1,6 @@
 // AI parsing calls (P15–P17). Each returns the server's ParseResult plus the round-trip time measured on
 // the phone (the P15 "under ~5 s" check). The server may try several AI keys, so timeouts are longer.
+import { AudioQuality, IOSOutputFormat, type RecordingOptions } from "expo-audio";
 import { File, Paths, Directory } from "expo-file-system";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 
@@ -27,6 +28,18 @@ export const parseText = (userId: string, text: string) =>
 
 /** Voice notes are m4a/AAC (D32). */
 export const VOICE_MIME = "audio/mp4";
+
+/** D32: AAC in m4a, mono, 16 kHz, 32 kbps — about 240 KB a minute. Used by meal voice (P16) and gym voice (P22). */
+export const VOICE_RECORDING: RecordingOptions = {
+  extension: ".m4a",
+  sampleRate: 16_000,
+  numberOfChannels: 1,
+  bitRate: 32_000,
+  isMeteringEnabled: true,
+  android: { outputFormat: "mpeg4", audioEncoder: "aac" },
+  ios: { outputFormat: IOSOutputFormat.MPEG4AAC, audioQuality: AudioQuality.MEDIUM },
+  web: { mimeType: "audio/webm" },
+};
 
 export async function parseVoice(userId: string, uri: string): Promise<Timed> {
   const audioBase64 = await new File(uri).base64();

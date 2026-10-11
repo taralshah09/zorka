@@ -1,5 +1,6 @@
 // API contract types — mirror backend/src/modules/*/…schemas.ts. Keep the two in step.
 import type { FoodUnit, Macros } from "@shared/domain/food";
+import type { ExerciseCategory, ExerciseType, SetValues } from "@shared/domain/gym";
 
 export type Goal = "lose_fat" | "build_muscle" | "maintain" | "get_fitter";
 export type Sex = "male" | "female" | "unspecified";
@@ -31,7 +32,7 @@ export type Profile = {
 
 export type ProfileUpdate = Partial<Omit<Profile, "userId" | "displayName" | "updatedAt">>;
 
-export type SyncEntity = "sync_probe" | "meal_log" | "custom_food";
+export type SyncEntity = "sync_probe" | "meal_log" | "custom_food" | "custom_exercise" | "workout" | "routine";
 export type SyncOp = {
   opId: string;
   entity: SyncEntity;
@@ -104,5 +105,40 @@ export type ParseResult = {
   items: ParsedItem[];
   followUp: FollowUp | null;
   timings: { sttMs: number | null; aiMs: number; matchMs: number; totalMs: number };
+  ai: { slot: string; model: string; attempts: number };
+};
+
+// ── Gym (P19–P22) — mirrors backend/src/modules/{exercises,gymParse}/…schemas.ts ────────────────
+
+export type Exercise = {
+  id: string;
+  name: string;
+  aliases: string[];
+  category: ExerciseCategory;
+  type: ExerciseType;
+  /** MuscleWiki how-to page (D38). */
+  referenceUrl: string | null;
+  source: string;
+  custom: boolean;
+  updatedAt: string;
+};
+
+export type GymUncertainReason = "low_confidence" | "no_match" | "missing_values";
+
+export type GymParsedSet = {
+  query: string;
+  exercise: Exercise | null;
+  matchScore: number | null;
+  values: SetValues;
+  count: number;
+  confidence: number;
+  uncertain: boolean;
+  reasons: GymUncertainReason[];
+};
+
+export type GymParseResult = {
+  transcript: string;
+  sets: GymParsedSet[];
+  timings: { sttMs: number; aiMs: number; matchMs: number; totalMs: number };
   ai: { slot: string; model: string; attempts: number };
 };

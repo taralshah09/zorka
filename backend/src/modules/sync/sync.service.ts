@@ -3,7 +3,8 @@ import type { EntityHandler } from "./lww.js";
 import type { SyncRepository } from "./sync.repository.js";
 import { SyncProbeData, type SyncEntity, type SyncOp, type SyncResult } from "./sync.schemas.js";
 
-/** Handlers for the real local-first entities, registered by their modules (P12 meals, P13 foods). */
+/** Handlers for the real local-first entities, registered by their modules (P12 meals, P13 foods,
+ *  P19 exercises + workouts, P21 routines). */
 export type EntityHandlers = Record<Exclude<SyncEntity, "sync_probe">, EntityHandler>;
 
 export function syncService(repo: SyncRepository, handlers: EntityHandlers) {

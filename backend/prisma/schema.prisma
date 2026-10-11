@@ -66,6 +66,9 @@ model User {
   syncProbes SyncProbe[]
   mealLogs   MealLog[]
   foods      Food[]
+  exercises  Exercise[]
+  workouts   Workout[]
+  routines   Routine[]
 
   @@map("users")
 }
@@ -275,4 +278,153 @@ model MealItem {
 
   @@index([mealLogId])
   @@map("meal_items")
+}
+
+// ---------------------------------------------------------------------------
+// P19 · Exercises and workouts (D38). Curated exercises are seeded from prisma/data/exercises.ts and keyed
+// by `slug`; user-created exercises (owner_user_id set) sync from the phone as "custom_exercise".
+// Workouts are local-first (D23): logged on the phone, pushed as "workout" once finished. Exercises and
+// sets keep a snapshot of the exercise name and type, so editing an exercise never rewrites history.
+// ---------------------------------------------------------------------------
+
+enum ExerciseCategory {
+  chest
+  back
+  shoulders
+  biceps
+  triceps
+  legs
+  abs
+  cardio
+}
+
+enum ExerciseType {
+  weight_reps
+  reps
+  time
+  distance_time
+}
+
+model Exercise {
+  id              String           @id @db.Uuid
+  slug            String           @unique
+  name            String
+  aliases         String[]         @default([])
+  category        ExerciseCategory
+  type            ExerciseType
+  /// How-to page on musclewiki.com. Curated: from the seed. User-created: optional, typed by the user.
+  referenceUrl    String?          @map("reference_url")
+  /// "kimbo-curated-v1" for the seed, "user" for a created exercise.
+  source          String
+  ownerUserId     String?          @map("owner_user_id") @db.Uuid
+  clientUpdatedAt DateTime?        @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner            User?             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  workoutExercises WorkoutExercise[]
+  routineExercises RoutineExercise[]
+
+  @@index([ownerUserId])
+  @@map("exercises")
+}
+
+model Workout {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  name            String
+  startedAt       DateTime  @map("started_at") @db.Timestamptz(3)
+  endedAt         DateTime  @map("ended_at") @db.Timestamptz(3)
+  /// The user's local calendar day (YYYY-MM-DD) the workout started on.
+  localDate       String    @map("local_date")
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// P21: the routine this workout was started from, if any.
+  routineId       String?   @map("routine_id") @db.Uuid
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+  routine   Routine?          @relation(fields: [routineId], references: [id], onDelete: SetNull)
+
+  @@index([userId, localDate])
+  @@map("workouts")
+}
+
+model WorkoutExercise {
+  id         String       @id @db.Uuid
+  workoutId  String       @map("workout_id") @db.Uuid
+  /// null when the exercise was deleted or never reached the server.
+  exerciseId String?      @map("exercise_id") @db.Uuid
+  position   Int
+  name       String
+  type       ExerciseType
+
+  workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise?    @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+  sets     WorkoutSet[]
+
+  @@index([workoutId])
+  @@index([exerciseId])
+  @@map("workout_exercises")
+}
+
+model WorkoutSet {
+  id                String    @id @db.Uuid
+  workoutExerciseId String    @map("workout_exercise_id") @db.Uuid
+  position          Int
+  weightKg          Float?    @map("weight_kg")
+  reps              Int?
+  durationS         Int?      @map("duration_s")
+  distanceM         Float?    @map("distance_m")
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(3)
+  /// P20: records this set broke when it was logged (D39), e.g. {weight,e1rm}. Empty = not a PR.
+  prKinds           String[]  @default([]) @map("pr_kinds")
+
+  workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+
+  @@index([workoutExerciseId])
+  @@map("workout_sets")
+}
+
+// ---------------------------------------------------------------------------
+// P21 · Routines (S26). A saved list of exercises with target sets × reps, started as a workout from S22.
+// Local-first, synced as "routine" (D23). Exercises keep a name snapshot like workouts do.
+// ---------------------------------------------------------------------------
+
+model Routine {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  name            String
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises RoutineExercise[]
+  workouts  Workout[]
+
+  @@index([userId])
+  @@map("routines")
+}
+
+model RoutineExercise {
+  id         String       @id @db.Uuid
+  routineId  String       @map("routine_id") @db.Uuid
+  exerciseId String?      @map("exercise_id") @db.Uuid
+  position   Int
+  name       String
+  type       ExerciseType
+  targetSets Int          @map("target_sets")
+  /// null for exercises without reps (holds, cardio).
+  targetReps Int?         @map("target_reps")
+
+  routine  Routine   @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  exercise Exercise? @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+
+  @@index([routineId])
+  @@map("routine_exercises")
 }

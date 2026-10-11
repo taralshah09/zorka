@@ -2,10 +2,13 @@
 // Users are upserted by fixed id; profiles are created empty and never overwritten, so a re-run
 // keeps whatever onboarding (P09) has saved. Full demo history arrives at P40.
 // P11: the curated food catalog (prisma/data/foods.ts), upserted by slug with stable ids.
+// P19: the curated exercise list (prisma/data/exercises.ts), the same way.
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client.js";
+import { exercisesFromRows } from "../src/modules/exercises/catalog.js";
 import { foodsFromRows } from "../src/modules/foods/catalog.js";
+import { EXERCISE_SOURCE, EXERCISES } from "./data/exercises.js";
 import { FOOD_SOURCE, FOODS } from "./data/foods.js";
 
 export const DUMMY_USERS = [
@@ -32,6 +35,7 @@ async function main() {
     console.log(`Seed done: ${count} dummy users present.`);
 
     await seedFoods(prisma);
+    await seedExercises(prisma);
   } finally {
     await prisma.$disconnect();
   }
@@ -76,6 +80,38 @@ async function seedFoods(prisma: PrismaClient) {
 
   const total = await prisma.food.count({ where: { source: FOOD_SOURCE } });
   console.log(`Foods: ${toCreate.length} created, ${toUpdate.length} updated, ${total} curated foods present.`);
+}
+
+/** Creates new curated exercises and updates changed ones. User-created exercises are never touched. */
+async function seedExercises(prisma: PrismaClient) {
+  const exercises = exercisesFromRows(EXERCISES);
+  const existing = new Map(
+    (await prisma.exercise.findMany({ where: { slug: { in: exercises.map((e) => e.slug) } } })).map((e) => [e.slug, e]),
+  );
+
+  const toCreate = exercises.filter((e) => !existing.has(e.slug));
+  const toUpdate = exercises.filter((e) => {
+    const x = existing.get(e.slug);
+    if (!x) return false;
+    return (
+      x.id !== e.id ||
+      x.name !== e.name ||
+      x.aliases.join("|") !== e.aliases.join("|") ||
+      x.category !== e.category ||
+      x.type !== e.type ||
+      x.referenceUrl !== e.referenceUrl ||
+      x.deletedAt !== null
+    );
+  });
+  const data = (e: (typeof exercises)[number]) => ({ ...e, source: EXERCISE_SOURCE, deletedAt: null });
+
+  await prisma.$transaction([
+    prisma.exercise.createMany({ data: toCreate.map(data), skipDuplicates: true }),
+    ...toUpdate.map((e) => prisma.exercise.update({ where: { slug: e.slug }, data: data(e) })),
+  ]);
+
+  const total = await prisma.exercise.count({ where: { source: EXERCISE_SOURCE, deletedAt: null } });
+  console.log(`Exercises: ${toCreate.length} created, ${toUpdate.length} updated, ${total} curated exercises present.`);
 }
 
 main().catch((err) => {

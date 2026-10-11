@@ -96,6 +96,81 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       );
       CREATE INDEX voice_queue_user ON voice_queue (user_id, created_at);
     `),
+
+  // v4 · P19 — exercise list cache (the picker works offline) + local-first workouts.
+  //   exercises: same shape as foods (curated rows have owner_user_id NULL; synced = 0 for a user-created
+  //   exercise not yet on the server).
+  //   workouts.status: 'active' while logging (never synced), 'done' once finished (synced as "workout").
+  //   workout_exercises.category is a display snapshot (icon tile, S22 summaries).
+  (db) =>
+    db.execSync(`
+      CREATE TABLE exercises (
+        id TEXT PRIMARY KEY NOT NULL,
+        owner_user_id TEXT,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX exercises_owner ON exercises (owner_user_id);
+      CREATE TABLE workouts (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        local_date TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX workouts_user ON workouts (user_id, status, started_at);
+      CREATE TABLE workout_exercises (
+        id TEXT PRIMARY KEY NOT NULL,
+        workout_id TEXT NOT NULL,
+        exercise_id TEXT,
+        position INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        category TEXT
+      );
+      CREATE INDEX workout_exercises_workout ON workout_exercises (workout_id, position);
+      CREATE INDEX workout_exercises_exercise ON workout_exercises (exercise_id);
+      CREATE TABLE workout_sets (
+        id TEXT PRIMARY KEY NOT NULL,
+        workout_exercise_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        weight_kg REAL,
+        reps INTEGER,
+        duration_s INTEGER,
+        distance_m REAL,
+        done INTEGER NOT NULL DEFAULT 0,
+        completed_at TEXT
+      );
+      CREATE INDEX workout_sets_exercise ON workout_sets (workout_exercise_id, position);
+    `),
+
+  // v5 · P20 — the records each ticked set broke (JSON array of PR kinds, D39).
+  (db) => db.execSync(`ALTER TABLE workout_sets ADD COLUMN pr_kinds TEXT NOT NULL DEFAULT '[]';`),
+
+  // v6 · P21 — routines, and the routine a workout was started from. target_reps on workout_exercises is
+  // local only: the reps placeholder when there's no previous session.
+  (db) =>
+    db.execSync(`
+      CREATE TABLE routines (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        exercises TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX routines_user ON routines (user_id);
+      ALTER TABLE workouts ADD COLUMN routine_id TEXT;
+      ALTER TABLE workout_exercises ADD COLUMN target_reps INTEGER;
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

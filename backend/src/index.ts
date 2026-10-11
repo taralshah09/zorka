@@ -4,15 +4,22 @@ import { createLogger } from "./lib/logger.js";
 import { disconnectPrisma, getPrisma } from "./lib/prisma.js";
 import { createAiClient } from "./modules/ai/ai.client.js";
 import { aiSlotsFromEnv } from "./modules/ai/ai.config.js";
+import { prismaExercisesRepository } from "./modules/exercises/exercises.repository.js";
+import { exercisesService } from "./modules/exercises/exercises.service.js";
 import { prismaFoodsRepository } from "./modules/foods/foods.repository.js";
 import { foodsService } from "./modules/foods/foods.service.js";
+import { gymParseService } from "./modules/gymParse/gymParse.service.js";
 import { parseService } from "./modules/mealParse/parse.service.js";
 import { prismaMealsRepository } from "./modules/meals/meals.repository.js";
 import { mealsService } from "./modules/meals/meals.service.js";
+import { prismaRoutinesRepository } from "./modules/routines/routines.repository.js";
+import { routinesService } from "./modules/routines/routines.service.js";
 import { prismaSyncRepository } from "./modules/sync/sync.repository.js";
 import { syncService } from "./modules/sync/sync.service.js";
 import { prismaUsersRepository } from "./modules/users/users.repository.js";
 import { usersService } from "./modules/users/users.service.js";
+import { prismaWorkoutsRepository } from "./modules/workouts/workouts.repository.js";
+import { workoutsService } from "./modules/workouts/workouts.service.js";
 
 const env = loadEnv();
 const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV === "development");
@@ -21,6 +28,10 @@ const prisma = getPrisma(env.DATABASE_URL);
 const foodsRepo = prismaFoodsRepository(prisma);
 const foods = foodsService(foodsRepo);
 const meals = mealsService(prismaMealsRepository(prisma), foods.existingIds);
+const exercisesRepo = prismaExercisesRepository(prisma);
+const exercises = exercisesService(exercisesRepo);
+const routines = routinesService(prismaRoutinesRepository(prisma), exercises.existingIds);
+const workouts = workoutsService(prismaWorkoutsRepository(prisma), exercises.existingIds, routines.existingIds);
 const aiSlots = aiSlotsFromEnv(env);
 const ai = createAiClient({ slots: aiSlots, logger });
 
@@ -30,10 +41,20 @@ const app = createApp({
     await prisma.$queryRaw`SELECT 1`;
   },
   users: usersService(prismaUsersRepository(prisma)),
-  sync: syncService(prismaSyncRepository(prisma), { meal_log: meals.syncMeal, custom_food: foods.syncCustomFood }),
+  sync: syncService(prismaSyncRepository(prisma), {
+    meal_log: meals.syncMeal,
+    custom_food: foods.syncCustomFood,
+    custom_exercise: exercises.syncCustomExercise,
+    workout: workouts.syncWorkout,
+    routine: routines.syncRoutine,
+  }),
   foods,
   meals,
   parse: parseService(ai, foods, foodsRepo.userExists),
+  exercises,
+  workouts,
+  routines,
+  gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
   ai,
   devRoutes: env.NODE_ENV !== "production",
 });

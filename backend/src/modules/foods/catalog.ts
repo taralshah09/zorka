@@ -1,6 +1,5 @@
 // Turns the compact curated rows (prisma/data/foods.ts) into food records. Used by the seed and tests.
-import { createHash } from "node:crypto";
-
+import { stableUuid } from "../../lib/stableId.js";
 import { DEFAULT_UNIT_GRAMS, FOOD_UNITS, type FoodUnit } from "../../../../shared/domain/food.js";
 import type { FoodRow } from "../../../prisma/data/foods.js";
 
@@ -23,13 +22,7 @@ export type CatalogFood = {
 };
 
 /** Stable UUID (v5 layout) for a curated food, so re-seeding never changes ids the phone has cached. */
-export function curatedFoodId(slug: string): string {
-  const h = createHash("sha1").update(`kimbo-food:${slug}`).digest();
-  h[6] = (h[6]! & 0x0f) | 0x50;
-  h[8] = (h[8]! & 0x3f) | 0x80;
-  const hex = h.subarray(0, 16).toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
+export const curatedFoodId = (slug: string): string => stableUuid(`kimbo-food:${slug}`);
 
 function parseUnits(slug: string, spec: string, liquid: boolean): { unit: FoodUnit; grams: number }[] {
   const out: { unit: FoodUnit; grams: number }[] = [];

@@ -75,6 +75,15 @@ const ICONS = [
   "mic_off",
   "no_photography",
   "hourglass_top",
+  // P19–P22 gym (S22–S27)
+  "more_vert",
+  "play_arrow",
+  "arrow_upward",
+  "arrow_downward",
+  "skip_next",
+  "show_chart",
+  "self_improvement",
+  "menu_book",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

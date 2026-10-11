@@ -1,6 +1,6 @@
 // S11 · Quick-log sheet. No export yet (D27): built from DESIGN.md §6.3. The big mic is the hero;
 // Camera · Type · Search under it; the "Repeat yesterday's …" row (P13, matches the time of day);
-// Workout · Run · Weight at the bottom (those still route to "coming soon" until P19–P27).
+// Workout · Run · Weight at the bottom (Workout opens S24 since P19; Run and Weight are "coming soon" until P25/P27).
 import { router, useLocalSearchParams } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -9,6 +9,7 @@ import { useTheme } from "@/core/theme";
 import { BottomSheet, Button, PressableScale, Text, useToast } from "@/core/ui";
 import { formatKcal, MEAL_LABEL } from "@/features/food/format";
 import { mealTypeParam } from "@/features/log/nav";
+import { startWorkout } from "@/features/gym/store";
 import { mealTotals, repeatMeal, useYesterdaysMeal } from "@/features/meals/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
@@ -39,7 +40,15 @@ export default function QuickLog() {
     },
   ];
   const other: Entry[] = [
-    { icon: "fitness_center", label: "Workout", go: () => comingSoon("Workout logging"), hint: "Coming soon" },
+    {
+      icon: "fitness_center",
+      label: "Workout",
+      go: () => {
+        // Resumes the open workout, or starts an empty one.
+        if (userId) startWorkout(userId);
+        router.replace("/train/workout");
+      },
+    },
     { icon: "directions_run", label: "Run", go: () => comingSoon("Run recording"), hint: "Coming soon" },
     { icon: "monitor_weight", label: "Weight", go: () => comingSoon("Weight logging"), hint: "Coming soon" },
   ];

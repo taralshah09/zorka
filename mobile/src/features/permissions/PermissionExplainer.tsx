@@ -1,18 +1,27 @@
 // S49 · Permission explainer (pattern). Shown before the system prompt, on first use only (P16/P17).
-// Variants so far: microphone, camera. Denied state offers "Open settings".
+// Variants so far: microphone, camera, gym (microphone for sets, P22). Denied state offers "Open settings".
 import { Linking, StyleSheet, View } from "react-native";
 
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Button, Text } from "@/core/ui";
 
-export type PermissionKind = "microphone" | "camera";
+export type PermissionKind = "microphone" | "camera" | "gym";
 
 const COPY: Record<PermissionKind, { icon: IconName; title: string; reasons: string[]; privacy: string }> = {
   microphone: {
     icon: "mic",
     title: "Talk to log your meals",
     reasons: ['Say what you ate, like "2 roti and a katori of dal".', "You check every item before anything is saved."],
+    privacy: "Kimbo only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
+  },
+  gym: {
+    icon: "mic",
+    title: "Say your sets",
+    reasons: [
+      'Between sets, say "bench 80 kilos, 8 reps".',
+      "The set lands in your workout and the rest timer starts.",
+    ],
     privacy: "Kimbo only listens while you hold the button. The voice note goes to an AI service to turn it into text.",
   },
   camera: {
@@ -43,11 +52,11 @@ export function PermissionExplainer({
         <Icon name={c.icon} size={28} color={colors.ink} filled />
       </View>
       <Text variant="headline-md" accessibilityRole="header" style={styles.center}>
-        {denied ? `${kind === "microphone" ? "Microphone" : "Camera"} is off for Kimbo` : c.title}
+        {denied ? `${kind === "camera" ? "Camera" : "Microphone"} is off for Kimbo` : c.title}
       </Text>
       {denied ? (
         <Text variant="body" color="textSecondary" style={styles.center}>
-          {`Turn it on in Settings to ${kind === "microphone" ? "log by voice" : "log with a photo"}. You can always type or search instead.`}
+          {`Turn it on in Settings to ${kind === "camera" ? "log with a photo" : "log by voice"}. You can always ${kind === "gym" ? "type your sets" : "type or search"} instead.`}
         </Text>
       ) : (
         <View style={styles.reasons}>
