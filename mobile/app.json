@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Zorka",
-    "slug": "kimbo",
-    "scheme": "kimbo",
+    "slug": "zorka",
+    "scheme": "zorka",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,7 +12,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.taralshah.kimbo",
+      "package": "com.taralshah.zorka",
       "permissions": [
         "android.permission.health.READ_STEPS",
         "android.permission.POST_NOTIFICATIONS",

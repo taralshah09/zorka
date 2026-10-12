@@ -54,7 +54,7 @@ export function searchExercises(userId: string, q: string, limit = 40): Exercise
   return q.trim() ? rankFoods(q, localExercises(userId), 0.35, limit) : localExercises(userId);
 }
 
-const syncedAtKey = (userId: string) => `kimbo.exercisesSyncedAt.${userId}`;
+const syncedAtKey = (userId: string) => `zorka.exercisesSyncedAt.${userId}`;
 const REFRESH_EVERY_MS = 6 * 60 * 60 * 1000;
 
 /** Pulls the list from the server. Keeps user-created exercises that haven't synced yet. */

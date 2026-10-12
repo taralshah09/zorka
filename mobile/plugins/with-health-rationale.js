@@ -21,7 +21,7 @@ module.exports = function withHealthRationale(config) {
     AndroidConfig.Manifest.addMetaDataItemToMainApplication(
       app,
       "expo.modules.location.foreground_service_icon",
-      "@drawable/kimbo_recording",
+      "@drawable/zorka_recording",
       "resource",
     );
     return c;
@@ -35,7 +35,7 @@ module.exports = function withHealthRationale(config) {
       const drawable = path.join(c.modRequest.platformProjectRoot, "app/src/main/res/drawable");
       fs.mkdirSync(drawable, { recursive: true });
       fs.writeFileSync(
-        path.join(drawable, "kimbo_recording.xml"),
+        path.join(drawable, "zorka_recording.xml"),
         `<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:fillColor="#00000000" android:pathData="M12,3 A9,9 0,1 0,12 21 A9,9 0,1 0,12 3 M7,15 L10,9 L14,15 L17,9" android:strokeLineCap="round" android:strokeLineJoin="round" /></vector>`,
       );
       fs.writeFileSync(

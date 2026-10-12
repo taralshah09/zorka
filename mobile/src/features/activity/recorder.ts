@@ -15,7 +15,7 @@ import {
   setRecording,
 } from "./store";
 
-const GPS_TASK = "kimbo.activity.location.v1";
+const GPS_TASK = "zorka.activity.location.v1";
 let watcher: Location.LocationSubscription | null = null;
 let foregroundId: string | null = null;
 let changing = false;

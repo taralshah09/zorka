@@ -138,23 +138,23 @@ function StreetRouteMap({ points, mode = "summary", online }: RouteMapProps & { 
           />
           {ready ? (
             <>
-              <GeoJSONSource id="kimbo-route" data={geometry}>
+              <GeoJSONSource id="zorka-route" data={geometry}>
                 <Layer
-                  id="kimbo-route-outline"
+                  id="zorka-route-outline"
                   type="line"
                   layout={{ "line-cap": "round", "line-join": "round" }}
                   paint={{ "line-color": colors.ink, "line-width": 7, "line-opacity": 0.75 }}
                 />
                 <Layer
-                  id="kimbo-route-line"
+                  id="zorka-route-line"
                   type="line"
                   layout={{ "line-cap": "round", "line-join": "round" }}
                   paint={{ "line-color": colors.dataActivity, "line-width": 4 }}
                 />
               </GeoJSONSource>
-              <GeoJSONSource id="kimbo-endpoints" data={markerData}>
+              <GeoJSONSource id="zorka-endpoints" data={markerData}>
                 <Layer
-                  id="kimbo-endpoint-dots"
+                  id="zorka-endpoint-dots"
                   type="circle"
                   paint={{
                     "circle-radius": 7,

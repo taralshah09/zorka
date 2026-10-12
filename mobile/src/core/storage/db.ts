@@ -281,7 +281,7 @@ let db: SQLiteDatabase | null = null;
 
 export function getDb(): SQLiteDatabase {
   if (db) return db;
-  db = openDatabaseSync("kimbo.db");
+  db = openDatabaseSync("zorka.db");
   db.execSync("PRAGMA journal_mode = WAL;");
   const { user_version: current } = db.getFirstSync<{ user_version: number }>("PRAGMA user_version") ?? {
     user_version: 0,

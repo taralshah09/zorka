@@ -35,8 +35,8 @@ export const usePullStatus = create<{ pulling: boolean; lastPulledAt: number | n
   () => ({ pulling: false, lastPulledAt: null, lastError: null }),
 );
 
-const cursorKey = (userId: string) => `kimbo.pullCursor.${userId}`;
-const fullAtKey = (userId: string) => `kimbo.pullFullAt.${userId}`;
+const cursorKey = (userId: string) => `zorka.pullCursor.${userId}`;
+const fullAtKey = (userId: string) => `zorka.pullFullAt.${userId}`;
 const FULL_EVERY_MS = 24 * 60 * 60 * 1000;
 
 /** A full pull has finished for this user on this phone, so its local copy holds everything the server had. */

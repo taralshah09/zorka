@@ -33,7 +33,7 @@ export function burstConfetti(size: Size = "small") {
   reactMascot(size === "big" ? "cheer" : "happy");
 }
 
-const SEEN_KEY = "kimbo.bursts";
+const SEEN_KEY = "zorka.bursts";
 const KEEP = 80;
 
 /** Bursts once per `key` per profile (remembered on the phone, like S47), so revisiting a screen doesn't replay it. */

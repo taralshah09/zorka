@@ -41,7 +41,7 @@ assert.ok(
   app["meta-data"].some(
     (m) =>
       m.$["android:name"] === "expo.modules.location.foreground_service_icon" &&
-      m.$["android:resource"] === "@drawable/kimbo_recording",
+      m.$["android:resource"] === "@drawable/zorka_recording",
   ),
 );
 console.log(

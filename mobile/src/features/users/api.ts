@@ -11,7 +11,7 @@ export const userKeys = {
   profile: (id: string) => ["users", id, "profile"] as const,
 };
 
-const cacheKey = (id: string) => `kimbo.profileCache.${id}`;
+const cacheKey = (id: string) => `zorka.profileCache.${id}`;
 
 function readCachedProfile(id: string): Profile | undefined {
   const raw = kv.get(cacheKey(id));

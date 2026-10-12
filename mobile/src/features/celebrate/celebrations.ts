@@ -9,7 +9,7 @@ import { kv } from "@/core/storage/kv";
 
 export type CelebrationKind = "streak" | "pr" | "day" | "phase";
 
-const SEEN_KEY = "kimbo.celebrated";
+const SEEN_KEY = "zorka.celebrated";
 const KEEP = 60;
 
 function seen(userId: string): string[] {

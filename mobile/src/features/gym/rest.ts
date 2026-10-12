@@ -55,7 +55,7 @@ export const restTimer = {
 
 // ── Per-exercise rest time (kept on this phone) ────────────────────────────────────────────────
 
-const restKey = (userId: string, exerciseId: string) => `kimbo.rest.${userId}.${exerciseId}`;
+const restKey = (userId: string, exerciseId: string) => `zorka.rest.${userId}.${exerciseId}`;
 
 export function restFor(userId: string, exerciseId: string | null): number {
   if (!exerciseId) return DEFAULT_REST_S;

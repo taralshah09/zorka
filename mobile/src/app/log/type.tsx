@@ -13,7 +13,7 @@ import { mealTypeParam } from "@/features/log/nav";
 import { parseText } from "@/features/log/parse";
 import { useActiveUser } from "@/features/users/activeUser";
 
-const phrasesKey = (userId: string) => `kimbo.typedMeals.${userId}`;
+const phrasesKey = (userId: string) => `zorka.typedMeals.${userId}`;
 const MAX_PHRASES = 6;
 
 function readPhrases(userId: string | null): string[] {

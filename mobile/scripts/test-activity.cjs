@@ -275,7 +275,7 @@ test("a finished session is queued for the server with its route and restored by
     json: async () => ({ changes, cursor: new Date(tick).toISOString(), more: false }),
   });
   const realFetch = global.fetch;
-  process.env.EXPO_PUBLIC_API_URL = "http://kimbo.test";
+  process.env.EXPO_PUBLIC_API_URL = "http://zorka.test";
   try {
     // A new phone for profile "b": the server's copy comes back as a finished session with its route.
     const id = randomUUID();

@@ -63,7 +63,7 @@ export const nutritionOf = (f: Food): FoodNutrition => ({
   liquid: f.liquid,
 });
 
-const syncedAtKey = (userId: string) => `kimbo.catalogSyncedAt.${userId}`;
+const syncedAtKey = (userId: string) => `zorka.catalogSyncedAt.${userId}`;
 const REFRESH_EVERY_MS = 6 * 60 * 60 * 1000;
 
 /** Pulls the catalog from the server. Keeps user-created foods that haven't synced yet. */

@@ -19,12 +19,12 @@ export const kv = {
 };
 
 export const KV_KEYS = {
-  theme: "kimbo.theme",
-  activeUserId: "kimbo.activeUserId",
+  theme: "zorka.theme",
+  activeUserId: "zorka.activeUserId",
   /** Per profile: `${key}.${userId}`. */
-  pincode: "kimbo.pincode",
-  nudgeSettings: "kimbo.nudges",
-  nudgeLog: "kimbo.nudgeLog",
-  welcomeBackSeen: "kimbo.welcomeBackSeen",
-  pendingOrder: "kimbo.pendingOrder",
+  pincode: "zorka.pincode",
+  nudgeSettings: "zorka.nudges",
+  nudgeLog: "zorka.nudgeLog",
+  welcomeBackSeen: "zorka.welcomeBackSeen",
+  pendingOrder: "zorka.pendingOrder",
 } as const;

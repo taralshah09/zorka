@@ -7,7 +7,7 @@ import { Platform } from "react-native";
 
 import { Notifications } from "@/features/nudges/notifications";
 
-const ID = "kimbo.activity.live";
+const ID = "zorka.activity.live";
 const CHANNEL = "activity-live";
 export const UPDATE_MS = 5000;
 
