@@ -11,6 +11,7 @@ import { aiSlotsFromEnv } from "./modules/ai/ai.config.js";
 import { coachService } from "./modules/coach/coach.service.js";
 import { prismaExercisesRepository } from "./modules/exercises/exercises.repository.js";
 import { exercisesService } from "./modules/exercises/exercises.service.js";
+import { foodLookupService } from "./modules/foodLookup/lookup.service.js";
 import { prismaFoodsRepository } from "./modules/foods/foods.repository.js";
 import { foodsService } from "./modules/foods/foods.service.js";
 import { gymParseService } from "./modules/gymParse/gymParse.service.js";
@@ -89,6 +90,7 @@ const app = createApp({
     phase: phases.changes,
   }),
   foods,
+  foodLookup: foodLookupService(ai, search, foodsRepo.userExists),
   meals,
   parse: parseService(ai, foods, foodsRepo.userExists),
   exercises,
@@ -108,7 +110,7 @@ const server = app.listen(env.PORT, () => {
   logger.info({ aiSlots: aiSlots.map((s) => s.id) }, aiSlots.length ? "AI slots ready" : "No AI keys set: AI logging is off");
   // Service names only, never keys.
   const searchReady = search.status().configured;
-  logger.info({ search: searchReady }, searchReady.length ? "Search ready" : "No search keys set: nearby options are off");
+  logger.info({ search: searchReady }, searchReady.length ? "Search ready" : "No search keys set: nearby options and food lookup are off");
 });
 
 const shutdown = (signal: string) => {

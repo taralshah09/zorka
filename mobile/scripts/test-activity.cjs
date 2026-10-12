@@ -10,7 +10,7 @@ const vm = require("node:vm");
 const ts = require("typescript");
 const { randomUUID } = require("node:crypto");
 const mobileRoot = path.resolve(__dirname, "..");
-let sql, modules, store, recorder, appState, native, healthNative, tasks, tick;
+let sql, modules, store, recorder, appState, native, healthNative, tasks, tick, live;
 const originalNow = Date.now;
 function load(file) {
   if (modules.has(file)) return modules.get(file).exports;
@@ -34,6 +34,18 @@ function load(file) {
     if (name === "expo-sqlite/kv-store")
       return { __esModule: true, default: { getItemSync: () => null, setItemSync() {}, removeItemSync() {} } };
     if (name === "react-native-health-connect") return healthNative;
+    // Live recording notification: records the last posted one; dismissing isn't available here.
+    if (name === "expo") return { requireOptionalNativeModule: () => null };
+    if (name === "@/features/nudges/notifications")
+      return {
+        Notifications: {
+          AndroidImportance: { LOW: 2 },
+          setNotificationChannelAsync: async () => null,
+          scheduleNotificationAsync: async (request) => {
+            live = request;
+          },
+        },
+      };
     if (name === "expo-task-manager")
       return { defineTask: (name, fn) => tasks.set(name, fn), isAvailableAsync: async () => true };
     if (name === "expo-sqlite")
@@ -71,6 +83,7 @@ beforeEach(() => {
   sql = new DatabaseSync(":memory:");
   modules = new Map();
   tasks = new Map();
+  live = null;
   tick = 1791712800000;
   Date.now = () => tick;
   appState = {
@@ -298,7 +311,9 @@ test("background task saves batches without a mounted screen and ignores repeate
   await event({ data: { locations }, error: null });
   await event({ data: { locations }, error: null });
   assert.equal(store.routePoints(a.id).length, 3);
-  assert.match(native.options.foregroundService.notificationBody, /0.02 km/);
+  // The service notification can't change from the background; the live one carries distance and time.
+  assert.equal(native.options.foregroundService.notificationBody, "Open Zorka to pause or stop");
+  assert.match(live.content.title, /0\.02 km · 00:09/);
   await recorder.stopRecorder(a.id);
   await event({ data: { locations }, error: null });
   assert.equal(store.routePoints(a.id).length, 3);

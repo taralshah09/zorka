@@ -46,6 +46,8 @@ export type Draft = {
   transcript: string | null;
   /** Measured parse time (P15 target < ~5 s), shown in dev builds. */
   parseMs: number | null;
+  /** Voice only: unmatched items whose Create food (pre-filled from the web) still opens by itself, in order. */
+  autoAdd: string[];
 };
 
 type DraftState = { draft: Draft | null };
@@ -80,6 +82,7 @@ function base(mealType: MealType | undefined, source: MealSource): Draft {
     photoUri: null,
     transcript: null,
     parseMs: null,
+    autoAdd: [],
   };
 }
 
@@ -89,18 +92,20 @@ export const draftActions = {
   },
 
   startFromParse(result: ParseResult, opts: { mealType?: MealType; photoUri?: string | null; clientMs?: number }) {
+    const items: DraftItem[] = result.items.map((i) => ({
+      key: randomUUID(),
+      query: i.query,
+      food: i.food,
+      quantity: i.quantity,
+      unit: i.unit,
+      uncertain: i.uncertain,
+      reasons: i.reasons,
+    }));
     useDraft.setState({
       draft: {
         ...base(opts.mealType, result.source),
-        items: result.items.map((i) => ({
-          key: randomUUID(),
-          query: i.query,
-          food: i.food,
-          quantity: i.quantity,
-          unit: i.unit,
-          uncertain: i.uncertain,
-          reasons: i.reasons,
-        })),
+        items,
+        autoAdd: result.source === "voice" ? items.filter((i) => !i.food).map((i) => i.key) : [],
         followUp: result.followUp ? { ...result.followUp, answered: null } : null,
         photoUri: opts.photoUri ?? null,
         transcript: result.transcript,
@@ -136,6 +141,17 @@ export const draftActions = {
   },
 
   clear: () => useDraft.setState({ draft: null }),
+  /** Takes the next voice item still waiting for its Create food; null when none are left. Each opens only once. */
+  nextAutoAdd(): DraftItem | null {
+    const d = useDraft.getState().draft;
+    if (!d?.autoAdd.length) return null;
+    const pending = d.autoAdd
+      .map((key) => d.items.find((i) => i.key === key))
+      .filter((i): i is DraftItem => !!i && !i.food && !i.snapshot);
+    const next = pending[0] ?? null;
+    useDraft.setState({ draft: { ...d, autoAdd: pending.slice(1).map((i) => i.key) } });
+    return next;
+  },
   /** Undo for a just-removed item: puts the earlier draft back if it's still the one being checked. */
   restore: (prev: Draft) =>
     set((d) => (d.mealId === prev.mealId && d.loggedAt === prev.loggedAt ? prev : d)),

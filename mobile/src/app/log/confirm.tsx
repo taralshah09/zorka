@@ -2,7 +2,8 @@
 // question (P18), follow-up question (P17), item rows (uncertain = amber, brand §3.5), add item, totals,
 // Save. Not shipped from the export: the "Desi Gut Balance" health-claim card and "High Accuracy 94%"
 // (brand §11: no unverifiable claims), and emoji on the oil chips.
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
@@ -34,6 +35,16 @@ export default function ConfirmSheet() {
   const draft = useDraft((s) => s.draft);
   const { profile, targets } = useTargets();
   const promptOn = !!profile.data?.oilGheePrompt;
+
+  // Voice: a food that isn't in the list opens Create food by itself, pre-filled from the web, one item at a time.
+  useFocusEffect(
+    useCallback(() => {
+      const next = draftActions.nextAutoAdd();
+      if (next) {
+        router.push({ pathname: "/log/create-food", params: { mode: "replace", key: next.key, name: next.query, lookup: "1" } });
+      }
+    }, []),
+  );
 
   if (!draft || !userId) {
     return (

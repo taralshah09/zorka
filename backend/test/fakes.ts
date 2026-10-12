@@ -19,6 +19,7 @@ import type { FoodRecord, FoodsRepository } from "../src/modules/foods/foods.rep
 import { foodsService } from "../src/modules/foods/foods.service.js";
 import { coachService } from "../src/modules/coach/coach.service.js";
 import { gymParseService } from "../src/modules/gymParse/gymParse.service.js";
+import { foodLookupService } from "../src/modules/foodLookup/lookup.service.js";
 import { nearbyService } from "../src/modules/nearby/nearby.service.js";
 import { createSearchClient, type SearchClient } from "../src/modules/nearby/search.client.js";
 import { parseService } from "../src/modules/mealParse/parse.service.js";
@@ -413,6 +414,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
       phase: phases.changes,
     }),
     foods,
+    foodLookup: foodLookupService(ai, search, foodsRepo.userExists, opts.now),
     meals,
     parse: parseService(ai, foods, foodsRepo.userExists),
     exercises,

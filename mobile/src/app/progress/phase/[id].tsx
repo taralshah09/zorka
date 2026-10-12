@@ -117,7 +117,7 @@ export default function PhaseDetail() {
             from={phase.startDate}
             to={end}
             targetKg={phase.targetWeightKg}
-            accessibilityLabel={`Trend weight during ${phase.name}, ${points.length} weigh-ins`}
+            accessibilityLabel={`Weight during ${phase.name}, ${points.length} weigh-ins`}
           />
         ) : (
           <Text variant="body" color="textSecondary">

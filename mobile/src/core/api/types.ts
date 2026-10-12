@@ -88,6 +88,29 @@ export type NearbyResult = {
   partial: boolean;
 };
 
+// ── Food lookup — mirrors backend/src/modules/foodLookup/lookup.schemas.ts ────────────────────────
+
+/** The serving choices Create food offers. "g" means per 100 g. */
+export type LookupUnit = "piece" | "katori" | "bowl" | "plate_full" | "glass" | "serving" | "g";
+export type FoodLookupResult = {
+  query: string;
+  found: boolean;
+  food: {
+    name: string;
+    diet: DietPref | null;
+    liquid: boolean;
+    homeCooked: boolean;
+    serving: { unit: LookupUnit; grams: number };
+    /** Macros for ONE serving. */
+    kcal: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+  } | null;
+  source: { title: string; url: string } | null;
+  provider: string | null;
+};
+
 // ── Coach chat (P35) — mirrors backend/src/modules/coach/coach.schemas.ts ────────────────────────
 
 export type CoachDayContext = {

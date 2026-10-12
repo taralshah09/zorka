@@ -9,7 +9,8 @@ import { AppError } from "../../http/errors.js";
 
 export type SearchProvider = "tavily" | "firecrawl" | "anakin";
 export type SearchHit = { title: string; url: string; snippet: string };
-export type SearchRequest = { query: string; domain: string; maxResults: number };
+/** `domain` limits results to one site (nearby); without it the whole web is searched (food lookup). */
+export type SearchRequest = { query: string; domain?: string; maxResults: number };
 type Fetch = typeof globalThis.fetch;
 
 export const SEARCH_TIMEOUT_MS = 8_000;
@@ -61,7 +62,13 @@ const ADAPTERS: Record<SearchProvider, (key: string, req: SearchRequest, f: Fetc
       f,
       "https://api.tavily.com/search",
       { authorization: `Bearer ${key}` },
-      { query: req.query, search_depth: "basic", max_results: req.maxResults, include_domains: [req.domain], country: "india" },
+      {
+        query: req.query,
+        search_depth: "basic",
+        max_results: req.maxResults,
+        country: "india",
+        ...(req.domain ? { include_domains: [req.domain] } : {}),
+      },
       signal,
     );
     return toHits(json.results, "content");
@@ -71,7 +78,7 @@ const ADAPTERS: Record<SearchProvider, (key: string, req: SearchRequest, f: Fetc
       f,
       "https://api.firecrawl.dev/v2/search",
       { authorization: `Bearer ${key}` },
-      { query: req.query, limit: req.maxResults, sources: ["web"], includeDomains: [req.domain], country: "IN" },
+      { query: req.query, limit: req.maxResults, sources: ["web"], country: "IN", ...(req.domain ? { includeDomains: [req.domain] } : {}) },
       signal,
     );
     const data = json.data as { web?: unknown } | unknown[] | undefined;
@@ -79,7 +86,8 @@ const ADAPTERS: Record<SearchProvider, (key: string, req: SearchRequest, f: Fetc
   },
   async anakin(key, req, f, signal) {
     // Anakin's search takes a prompt and has no domain filter, so the domain goes into the prompt and is checked below.
-    const json = await post(f, "https://api.anakin.io/v1/search", { "x-api-key": key }, { prompt: `${req.query} site:${req.domain}` }, signal);
+    const prompt = req.domain ? `${req.query} site:${req.domain}` : req.query;
+    const json = await post(f, "https://api.anakin.io/v1/search", { "x-api-key": key }, { prompt }, signal);
     return toHits(json.results, "snippet");
   },
 };
@@ -97,7 +105,7 @@ export function onDomain(url: string, domain: string): boolean {
 export type SearchStatus = { configured: SearchProvider[]; coolingDown: SearchProvider[] };
 
 export interface SearchClient {
-  /** Hits on `req.domain` from the first service that answers. Throws SEARCH_UNAVAILABLE when none can. */
+  /** Hits (on `req.domain` when given) from the first service that answers. Throws SEARCH_UNAVAILABLE when none can. */
   search(req: SearchRequest): Promise<{ hits: SearchHit[]; provider: SearchProvider }>;
   status(): SearchStatus;
 }
@@ -130,13 +138,13 @@ export function createSearchClient({
         const t0 = now();
         try {
           const hits = (await ADAPTERS[provider](keys[provider]!.trim(), req, fetchImpl, controller.signal))
-            .filter((h) => onDomain(h.url, req.domain))
+            .filter((h) => !req.domain || onDomain(h.url, req.domain))
             .slice(0, req.maxResults);
-          logger.info({ search: { provider, domain: req.domain, hits: hits.length, ms: now() - t0, outcome: "ok" } }, "search");
+          logger.info({ search: { provider, domain: req.domain ?? "web", hits: hits.length, ms: now() - t0, outcome: "ok" } }, "search");
           return { hits, provider };
         } catch (raw) {
           const err = raw instanceof SearchError ? raw : new SearchError("bad_output", raw instanceof Error ? raw.message : "Unexpected");
-          logger.warn({ search: { provider, domain: req.domain, ms: now() - t0, outcome: err.kind }, detail: err.message.slice(0, 200) }, "search failed, trying next");
+          logger.warn({ search: { provider, domain: req.domain ?? "web", ms: now() - t0, outcome: err.kind }, detail: err.message.slice(0, 200) }, "search failed, trying next");
           const cool = err.kind === "bad_output" ? 0 : COOLDOWN[err.kind];
           if (cool) cooldownUntil.set(provider, now() + cool);
         } finally {

@@ -4,6 +4,7 @@ import * as TaskManager from "expo-task-manager";
 import { AppState, Platform } from "react-native";
 
 import { activeMs, ACTIVITY_LABEL, clockLabel, routeStats, type Activity } from "@shared/domain/activity";
+import { hideLiveStats, showLiveStats } from "./liveNotification";
 import {
   activeActivity,
   appendFixes,
@@ -18,10 +19,9 @@ const GPS_TASK = "kimbo.activity.location.v1";
 let watcher: Location.LocationSubscription | null = null;
 let foregroundId: string | null = null;
 let changing = false;
-let notificationMinute = -1;
+// The service notification can't be changed from the background, so it stays static; the live numbers are in a
+// second notification (liveNotification.ts) refreshed from the GPS task.
 function backgroundOptions(a: Activity): Location.LocationTaskOptions {
-  const seconds = activeMs(a) / 1000;
-  const kilometres = routeStats(routePoints(a.id)).distanceM / 1000;
   return {
     accuracy: Location.Accuracy.BestForNavigation,
     timeInterval: 3000,
@@ -33,11 +33,15 @@ function backgroundOptions(a: Activity): Location.LocationTaskOptions {
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: `${ACTIVITY_LABEL[a.kind]} recording · Zorka`,
-      notificationBody: `${kilometres.toFixed(2)} km · ${clockLabel(seconds)} · Open Zorka to pause or stop`,
+      notificationBody: "Open Zorka to pause or stop",
       killServiceOnDestroy: false,
     },
   };
 }
+const liveText = (a: Activity) => ({
+  title: `${(routeStats(routePoints(a.id)).distanceM / 1000).toFixed(2)} km · ${clockLabel(activeMs(a) / 1000)}`,
+  body: `${ACTIVITY_LABEL[a.kind]} recording · Zorka`,
+});
 const fixesFrom = (locations: Location.LocationObject[]) =>
   locations.map((l) => ({
     latitude: l.coords.latitude,
@@ -55,17 +59,7 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(GPS_TASK, async
   }
   if (data?.locations) appendFixes(a.id, fixesFrom(data.locations));
   const latest = getActivity(a.id);
-  if (latest?.status === "recording" && !changing) {
-    const minute = Math.floor(activeMs(latest) / 60000);
-    if (minute !== notificationMinute) {
-      notificationMinute = minute;
-      try {
-        await Location.startLocationUpdatesAsync(GPS_TASK, backgroundOptions(latest));
-      } catch {
-        /* Route persistence must survive a notification refresh failure. */
-      }
-    }
-  }
+  if (latest?.status === "recording" && !changing) await showLiveStats(() => liveText(getActivity(a.id) ?? latest));
 });
 
 async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
@@ -81,6 +75,7 @@ async function detach() {
   watcher?.remove();
   watcher = null;
   foregroundId = null;
+  await hideLiveStats();
   if (Platform.OS !== "web" && (await Location.hasStartedLocationUpdatesAsync(GPS_TASK))) {
     await Location.stopLocationUpdatesAsync(GPS_TASK);
   }
@@ -101,8 +96,8 @@ export async function resumeRecorder(id: string) {
     setRecording(id, true);
     try {
       if (a.background) {
-        notificationMinute = -1;
         await Location.startLocationUpdatesAsync(GPS_TASK, backgroundOptions(getActivity(id)!));
+        void showLiveStats(() => liveText(getActivity(id)!), true);
       } else {
         watcher = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 3000, distanceInterval: 0 },
@@ -141,12 +136,15 @@ export async function reconcileRecorder() {
   if (!a || a.status !== "recording" || changing) return;
   const running = a.background ? await Location.hasStartedLocationUpdatesAsync(GPS_TASK) : foregroundId === a.id;
   if (!running) {
+    await hideLiveStats();
     setRecording(a.id, false, a.heartbeatAt);
     const paused = getActivity(a.id)!;
     saveActivity({ ...paused, error: "Recording was interrupted. Your saved route is here; resume when ready." });
   }
 }
 export function startRecorderLifecycle() {
+  // A live line left behind by a killed app goes away once nothing is recording.
+  if (activeActivity()?.status !== "recording") void hideLiveStats();
   void reconcileRecorder().catch(() => {});
   const sub = AppState.addEventListener("change", (state) => {
     if (state === "active") void reconcileRecorder().catch(() => {});

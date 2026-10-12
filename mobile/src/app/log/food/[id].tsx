@@ -21,9 +21,14 @@ export default function FoodDetail() {
   useFoods(userId); // re-render when the catalog refreshes
   const food = userId ? getFood(userId, params.id) : null;
   const draftMeal = useDraft((s) => s.draft?.mealType);
+  // A voice item that wasn't in the list keeps the amount the person said, when the new food has that unit.
+  const spoken = useDraft((s) =>
+    s.draft?.source === "voice" && params.key ? s.draft.items.find((i) => i.key === params.key && !i.food) : undefined,
+  );
+  const keep = food && spoken && unitOptions(nutritionOf(food)).some((u) => u.unit === spoken.unit) ? spoken : null;
 
-  const [unit, setUnit] = useState<FoodUnit>(food?.defaultUnit ?? "g");
-  const [quantity, setQuantity] = useState(food && isBase(food.defaultUnit) ? 100 : 1);
+  const [unit, setUnit] = useState<FoodUnit>(keep?.unit ?? food?.defaultUnit ?? "g");
+  const [quantity, setQuantity] = useState(keep?.quantity ?? (food && isBase(food.defaultUnit) ? 100 : 1));
 
   if (!food) {
     return (

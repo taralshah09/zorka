@@ -10,6 +10,8 @@ import { coachRoutes } from "./modules/coach/coach.routes.js";
 import type { CoachService } from "./modules/coach/coach.service.js";
 import { exercisesRoutes } from "./modules/exercises/exercises.routes.js";
 import type { ExercisesService } from "./modules/exercises/exercises.service.js";
+import { foodLookupRoutes } from "./modules/foodLookup/lookup.routes.js";
+import type { FoodLookupService } from "./modules/foodLookup/lookup.service.js";
 import { foodsRoutes } from "./modules/foods/foods.routes.js";
 import type { FoodsService } from "./modules/foods/foods.service.js";
 import { LARGE_BODY_PATHS, parseRoutes } from "./modules/mealParse/parse.routes.js";
@@ -39,6 +41,7 @@ export type AppDeps = {
   sync: SyncService;
   changes: ChangesService;
   foods: FoodsService;
+  foodLookup: FoodLookupService;
   meals: MealsService;
   parse: ParseService;
   exercises: ExercisesService;
@@ -68,6 +71,7 @@ export function createApp(deps: AppDeps) {
     sync,
     changes,
     foods,
+    foodLookup,
     meals,
     parse,
     exercises,
@@ -101,6 +105,7 @@ export function createApp(deps: AppDeps) {
   v1.use(syncRoutes(sync));
   v1.use(changesRoutes(changes));
   v1.use(foodsRoutes(foods));
+  v1.use(foodLookupRoutes(foodLookup));
   v1.use(mealsRoutes(meals));
   v1.use(parseRoutes(parse));
   v1.use(exercisesRoutes(exercises));

@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { useTheme } from "@/core/theme";
 import { describeError } from "@/core/api/client";
 import {
   Button,
@@ -35,7 +34,6 @@ type Range = "7d" | "30d" | "phase";
 const RECENT_WEIGH_INS = 5;
 
 export default function Progress() {
-  const { colors } = useTheme();
   const toast = useToast();
   const now = useActivityClock();
   const p = useProgress(now);
@@ -125,16 +123,6 @@ export default function Progress() {
                 {p.series.length ? "No weigh-ins in this range." : "Log your weight to start your trend."}
               </Text>
             )}
-            <View style={styles.legend}>
-              <View style={[styles.dot, { backgroundColor: colors.textTertiary }]} />
-              <Text variant="caption" color="textSecondary">
-                Scale
-              </Text>
-              <View style={[styles.line, { backgroundColor: colors.primary }]} />
-              <Text variant="caption" color="textSecondary">
-                Trend
-              </Text>
-            </View>
             <Button label="Log weight" icon="monitor_weight" onPress={() => router.push("/log-weight")} fullWidth />
           </Card>
 
@@ -183,9 +171,6 @@ export default function Progress() {
 const styles = StyleSheet.create({
   segment: { marginVertical: 12 },
   empty: { paddingVertical: 24, textAlign: "center" },
-  legend: { flexDirection: "row", alignItems: "center", gap: 6, marginVertical: 12 },
-  dot: { width: 8, height: 8, borderRadius: 4, opacity: 0.6 },
-  line: { width: 16, height: 3, borderRadius: 2, marginLeft: 8 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   flex: { flex: 1 },
 });

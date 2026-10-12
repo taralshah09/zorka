@@ -1,14 +1,21 @@
 // S20 · Create food (P13). Built from DESIGN.md §6.4 (no export yet, D35): name, diet tag, serving
 // (e.g. "1 piece = 60 g"), kcal / P / C / F for that serving, Save. The food stays in the user's own
 // account (visible only to them) and works offline at once.
+// Voice (lookup=1): the food wasn't in the list, so its nutrition is looked up on the web and pre-fills the form; the
+// person checks and edits it before saving.
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, Linking, StyleSheet, View } from "react-native";
 
-import type { DietPref } from "@/core/api/types";
+import { describeError } from "@/core/api/client";
+import type { DietPref, FoodLookupResult } from "@/core/api/types";
+import { Icon } from "@/core/icons/Icon";
+import { useNetwork } from "@/core/network/network";
+import { useTheme } from "@/core/theme";
 import { Button, Chip, Header, ListItem, Screen, Text, TextField, Toggle, Card, dietLabel } from "@/core/ui";
 import { unitName } from "@/features/food/format";
 import { createFood } from "@/features/food/catalog";
+import { useFoodLookup } from "@/features/food/lookup";
 import { passParams, type PickParams } from "@/features/log/nav";
 import { useActiveUser } from "@/features/users/activeUser";
 import type { FoodUnit } from "@shared/domain/food";
@@ -22,8 +29,11 @@ const num = (s: string) => {
 };
 
 export default function CreateFood() {
-  const params = useLocalSearchParams<PickParams & { name?: string }>();
+  const params = useLocalSearchParams<PickParams & { name?: string; lookup?: string }>();
   const userId = useActiveUser((s) => s.userId);
+  const online = useNetwork((s) => s.online);
+  const asked = params.lookup === "1";
+  const lookup = useFoodLookup(userId, params.name ?? "", asked && online);
   const [name, setName] = useState(params.name ?? "");
   const [diet, setDiet] = useState<DietPref>("veg");
   const [homeCooked, setHomeCooked] = useState(true);
@@ -34,6 +44,23 @@ export default function CreateFood() {
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
   const [tried, setTried] = useState(false);
+
+  // Fill in what the web lookup found, once, without overwriting anything typed while it loaded.
+  const [filled, setFilled] = useState(false);
+  const found = lookup.data?.food;
+  if (found && !filled) {
+    setFilled(true);
+    const keep = (prev: string, n: number) => (prev.trim() ? prev : String(n));
+    setName((prev) => prev.trim() || found.name);
+    if (found.diet) setDiet(found.diet);
+    setHomeCooked(found.homeCooked);
+    setUnit(found.serving.unit);
+    setGrams((prev) => keep(prev, found.serving.grams));
+    setKcal((prev) => keep(prev, found.kcal));
+    setProtein((prev) => keep(prev, found.proteinG));
+    setCarbs((prev) => keep(prev, found.carbsG));
+    setFat((prev) => keep(prev, found.fatG));
+  }
 
   const g = unit === "g" ? 100 : num(grams);
   const k = num(kcal);
@@ -72,6 +99,17 @@ export default function CreateFood() {
 
   return (
     <Screen header={<Header title="Create a food" onBack={() => router.back()} />}>
+      {asked ? (
+        <LookupNotice
+          name={params.name ?? ""}
+          online={online}
+          loading={lookup.isFetching}
+          result={lookup.data}
+          error={lookup.error}
+          onRetry={() => void lookup.refetch()}
+        />
+      ) : null}
+
       <TextField
         label="Name"
         value={name}
@@ -156,7 +194,65 @@ export default function CreateFood() {
   );
 }
 
+/** "Not in the list" + where the numbers came from, so the person knows to check them. */
+function LookupNotice({
+  name,
+  online,
+  loading,
+  result,
+  error,
+  onRetry,
+}: {
+  name: string;
+  online: boolean;
+  loading: boolean;
+  result: FoodLookupResult | undefined;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  const { colors } = useTheme();
+  const source = result?.found ? result.source : null;
+  const body = !online
+    ? "You're offline, so we couldn't look it up. Fill in the numbers below."
+    : loading
+      ? "Looking up its nutrition online…"
+      : source
+        ? "We filled this in from the web. Check the numbers and edit anything before you save."
+        : error
+          ? `Couldn't look it up: ${describeError(error).body} Fill in the numbers below.`
+          : "Couldn't find its nutrition online. Fill in the numbers below.";
+
+  return (
+    <Card>
+      <View style={styles.noticeHead}>
+        <Icon name="search" size={20} color={colors.warn} />
+        <Text variant="title" style={styles.flex}>{`"${name}" isn't in our food list`}</Text>
+      </View>
+      <View style={styles.noticeBody}>
+        {loading ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+        <Text variant="body" color="textSecondary" style={styles.flex}>
+          {body}
+        </Text>
+      </View>
+      {source ? (
+        <Text
+          variant="caption"
+          color="textTertiary"
+          numberOfLines={1}
+          accessibilityRole="link"
+          onPress={() => void Linking.openURL(source.url)}
+        >
+          {`Source: ${source.title || source.url}`}
+        </Text>
+      ) : null}
+      {error && !loading && online ? <Button label="Try again" variant="ghost" icon="refresh" onPress={onRetry} /> : null}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
+  noticeHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  noticeBody: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, marginBottom: 6 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   row: { flexDirection: "row", gap: 8 },
   flex: { flex: 1 },
