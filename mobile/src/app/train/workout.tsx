@@ -22,6 +22,7 @@ import {
   IconButton,
   ListItem,
   NumberStepper,
+  reactMascot,
   Screen,
   Text,
   TextField,
@@ -287,6 +288,7 @@ export default function ActiveWorkout() {
           setConfirm(null);
           restTimer.skip();
           discardWorkout(workout.id);
+          reactMascot("eyeroll");
           router.back();
         }}
         onCancel={() => setConfirm(null)}

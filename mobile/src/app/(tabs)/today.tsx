@@ -16,6 +16,7 @@ import { describeError } from "@/core/api/client";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { Button, EmptyState, ErrorState, Screen, Skeleton, Text, useToast } from "@/core/ui";
 import { useCelebrateOnFocus } from "@/features/celebrate/celebrations";
+import { useTodayReactions } from "@/features/celebrate/todayReactions";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { coachLine } from "@/features/coach/lines";
 import { useEatOptions } from "@/features/gap/eat";
@@ -99,6 +100,8 @@ export default function Today() {
         ? { key: `day:${today}`, kind: "day" }
         : null,
   );
+  // Confetti once per single goal reached today, and a mascot eye-roll when over target or the streak is at risk.
+  useTodayReactions(isToday ? userId : null, today, dg, targets?.steps ?? null, situation);
 
   return (
     <Screen withDock header={<AppHeader eyebrow="Today" />}>

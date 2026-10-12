@@ -7,6 +7,7 @@ import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
 import { Button, Card, EmptyState, Header, Screen, StatTile, Text, useToast } from "@/core/ui";
+import { burstConfetti } from "@/features/celebrate/ConfettiBurst";
 import { useActivityClock } from "@/features/activity/store";
 import { LineChart } from "@/features/gym/LineChart";
 import { answerCheckin, type CheckinStatus } from "@/features/progress/checkins";
@@ -45,6 +46,7 @@ export default function CheckinScreen() {
   const copy = checkinCopy(pending, detailed);
   const answer = (status: CheckinStatus) => {
     answerCheckin(p.userId!, pending, status);
+    burstConfetti();
     toast({
       kind: "success",
       message:

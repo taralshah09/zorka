@@ -111,7 +111,7 @@ export default function Coach() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <NetworkBanner />
         <View style={styles.coachRow}>
-          <Avatar name={persona.name} accent={persona.accent} kind="coach" size={44} />
+          <Avatar name={persona.name} accent={persona.accent} kind="coach" size={56} thinking={typing} />
           <View style={styles.flex}>
             <Text variant="headline-sm">{persona.name}</Text>
             <Text variant="caption" color="textSecondary">

@@ -1,38 +1,16 @@
-// Logo — brand §2. The real mark isn't delivered yet (design_ref/assets/logo/ is empty), so
-// LogoMark renders a neutral lime "Z" tile. Swap this one component when the mark arrives.
-// The Stitch placeholder mark must never ship (brand §2).
+// Logo — brand §2. The mark is the Zorka tiger (core/ui/mascot), drawn live: it breathes, blinks and reacts to taps
+// and to app moments (reactMascot). Pass `still` where the mark is captured as an image.
 import { StyleSheet, View } from "react-native";
 
-import { fontFamily, useTheme } from "@/core/theme";
+import { fontFamily } from "@/core/theme";
+import { Mascot } from "./mascot/Mascot";
 import { Text } from "./Text";
 
-export function LogoMark({ size = 32 }: { size?: 24 | 32 | 64 | 96 }) {
-  const { colors, radius } = useTheme();
+export function LogoMark({ size = 32, still = false }: { size?: number; still?: boolean }) {
+  // The tiger is wider than tall; it sits centred in a size × size box so layouts keep their square slot.
   return (
-    <View
-      accessibilityLabel="Zorka"
-      style={[
-        styles.mark,
-        {
-          width: size,
-          height: size,
-          borderRadius: size >= 64 ? radius.lg : radius.sm,
-          backgroundColor: colors.primary,
-        },
-      ]}
-    >
-      <Text
-        color="ink"
-        style={{
-          fontFamily: fontFamily[800],
-          fontSize: size * 0.56,
-          lineHeight: size * 0.7,
-          letterSpacing: -0.03 * size * 0.56,
-        }}
-        maxFontSizeMultiplier={1}
-      >
-        Z
-      </Text>
+    <View style={[styles.mark, { width: size, height: size }]}>
+      <Mascot size={size} still={still} shadow={size >= 64} accessibilityLabel="Zorka" />
     </View>
   );
 }
@@ -53,7 +31,7 @@ export function Wordmark({ size = 17 }: { size?: 17 | 28 | 40 }) {
 export function LogoLockup({ eyebrow }: { eyebrow?: string }) {
   return (
     <View style={styles.lockup} accessibilityRole="header" accessibilityLabel={eyebrow ? `Zorka, ${eyebrow}` : "Zorka"}>
-      <LogoMark size={32} />
+      <LogoMark size={40} />
       <View>
         <Wordmark size={17} />
         {eyebrow ? (

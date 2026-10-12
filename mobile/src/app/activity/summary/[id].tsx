@@ -1,6 +1,8 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect } from "react";
 import { View } from "react-native";
 import { Button, Card, EmptyState, Header, Screen, Text } from "@/core/ui";
+import { burstOnce } from "@/features/celebrate/ConfettiBurst";
 import { RouteMap } from "@/features/activity/components";
 import { getActivity, routePoints, useActivityClock } from "@/features/activity/store";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -11,6 +13,11 @@ export default function ActivitySummary() {
   const userId = useActiveUser((s) => s.userId);
   useActivityClock();
   const a = getActivity(id);
+  const endedAt = a && a.userId === userId && a.status === "done" ? a.endedAt : null;
+  // A run/walk/ride that just ended gets a confetti burst once (reopening it from history later doesn't).
+  useEffect(() => {
+    if (endedAt && Date.now() - endedAt < 10 * 60_000) burstOnce(userId, `activity:${id}`);
+  }, [endedAt, userId, id]);
   if (!a || a.userId !== userId || a.status !== "done")
     return (
       <Screen header={<Header title="Activity summary" onBack={() => router.back()} />}>

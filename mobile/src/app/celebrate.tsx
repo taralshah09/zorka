@@ -1,6 +1,7 @@
 // S47 · Celebration (P39). No export yet: built from DESIGN.md §6.9 and brand §9 (D65). Variants: streak 7/30/100, PR,
-// all goals hit, phase complete. A big icon (saffron flame for streaks), a soft warm gradient, confetti (skipped when
-// the OS reduces motion), the coach's line, and "Share" (opens S46 with the matching card) / "Keep going".
+// all goals hit, phase complete. The tiger cheering with the moment's icon as a badge (saffron flame for streaks), a
+// soft warm gradient, confetti (skipped when the OS reduces motion), the coach's line, and "Share" (opens S46 with the
+// matching card) / "Keep going".
 // The success haptic plays once when it opens.
 //
 // Params: kind = streak | pr | day | phase, value (streak days), id (workout or phase id), detail (PR line).
@@ -13,7 +14,7 @@ import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { haptics } from "@/core/haptics";
 import { SYMBOLS, type IconName } from "@/core/icons/symbols.generated";
 import { useTheme } from "@/core/theme";
-import { Button, Text } from "@/core/ui";
+import { Button, Mascot, Text } from "@/core/ui";
 import { celebrationLine, celebrationTitle, type CelebrationKind } from "@/features/celebrate/celebrations";
 import { Confetti } from "@/features/celebrate/Confetti";
 import { PERSONAS } from "@/features/coach/personas";
@@ -72,9 +73,14 @@ export default function Celebrate() {
       <Confetti />
 
       <View style={[styles.body, { paddingHorizontal: layout.screenMargin }]}>
-        <Svg width={120} height={120} viewBox="0 -960 960 960" accessibilityElementsHidden>
-          <Path d={SYMBOLS[ICON[kind]][1]} fill={accent} />
-        </Svg>
+        <View style={styles.hero}>
+          <Mascot size={180} playOnMount="cheer" listen={false} />
+          <View style={[styles.badge, { backgroundColor: colors.bg, borderColor: accent }]}>
+            <Svg width={40} height={40} viewBox="0 -960 960 960" accessibilityElementsHidden>
+              <Path d={SYMBOLS[ICON[kind]][1]} fill={accent} />
+            </Svg>
+          </View>
+        </View>
         <Text variant="display" align="center" accessibilityRole="header" tabular>
           {celebrationTitle(kind, facts)}
         </Text>
@@ -105,5 +111,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "space-between" },
   body: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   coach: { marginTop: 16, gap: 6, maxWidth: 340 },
+  hero: { marginBottom: 8 },
+  badge: {
+    position: "absolute",
+    right: -6,
+    bottom: 4,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   actions: { gap: 12 },
 });

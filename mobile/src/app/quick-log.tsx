@@ -7,7 +7,7 @@ import { StyleSheet, View } from "react-native";
 
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { BottomSheet, Button, PressableScale, Text, useToast } from "@/core/ui";
+import { BottomSheet, Button, PressableScale, reactMascot, Text, useToast } from "@/core/ui";
 import { formatKcal, MEAL_LABEL } from "@/features/food/format";
 import { mealTypeParam } from "@/features/log/nav";
 import { startWorkout } from "@/features/gym/store";
@@ -63,6 +63,7 @@ export default function QuickLog() {
   const repeat = () => {
     if (!yesterday) return;
     repeatMeal(yesterday, mealType, logTime());
+    reactMascot("happy");
     toast({ kind: "success", message: `${MEAL_LABEL[mealType]} logged · ${formatKcal(mealTotals(yesterday).kcal)}` });
     router.back();
   };

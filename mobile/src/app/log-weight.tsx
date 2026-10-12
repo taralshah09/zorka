@@ -5,7 +5,7 @@ import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
-import { BottomSheet, Button, Chip, NumberStepper, Text, useToast } from "@/core/ui";
+import { BottomSheet, Button, Chip, NumberStepper, reactMascot, Text, useToast } from "@/core/ui";
 import { addDays } from "@shared/domain/progress";
 import { localDate } from "@shared/domain/food";
 import { formatKg, formatShortDate } from "@/features/targets/format";
@@ -44,6 +44,7 @@ export default function LogWeight() {
   const save = () => {
     if (!userId) return;
     logWeight(userId, kg, day);
+    reactMascot("happy");
     toast({
       kind: "success",
       message: `${formatKg(kg)} kg logged${day === today ? "" : ` for ${label(day).toLowerCase()}`}`,

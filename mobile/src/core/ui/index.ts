@@ -11,6 +11,8 @@ export { Header } from "./Header";
 export { IconButton } from "./IconButton";
 export { ListItem } from "./ListItem";
 export { LogoLockup, LogoMark, Wordmark } from "./Logo";
+export { Mascot, MASCOT_RATIO } from "./mascot/Mascot";
+export { reactMascot, type MascotReaction } from "./mascot/bus";
 export { NumberStepper } from "./NumberStepper";
 export { OrbitRings } from "./OrbitRings";
 export { PressableScale } from "./PressableScale";

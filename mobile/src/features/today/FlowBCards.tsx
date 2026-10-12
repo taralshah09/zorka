@@ -5,7 +5,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
-import { BottomSheet, Button, Card, IconButton, Text } from "@/core/ui";
+import { BottomSheet, Button, Card, IconButton, reactMascot, Text } from "@/core/ui";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import {
   nudgeSettings,
@@ -66,7 +66,10 @@ export function NudgePromptCard({ userId }: { userId: string }) {
   const settings = useNudgeSettings(userId);
   const [sheet, setSheet] = useState(false);
   if (access !== "ask" || !settings.enabled || settings.promptDismissed) return null;
-  const dismiss = () => saveNudgeSettings(userId, { ...nudgeSettings(userId), promptDismissed: true });
+  const dismiss = () => {
+    saveNudgeSettings(userId, { ...nudgeSettings(userId), promptDismissed: true });
+    reactMascot("eyeroll");
+  };
   return (
     <>
       <Card accessibilityLabel="Turn on nudges from your coach">

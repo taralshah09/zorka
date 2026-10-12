@@ -9,6 +9,7 @@ import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Button, Card, Dialog, EmptyState, Header, Screen, StatTile, Text, useToast } from "@/core/ui";
 import { celebrate } from "@/features/celebrate/celebrations";
+import { burstOnce } from "@/features/celebrate/ConfettiBurst";
 import { ExerciseTile, PRBadge } from "@/features/gym/components";
 import { formatDay } from "@/features/gym/format";
 import { deleteWorkout, useWorkout, workoutStats } from "@/features/gym/store";
@@ -24,15 +25,20 @@ export default function WorkoutSummary() {
   const justFinished = !!workout?.endedAt && openedAt - new Date(workout.endedAt).getTime() < 10 * 60_000;
   const firstPr = workout && justFinished ? workoutStats(workout).prs[0] : undefined;
 
-  // P39: a workout that just set a record opens the PR celebration once.
+  // P39: a workout that just set a record opens the PR celebration once; any other just-finished workout gets a
+  // confetti burst once.
   useEffect(() => {
-    if (!workout || !firstPr) return;
+    if (!workout || !justFinished) return;
+    if (!firstPr) {
+      burstOnce(workout.userId, `workout:${workout.id}`);
+      return;
+    }
     celebrate(workout.userId, `pr:${workout.id}`, {
       kind: "pr",
       id: workout.id,
       detail: `${firstPr.exerciseName} · ${formatSet(firstPr.type, firstPr.set)}`,
     });
-  }, [workout, firstPr]);
+  }, [workout, firstPr, justFinished]);
 
   if (!workout) {
     return (

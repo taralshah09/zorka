@@ -9,6 +9,7 @@ import { describeError } from "@/core/api/client";
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Card, StatTile, Text, useToast } from "@/core/ui";
+import { burstOnce } from "@/features/celebrate/ConfettiBurst";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { PERSONAS } from "@/features/coach/personas";
 import { ACTIVITY_LABEL, PACE_LABEL } from "@/features/onboarding/copy";
@@ -76,7 +77,11 @@ export default function PlanStep() {
         onboardedAt: new Date().toISOString(),
       },
       {
-        onSuccess: () => router.dismissTo("/today"),
+        onSuccess: () => {
+          router.dismissTo("/today");
+          // First finished onboarding on this profile gets the big burst (redoing the plan later doesn't).
+          burstOnce(userId, "onboarded", "big");
+        },
         onError: (err) => toast({ kind: "error", message: describeError(err).body }),
       },
     );

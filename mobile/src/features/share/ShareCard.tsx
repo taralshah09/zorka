@@ -1,5 +1,5 @@
 // P38 · One share card (brand §14): 9:16, always the dark style, orbit motif top-right, eyebrow, a lime hero number +
-// unit, 2–3 supporting stats, the route in lilac for runs, and the "Zorka" wordmark small at the bottom left. Laid out
+// unit, 2–3 supporting stats, the route in lilac for runs, and the tiger + "Zorka" wordmark small at the bottom left. Laid out
 // on a 360 × 640 grid scaled by `width`, so the preview and the 1080 × 1920 capture are the same picture. Text ignores
 // the system font scale: the card is an image, and its layout must not reflow.
 import { forwardRef, type ForwardedRef } from "react";
@@ -7,7 +7,7 @@ import { StyleSheet, Text as RNText, View, type TextStyle } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { fontFamily, tabularNums, ThemeScope, useTheme } from "@/core/theme";
-import { OrbitRings } from "@/core/ui";
+import { Mascot, OrbitRings } from "@/core/ui";
 import type { RoutePoint } from "@shared/domain/activity";
 import type { ShareCardSpec } from "./cards";
 import { routePath } from "./route";
@@ -97,15 +97,18 @@ function CardBody({ spec, width, name, innerRef }: Props & { innerRef: Forwarded
       </View>
 
       <View style={styles.footer}>
-        <View>
-          <RNText allowFontScaling={false} style={t(20, 800, colors.textPrimary, { letterSpacing: -0.03 * 20 * k })}>
-            Zorka
-          </RNText>
-          {name ? (
-            <RNText allowFontScaling={false} style={t(12, 500, colors.textSecondary)}>
-              {name}
+        <View style={styles.brand}>
+          <Mascot size={40 * k} still shadow={false} />
+          <View>
+            <RNText allowFontScaling={false} style={t(20, 800, colors.textPrimary, { letterSpacing: -0.03 * 20 * k })}>
+              Zorka
             </RNText>
-          ) : null}
+            {name ? (
+              <RNText allowFontScaling={false} style={t(12, 500, colors.textSecondary)}>
+                {name}
+              </RNText>
+            ) : null}
+          </View>
         </View>
         <RNText allowFontScaling={false} style={t(12, 500, colors.textSecondary)}>
           {spec.date}
@@ -143,4 +146,5 @@ const styles = StyleSheet.create({
   stats: { flexDirection: "row" },
   stat: { flex: 1, gap: 2 },
   footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  brand: { flexDirection: "row", alignItems: "center", gap: 8 },
 });

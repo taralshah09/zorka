@@ -1,11 +1,11 @@
-// S02 · Welcome. No export yet (D27): built from DESIGN.md §6.2. The illustration isn't delivered, so
-// the logo mark sits on the orbit-ring motif instead.
+// S02 · Welcome. No export yet (D27): built from DESIGN.md §6.2. The Zorka tiger greets on the orbit-ring motif
+// (tap it to play).
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/core/theme";
-import { Button, IconButton, LogoMark, OrbitRings, Text } from "@/core/ui";
+import { Button, IconButton, Mascot, OrbitRings, Text } from "@/core/ui";
 import { useDraft } from "@/features/onboarding/draft";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useProfile } from "@/features/users/api";
@@ -44,7 +44,7 @@ export default function Welcome() {
 
       <View style={styles.hero}>
         <View style={styles.mark}>
-          <LogoMark size={96} />
+          <Mascot size={170} playOnMount="happy" />
         </View>
         <Text variant="display" align="center" accessibilityRole="header">
           Your food, training and runs

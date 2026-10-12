@@ -40,6 +40,7 @@ import "@/features/progress/weights";
 // Registers water_log (Today water taps) for push and pull.
 import "@/features/water/store";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
+import { ConfettiBurstHost } from "@/features/celebrate/ConfettiBurst";
 import { OrderedItPrompt } from "@/features/gap/sheets";
 import { NudgePlanner } from "@/features/nudges/NudgePlanner";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -91,6 +92,8 @@ function RootStack() {
       {/* P34 "Ordered it?" on return from Zomato/Blinkit, and P36's on-device nudge planner. Both render nothing until needed. */}
       <OrderedItPrompt />
       <NudgePlanner />
+      {/* Confetti bursts for single goals, finished workouts/runs, onboarding and check-ins. Above every screen. */}
+      <ConfettiBurstHost />
     </View>
   );
 }

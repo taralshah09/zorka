@@ -7,7 +7,7 @@ import { Image, StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Badge, Button, EmptyState, Header, Screen, Text, useToast } from "@/core/ui";
+import { Badge, Button, EmptyState, Header, reactMascot, Screen, Text, useToast } from "@/core/ui";
 import { FollowUpCard, FoodItemRow, MacroTotals, MealTypeSelector, OilGheePrompt } from "@/features/food/components";
 import { formatKcal, formatPortion, MEAL_LABEL } from "@/features/food/format";
 import {
@@ -72,6 +72,7 @@ export default function ConfirmSheet() {
   const save = () => {
     const editing = !!draft.mealId;
     saveDraft(userId, promptOn);
+    reactMascot("happy");
     toast({ kind: "success", message: editing ? `${meal} updated` : `${meal} saved · ${formatKcal(totals.kcal)}` });
     // Navigate first; clearing the draft re-renders this screen, which is gone by then.
     router.dismissTo("/(tabs)/today");
