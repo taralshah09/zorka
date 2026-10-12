@@ -390,12 +390,13 @@ export function useMeal(id: string | undefined): Meal | null {
   }, [id, stamp]);
 }
 
-export function useYesterdaysMeal(userId: string | null, mealType: MealType): Meal | null {
+/** `day` (a local date) is the day being logged to; defaults to today. */
+export function useYesterdaysMeal(userId: string | null, mealType: MealType, day?: string): Meal | null {
   const stamp = useMealsStamp();
   return useMemo(() => {
     void stamp;
-    return userId ? yesterdaysMeal(userId, mealType) : null;
-  }, [userId, mealType, stamp]);
+    return userId ? yesterdaysMeal(userId, mealType, day ? new Date(`${day}T12:00:00`) : undefined) : null;
+  }, [userId, mealType, day, stamp]);
 }
 
 export function useRecentMeals(userId: string | null, limit = 8): Meal[] {

@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import { STEP_GOAL_MAX, STEP_GOAL_MIN } from "../../../../shared/domain/targets.js";
+import { WATER_GOAL_MAX, WATER_GOAL_MIN } from "../../../../shared/domain/water.js";
 
 export const GOALS = ["lose_fat", "build_muscle", "maintain", "get_fitter"] as const;
 export const SEXES = ["male", "female", "unspecified"] as const;
@@ -29,6 +30,8 @@ export const ProfileUpdateBody = z
     oilGheePrompt: z.boolean(),
     /** D48: daily step goal. */
     stepGoal: z.number().int().min(STEP_GOAL_MIN).max(STEP_GOAL_MAX),
+    /** Daily water goal, in glasses. */
+    waterGoalGlasses: z.number().int().min(WATER_GOAL_MIN).max(WATER_GOAL_MAX),
     /** P28 (D50): show the detailed weekly check-in. */
     checkinDetailed: z.boolean(),
     onboardedAt: z.string().datetime().nullable(),
@@ -53,6 +56,7 @@ export type ProfileDto = {
   coach: (typeof COACHES)[number] | null;
   oilGheePrompt: boolean;
   stepGoal: number;
+  waterGoalGlasses: number;
   checkinDetailed: boolean;
   onboardedAt: string | null;
   updatedAt: string | null;

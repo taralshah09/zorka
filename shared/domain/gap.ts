@@ -126,3 +126,44 @@ export function computeGap(input: {
 
 /** Minute of the local day for a Date. */
 export const minuteOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
+
+// ── Goal days (Today's goal calendar) ────────────────────────────────────────────────────────────
+// How many of a day's four goals were hit. Every day is scored against the current targets, because the app keeps
+// no history of past targets. Kept here, next to the constants it uses, because shared modules import only types
+// from each other (Metro can't resolve the ".js" paths the backend's NodeNext build needs for value imports).
+//   calories: some food logged and kcal eaten no more than OVER_TOLERANCE_KCAL past the budget
+//   protein:  at least DONE_PROTEIN_SHARE of the protein target
+//   steps:    the step goal reached (no step data counts as not reached)
+//   water:    the water goal reached
+
+export type GoalDayInput = {
+  /** kcal and protein eaten; `logged` is false when no food was logged that day. */
+  eaten: { kcal: number; proteinG: number; logged: boolean };
+  steps: number | null;
+  glasses: number;
+};
+export type GoalDayTargets = {
+  /** The day's kcal budget: the kcal target plus that day's activity credit. */
+  kcal: number;
+  proteinG: number;
+  steps: number;
+  waterGlasses: number;
+};
+export type GoalDay = {
+  calories: boolean;
+  protein: boolean;
+  steps: boolean;
+  water: boolean;
+  /** Goals hit, 0–GOAL_COUNT. */
+  hit: number;
+};
+
+export const GOAL_COUNT = 4;
+
+export function scoreGoalDay(day: GoalDayInput, t: GoalDayTargets): GoalDay {
+  const calories = day.eaten.logged && day.eaten.kcal <= t.kcal + OVER_TOLERANCE_KCAL;
+  const protein = t.proteinG > 0 && day.eaten.proteinG >= t.proteinG * DONE_PROTEIN_SHARE;
+  const steps = day.steps != null && day.steps >= t.steps;
+  const water = t.waterGlasses > 0 && day.glasses >= t.waterGlasses;
+  return { calories, protein, steps, water, hit: [calories, protein, steps, water].filter(Boolean).length };
+}

@@ -30,6 +30,8 @@ import { prismaUsersRepository } from "./modules/users/users.repository.js";
 import { usersService } from "./modules/users/users.service.js";
 import { prismaWeightsRepository } from "./modules/weights/weights.repository.js";
 import { weightsService } from "./modules/weights/weights.service.js";
+import { prismaWaterRepository } from "./modules/water/water.repository.js";
+import { waterService } from "./modules/water/water.service.js";
 import { prismaWorkoutsRepository } from "./modules/workouts/workouts.repository.js";
 import { workoutsService } from "./modules/workouts/workouts.service.js";
 
@@ -46,6 +48,7 @@ const routines = routinesService(prismaRoutinesRepository(prisma), exercises.exi
 const workouts = workoutsService(prismaWorkoutsRepository(prisma), exercises.existingIds, routines.existingIds);
 const activities = activitiesService(prismaActivitiesRepository(prisma));
 const weights = weightsService(prismaWeightsRepository(prisma));
+const water = waterService(prismaWaterRepository(prisma));
 const checkins = checkinsService(prismaCheckinsRepository(prisma));
 const phases = phasesService(prismaPhasesRepository(prisma));
 const syncRepo = prismaSyncRepository(prisma);
@@ -71,6 +74,7 @@ const app = createApp({
     routine: routines.syncRoutine,
     activity: activities.syncActivity,
     weight_log: weights.syncWeight,
+    water_log: water.syncWater,
     checkin: checkins.syncCheckin,
     phase: phases.syncPhase,
   }),
@@ -80,6 +84,7 @@ const app = createApp({
     routine: routines.changes,
     activity: activities.changes,
     weight_log: weights.changes,
+    water_log: water.changes,
     checkin: checkins.changes,
     phase: phases.changes,
   }),

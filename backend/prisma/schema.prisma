@@ -71,6 +71,7 @@ model User {
   routines   Routine[]
   activities Activity[]
   weightLogs WeightLog[]
+  waterLogs  WaterLog[]
   checkins   Checkin[]
   phases     Phase[]
 
@@ -78,26 +79,28 @@ model User {
 }
 
 model Profile {
-  userId          String         @id @map("user_id") @db.Uuid
-  goal            Goal?
-  age             Int?
-  sex             Sex?
-  heightCm        Float?         @map("height_cm")
-  weightKg        Float?         @map("weight_kg")
-  activityLevel   ActivityLevel? @map("activity_level")
-  diet            Diet?
-  targetWeightKg  Float?         @map("target_weight_kg")
-  pace            Pace?
-  coach           Coach?
+  userId           String         @id @map("user_id") @db.Uuid
+  goal             Goal?
+  age              Int?
+  sex              Sex?
+  heightCm         Float?         @map("height_cm")
+  weightKg         Float?         @map("weight_kg")
+  activityLevel    ActivityLevel? @map("activity_level")
+  diet             Diet?
+  targetWeightKg   Float?         @map("target_weight_kg")
+  pace             Pace?
+  coach            Coach?
   /// P18: ask how much oil/ghee went into home-cooked food on the confirm sheet (D34).
-  oilGheePrompt   Boolean        @default(false) @map("oil_ghee_prompt")
+  oilGheePrompt    Boolean        @default(false) @map("oil_ghee_prompt")
   /// Daily step goal (D48): 8,000 default and minimum, 100,000 maximum.
-  stepGoal        Int            @default(8000) @map("step_goal")
+  stepGoal         Int            @default(8000) @map("step_goal")
+  /// Daily water goal in glasses, 1–20, set on the onboarding target step.
+  waterGoalGlasses Int            @default(8) @map("water_goal_glasses")
   /// P28: the weekly check-in shows the detailed (geek) version instead of the simple one (D50).
-  checkinDetailed Boolean        @default(false) @map("checkin_detailed")
-  onboardedAt     DateTime?      @map("onboarded_at") @db.Timestamptz(3)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  checkinDetailed  Boolean        @default(false) @map("checkin_detailed")
+  onboardedAt      DateTime?      @map("onboarded_at") @db.Timestamptz(3)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -491,6 +494,26 @@ model WeightLog {
   @@index([userId, updatedAt])
   @@index([userId, localDate])
   @@map("weight_logs")
+}
+
+/// Water taps from Today: each log is one or more glasses on a local day. Synced as "water_log".
+model WaterLog {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  /// The local day the water counts for (a past day can be picked on Today).
+  localDate       String    @map("local_date")
+  glasses         Int
+  loggedAt        DateTime  @map("logged_at") @db.Timestamptz(3)
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, localDate])
+  @@map("water_logs")
 }
 
 // ---------------------------------------------------------------------------

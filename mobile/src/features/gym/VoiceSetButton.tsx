@@ -1,6 +1,7 @@
 // P22 · "Say a set" (S24 voice-add state). Hold to talk, release to add: same recording format as meal voice
 // (D32), mic permission explained first (S49 gym variant). Offline, it hands over to typed entry instead of
-// recording (D41), since a set is quicker to type than to queue.
+// recording (D41), since a set is quicker to type than to queue. The mic starts once the hold ring has filled
+// (HOLD_MS); offline or without mic permission the press acts at once.
 import {
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
@@ -14,7 +15,8 @@ import { StyleSheet, View } from "react-native";
 import { Icon } from "@/core/icons/Icon";
 import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
-import { BottomSheet, PressableScale, Text, useToast } from "@/core/ui";
+import { BottomSheet, Text, useToast } from "@/core/ui";
+import { HoldToTalk } from "@/features/log/HoldToTalk";
 import { VOICE_RECORDING } from "@/features/log/parse";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 
@@ -114,13 +116,14 @@ export function VoiceSetButton({
   const label = busy ? "Reading…" : recording ? `Listening… ${Math.floor(elapsed / 1000)} s` : "Say a set";
   return (
     <>
-      <PressableScale
-        onPressIn={start}
-        onPressOut={() => void stop()}
+      <HoldToTalk
+        onArmed={start}
+        onRelease={() => void stop()}
+        onCancel={() => toast({ kind: "info", message: "Keep holding until the ring fills." })}
+        holdMs={online && perm === "granted" ? undefined : 0}
         disabled={busy}
-        accessibilityRole="button"
         accessibilityLabel="Hold to say a set"
-        accessibilityHint='Hold and say it, like "bench 80 kilos, 8 reps". Release to add it.'
+        accessibilityHint='Hold until the ring fills and say it, like "bench 80 kilos, 8 reps". Release to add it.'
         style={[
           styles.button,
           {
@@ -140,7 +143,7 @@ export function VoiceSetButton({
         <Text variant="label-lg" color={recording ? "ink" : "primaryText"} tabular>
           {label}
         </Text>
-      </PressableScale>
+      </HoldToTalk>
 
       <BottomSheet visible={explain} onClose={() => setExplain(false)} size="medium">
         <View style={styles.sheet}>

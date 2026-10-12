@@ -69,7 +69,7 @@ export function ActivityStrip({
           : "Connect Health Connect to see your steps"}
       </Text>
       {credit.kcal > 0 ? (
-        <Text variant="label" color="primaryText">{`+${credit.kcal} estimated kcal in today's budget`}</Text>
+        <Text variant="label" color="primaryText">{`+${credit.kcal} estimated kcal in the day's budget`}</Text>
       ) : null}
     </Card>
   );

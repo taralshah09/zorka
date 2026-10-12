@@ -1,4 +1,5 @@
 import { STEP_TARGET } from "../../../../shared/domain/targets.js";
+import { WATER_GOAL_DEFAULT } from "../../../../shared/domain/water.js";
 import { notFound } from "../../http/errors.js";
 import type { UserWithProfile, UsersRepository } from "./users.repository.js";
 import type { ProfileDto, ProfileUpdate, UserSummaryDto } from "./users.schemas.js";
@@ -20,6 +21,7 @@ function toProfileDto(user: UserWithProfile): ProfileDto {
     coach: p?.coach ?? null,
     oilGheePrompt: p?.oilGheePrompt ?? false,
     stepGoal: p?.stepGoal ?? STEP_TARGET,
+    waterGoalGlasses: p?.waterGoalGlasses ?? WATER_GOAL_DEFAULT,
     checkinDetailed: p?.checkinDetailed ?? false,
     onboardedAt: p?.onboardedAt?.toISOString() ?? null,
     updatedAt: p?.updatedAt?.toISOString() ?? null,

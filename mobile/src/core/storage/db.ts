@@ -259,6 +259,22 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
         PRIMARY KEY (area_key, diet)
       );
     `),
+
+  // v11 · water taps ("water_log"): one row per tap, a day's glasses are the sum. Local-first and synced.
+  (db) =>
+    db.execSync(`
+      CREATE TABLE water_logs (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        glasses INTEGER NOT NULL,
+        logged_at TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX water_logs_day ON water_logs (user_id, local_date);
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

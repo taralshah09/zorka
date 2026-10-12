@@ -37,6 +37,8 @@ import "@/features/activity/store";
 import "@/features/progress/checkins";
 import "@/features/progress/phases";
 import "@/features/progress/weights";
+// Registers water_log (Today water taps) for push and pull.
+import "@/features/water/store";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
 import { OrderedItPrompt } from "@/features/gap/sheets";
 import { NudgePlanner } from "@/features/nudges/NudgePlanner";

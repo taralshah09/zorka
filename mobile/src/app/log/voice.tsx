@@ -2,6 +2,7 @@
 // m4a → speech-to-text → the P15 pipeline → confirm sheet. States: permission (S49), ready, listening
 // (live level bars), reading ("Reading your meal…"), no speech, saved offline (queued), error.
 // Whisper isn't streaming, so the transcript shows on the confirm sheet, not live while talking.
+// The mic starts once the hold ring around the button has filled (HOLD_MS); a shorter press records nothing.
 import {
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
@@ -17,8 +18,9 @@ import { ApiError, describeError } from "@/core/api/client";
 import { Icon } from "@/core/icons/Icon";
 import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
-import { Button, ErrorState, Header, PressableScale, Screen, Text } from "@/core/ui";
+import { Button, ErrorState, Header, Screen, Text } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
+import { HoldToTalk } from "@/features/log/HoldToTalk";
 import { mealTypeParam } from "@/features/log/nav";
 import { parseVoice, VOICE_MIME, VOICE_RECORDING } from "@/features/log/parse";
 import { queueVoice, removeVoice, useVoiceQueue, type VoiceNote } from "@/features/log/voiceQueue";
@@ -230,7 +232,7 @@ export default function VoiceCapture() {
           <Text variant="body" color="textSecondary" style={styles.textCenter}>
             {phase === "recording"
               ? `${seconds} s · release to log`
-              : 'Hold the button and say it, like "2 roti, 1 katori rajma, a glass of chaas".'}
+              : 'Hold the button until the ring fills, then say it, like "2 roti, 1 katori rajma, a glass of chaas".'}
           </Text>
 
           <View style={styles.bars} accessible={false}>
@@ -247,13 +249,13 @@ export default function VoiceCapture() {
             ))}
           </View>
 
-          <PressableScale
-            onPressIn={start}
-            onPressOut={() => void stop()}
+          <HoldToTalk
+            onArmed={start}
+            onRelease={() => void stop()}
+            onCancel={() => setHint("Keep holding until the ring fills.")}
             disabled={phase === "checking"}
-            accessibilityRole="button"
             accessibilityLabel="Hold to talk"
-            accessibilityHint="Release to log your meal"
+            accessibilityHint="Hold until the ring fills, talk, then release to log your meal"
             style={[
               styles.mic,
               styles.micBig,
@@ -262,7 +264,7 @@ export default function VoiceCapture() {
             ]}
           >
             <Icon name="mic" size={28} color={colors.ink} filled />
-          </PressableScale>
+          </HoldToTalk>
           <Text variant="label" color={hint ? "warn" : "textSecondary"}>
             {hint ?? (phase === "recording" ? "Release to log" : "Hold to talk")}
           </Text>

@@ -20,8 +20,10 @@ import {
   useDraft,
   type DraftItem,
 } from "@/features/log/draft";
+import { formatDayLong } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
+import { localDate } from "@shared/domain/food";
 
 const SOURCE_BADGE = { text: "AI read", voice: "AI read", photo: "AI read", search: null, repeat: "Repeat" } as const;
 
@@ -46,7 +48,10 @@ export default function ConfirmSheet() {
   const normalKcal = showOil ? draftTotals({ ...draft, oilLevel: "normal" }, promptOn).kcal : totals.kcal;
   const unmatched = unmatchedItems(draft);
   const uncertain = draft.items.filter((i) => i.uncertain && i.food).length;
-  const time = new Date(draft.loggedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  const at = new Date(draft.loggedAt);
+  const clock = at.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  // A meal for an earlier day (picked on Today) shows its day too.
+  const time = localDate(at) === localDate(new Date()) ? clock : `${formatDayLong(at)} · ${clock}`;
   const badge = SOURCE_BADGE[draft.source];
   const meal = MEAL_LABEL[draft.mealType];
 

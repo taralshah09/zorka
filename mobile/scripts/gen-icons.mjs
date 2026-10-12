@@ -92,6 +92,10 @@ const ICONS = [
   // P38–P39 share + celebrations (S46, S47)
   "flag",
   "celebration",
+  // Today: water glass, goal calendar
+  "water_drop",
+  "calendar_month",
+  "undo",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

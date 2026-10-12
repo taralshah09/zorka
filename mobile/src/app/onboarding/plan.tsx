@@ -72,6 +72,7 @@ export default function PlanStep() {
         pace: hasPace ? (input.pace ?? null) : null,
         coach: draft.coach,
         stepGoal: draft.stepGoal,
+        waterGoalGlasses: draft.waterGoalGlasses,
         onboardedAt: new Date().toISOString(),
       },
       {

@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 import type { ActivityLevel, CoachId, DietPref, Goal, Pace, Profile, Sex } from "@/core/api/types";
 import { goalHasPace, STEP_TARGET, validateTargetInput, type TargetInput } from "@shared/domain/targets";
+import { clampWaterGoal, WATER_GOAL_DEFAULT } from "@shared/domain/water";
 
 export type Draft = {
   goal: Goal | null;
@@ -17,6 +18,8 @@ export type Draft = {
   pace: Pace;
   coach: CoachId | null;
   stepGoal: number;
+  /** Daily water goal in glasses, set on the target step (S07). */
+  waterGoalGlasses: number;
 };
 
 /** Sanity bounds, same as the API (D21). */
@@ -38,6 +41,7 @@ const EMPTY: Draft = {
   pace: "steady",
   coach: null,
   stepGoal: STEP_TARGET,
+  waterGoalGlasses: WATER_GOAL_DEFAULT,
 };
 
 type DraftState = Draft & {
@@ -64,6 +68,7 @@ export const useDraft = create<DraftState>((set) => ({
             pace: p.pace ?? EMPTY.pace,
             coach: p.coach,
             stepGoal: p.stepGoal ?? EMPTY.stepGoal,
+            waterGoalGlasses: clampWaterGoal(p.waterGoalGlasses),
           }
         : null),
     }),

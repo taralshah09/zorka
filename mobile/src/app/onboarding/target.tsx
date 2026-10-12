@@ -1,17 +1,19 @@
 // S07 · Target weight & pace (step 5 of 7). States: normal, capped-pace warning, calorie-floor note,
-// goal = maintain / get fitter (target weight hidden). The preview runs the P08 calculator live.
+// goal = maintain / get fitter (target weight hidden). The preview runs the P08 calculator live. The daily water
+// goal (glasses) is set here too, for every goal.
 import { router } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Card, Slider, Text, TextField } from "@/core/ui";
+import { Card, NumberStepper, Slider, Text, TextField } from "@/core/ui";
 import { PACE_STOPS } from "@/features/onboarding/copy";
 import { BOUNDS, draftTargetInput, inRange, parseNumber, useDraft } from "@/features/onboarding/draft";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 import { formatInt, formatKg, formatShortDate, formatWeeklyKg } from "@/features/targets/format";
 import { calculateTargets, goalHasPace, MAX_LOSS_KG_PER_WEEK, type Targets } from "@shared/domain/targets";
+import { WATER_GOAL_MAX, WATER_GOAL_MIN } from "@shared/domain/water";
 
 export default function TargetStep() {
   const draft = useDraft();
@@ -76,6 +78,19 @@ export default function TargetStep() {
           </Text>
         </Card>
       )}
+      <View style={styles.water}>
+        <Text variant="label" color="textSecondary">
+          Daily water goal
+        </Text>
+        <NumberStepper
+          label="Daily water goal"
+          value={draft.waterGoalGlasses}
+          onChange={(waterGoalGlasses) => update({ waterGoalGlasses })}
+          min={WATER_GOAL_MIN}
+          max={WATER_GOAL_MAX}
+          unit={draft.waterGoalGlasses === 1 ? "glass" : "glasses"}
+        />
+      </View>
     </OnboardingStep>
   );
 }
@@ -133,6 +148,7 @@ function WarnNote({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   pace: { gap: 4 },
+  water: { gap: 4 },
   note: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
   flex: { flex: 1 },
 });

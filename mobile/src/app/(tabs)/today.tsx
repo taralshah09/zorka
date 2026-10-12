@@ -5,13 +5,16 @@
 // the next-best-action card in every state (morning, under, over, done, on track, streak at risk, low steps), Welcome back
 // (S48) after 5 days away, and "Turn on nudges". P39: a streak milestone or all goals hit opens the celebration (S47)
 // once. Layout follows the S10 export (D11); no bell in the header (brand §8).
+// Past days: tapping the date strip or the goal calendar shows that day's meals, steps and water, and new meals and
+// water are logged to it; the today-only cards (check-in, coach, next action, nudges, voice queue) are hidden.
+// The water glass and the goal calendar (four goals a day, graded) sit under the macro balance and the meals.
 import { router, useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
-import { EmptyState, ErrorState, Screen, Skeleton, Text } from "@/core/ui";
+import { Button, EmptyState, ErrorState, Screen, Skeleton, Text, useToast } from "@/core/ui";
 import { useCelebrateOnFocus } from "@/features/celebrate/celebrations";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { coachLine } from "@/features/coach/lines";
@@ -27,6 +30,8 @@ import { formatDayLong, greeting } from "@/features/targets/format";
 import { useVoiceQueue } from "@/features/log/voiceQueue";
 import { useDayMeals } from "@/features/meals/store";
 import { DateStrip } from "@/features/today/DateStrip";
+import { GoalCalendar } from "@/features/today/GoalCalendar";
+import { dateOf, selectDay, useViewedDay } from "@/features/today/selectedDay";
 import {
   consumedFrom,
   MacroBalance,
@@ -41,6 +46,9 @@ import { useProgress } from "@/features/progress/hooks";
 import { VoiceQueueCard } from "@/features/today/VoiceQueueCard";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
+import { clampWaterGoal } from "@shared/domain/water";
+import { WaterCard } from "@/features/water/WaterCard";
+import { logGlass, undoGlass, useGlasses } from "@/features/water/store";
 import { ActivityStrip } from "@/features/activity/components";
 import { cachedSteps, useHealthSteps } from "@/features/activity/health";
 import { dayCredit, useActivityClock } from "@/features/activity/store";
@@ -49,20 +57,26 @@ export default function Today() {
   const clock = useActivityClock();
   const { profile, targets, streak, pending, latest } = useProgress(clock);
   const userId = useActiveUser((s) => s.userId);
+  const toast = useToast();
   const now = new Date(clock);
-  const day = localDate(now);
+  const today = localDate(now);
+  // The day on show: today, or a past day picked on the date strip or the goal calendar.
+  const { day, isToday } = useViewedDay(now);
+  const viewDate = isToday ? now : dateOf(day);
   const health = useHealthSteps(userId, day);
   const credit = dayCredit(userId, day);
   const dailyTargets = targets ? { ...targets, kcal: targets.kcal + credit.kcal } : null;
-  const meals = useDayMeals(userId, localDate(now));
+  const meals = useDayMeals(userId, day);
   const voiceNotes = useVoiceQueue(userId);
   const consumed = { ...consumedFrom(meals), steps: cachedSteps(userId, day)?.steps ?? null };
+  const glasses = useGlasses(userId, day);
+  const waterGoal = clampWaterGoal(profile.data?.waterGoalGlasses);
   const name = profile.data?.displayName;
   const dg = useDayGap(clock);
-  const welcome = useWelcomeBack(userId, day, streak);
+  const welcome = useWelcomeBack(userId, today, streak);
   const eatOptions = useEatOptions({
     userId,
-    today: day,
+    today,
     now: clock,
     gap: dg?.gap ?? null,
     diet: profile.data?.diet ?? "non_veg",
@@ -71,7 +85,7 @@ export default function Today() {
   });
   const situation = dg ? situationFor(dg, streak, welcome.show) : null;
   const facts = dg ? lineFacts(dg, streak) : null;
-  const action = situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
+  const action = isToday && situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
   // A notification tap that cold-started the app is routed once Today is showing (P36).
   useFocusEffect(useCallback(() => consumePendingRoute(), []));
   // P39: celebrate a streak milestone reached today, else all goals hit, once each (re-checked on focus, so it fires
@@ -80,9 +94,9 @@ export default function Today() {
   useCelebrateOnFocus(
     userId,
     milestone
-      ? { key: `streak:${day}:${milestone}`, kind: "streak", value: String(milestone) }
+      ? { key: `streak:${today}:${milestone}`, kind: "streak", value: String(milestone) }
       : dg?.gap.state === "done"
-        ? { key: `day:${day}`, kind: "day" }
+        ? { key: `day:${today}`, kind: "day" }
         : null,
   );
 
@@ -96,10 +110,14 @@ export default function Today() {
             Your activity
           </Text>
           <Text variant="body" color="textSecondary">
-            {`${formatDayLong(now)} · ${greeting(now)}${name ? `, ${name}` : ""}`}
+            {isToday ? `${formatDayLong(now)} · ${greeting(now)}${name ? `, ${name}` : ""}` : formatDayLong(viewDate)}
           </Text>
         </View>
-        {targets ? <StreakChip streak={streak} /> : null}
+        {!targets ? null : isToday ? (
+          <StreakChip streak={streak} />
+        ) : (
+          <Button label="Today" size="sm" variant="ghost" onPress={() => selectDay(null)} />
+        )}
       </View>
 
       {profile.isPending ? (
@@ -124,14 +142,19 @@ export default function Today() {
         />
       ) : (
         <>
-          <DateStrip today={now} />
-          {pending ? (
+          <DateStrip today={now} selected={day} onSelect={(d) => selectDay(d, now)} />
+          {isToday && pending ? (
             <CheckinReadyCard
               title={checkinCopy(pending, !!profile.data?.checkinDetailed).title}
               onPress={() => router.push("/progress/checkin")}
             />
           ) : null}
-          <RemainingHero targets={dailyTargets!} consumed={consumed} onCloseGap={() => router.push("/gap")} />
+          <RemainingHero
+            targets={dailyTargets!}
+            consumed={consumed}
+            title={isToday ? "Remaining today" : `Remaining on ${formatDayLong(viewDate)}`}
+            onCloseGap={isToday ? () => router.push("/gap") : undefined}
+          />
           {credit.kcal > 0 ? (
             <Text
               variant="caption"
@@ -141,13 +164,23 @@ export default function Today() {
           <MetricTiles targets={targets} consumed={consumed} />
           <ActivityStrip userId={userId} day={day} stepGoal={targets.steps} healthState={health.state} />
           <MacroBalance targets={dailyTargets!} consumed={consumed} />
-          {welcome.show ? (
+          <WaterCard
+            glasses={glasses}
+            goal={waterGoal}
+            onAdd={() => {
+              if (userId) logGlass(userId, day);
+            }}
+            onUndo={() => {
+              if (userId && undoGlass(userId, day)) toast({ kind: "info", message: "Removed a glass" });
+            }}
+          />
+          {isToday && welcome.show ? (
             <WelcomeBackCard freezeUsed={welcome.freezeUsed} hasTrend={!!latest} onDismiss={welcome.dismiss} />
           ) : null}
-          {profile.data?.coach && situation && facts ? (
+          {isToday && profile.data?.coach && situation && facts ? (
             <CoachLine coach={profile.data.coach} line={coachLine(profile.data.coach, situation, facts)} />
           ) : null}
-          <VoiceQueueCard notes={voiceNotes} />
+          {isToday ? <VoiceQueueCard notes={voiceNotes} /> : null}
           {action ? (
             <NextActionCard
               eyebrow={action.eyebrow}
@@ -157,8 +190,16 @@ export default function Today() {
               onPress={() => router.push(action.href)}
             />
           ) : null}
-          {userId ? <NudgePromptCard userId={userId} /> : null}
+          {isToday && userId ? <NudgePromptCard userId={userId} /> : null}
           <MealSlots targets={targets} consumed={consumed} meals={meals} />
+          <GoalCalendar
+            userId={userId}
+            today={today}
+            selected={day}
+            targets={targets}
+            waterGoal={waterGoal}
+            onSelect={(d) => selectDay(d, now)}
+          />
         </>
       )}
     </Screen>

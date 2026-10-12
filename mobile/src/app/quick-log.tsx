@@ -1,6 +1,7 @@
 // S11 · Quick-log sheet. No export yet (D27): built from DESIGN.md §6.3. The big mic is the hero;
 // Camera · Type · Search under it; the "Repeat yesterday's …" row (P13, matches the time of day);
 // Workout · Run · Weight at the bottom (Workout opens S24 since P19, Run S28 since P25, Weight S34 since P27).
+// With a past day picked on Today, meals log to that day and Workout · Run · Weight are hidden (they stay on today).
 import { router, useLocalSearchParams } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -11,6 +12,8 @@ import { formatKcal, MEAL_LABEL } from "@/features/food/format";
 import { mealTypeParam } from "@/features/log/nav";
 import { startWorkout } from "@/features/gym/store";
 import { mealTotals, repeatMeal, useYesterdaysMeal } from "@/features/meals/store";
+import { formatDayLong } from "@/features/targets/format";
+import { dateOf, logTime, useViewedDay } from "@/features/today/selectedDay";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
 
@@ -22,7 +25,9 @@ export default function QuickLog() {
   const params = useLocalSearchParams<{ mealType?: string }>();
   const userId = useActiveUser((s) => s.userId);
   const mealType = mealTypeParam(params) ?? mealTypeForTime(new Date());
-  const yesterday = useYesterdaysMeal(userId, mealType);
+  // On a past day (picked on Today), meals are logged to that day and "yesterday" is the day before it.
+  const { day, isToday } = useViewedDay(new Date());
+  const yesterday = useYesterdaysMeal(userId, mealType, day);
 
   const capture: Entry[] = [
     {
@@ -57,13 +62,17 @@ export default function QuickLog() {
 
   const repeat = () => {
     if (!yesterday) return;
-    repeatMeal(yesterday, mealType);
+    repeatMeal(yesterday, mealType, logTime());
     toast({ kind: "success", message: `${MEAL_LABEL[mealType]} logged · ${formatKcal(mealTotals(yesterday).kcal)}` });
     router.back();
   };
 
   return (
-    <BottomSheet visible onClose={() => router.back()} title="Quick log">
+    <BottomSheet
+      visible
+      onClose={() => router.back()}
+      title={isToday ? "Quick log" : `Log to ${formatDayLong(dateOf(day))}`}
+    >
       <View style={styles.micWrap}>
         <PressableScale
           onPress={() => router.replace({ pathname: "/log/voice", params: { mealType } })}
@@ -93,7 +102,7 @@ export default function QuickLog() {
         >
           <Icon name="replay" color={colors.secondaryText} />
           <View style={styles.flex}>
-            <Text variant="title">{`Repeat yesterday's ${MEAL_LABEL[mealType].toLowerCase()}`}</Text>
+            <Text variant="title">{`Repeat ${isToday ? "yesterday's" : "the day before's"} ${MEAL_LABEL[mealType].toLowerCase()}`}</Text>
             <Text variant="caption" color="textSecondary" numberOfLines={1}>
               {`${yesterday.items.map((i) => i.name).join(" + ")} · ${formatKcal(mealTotals(yesterday).kcal)}`}
             </Text>
@@ -102,8 +111,13 @@ export default function QuickLog() {
         </View>
       ) : null}
 
-      <View style={[styles.divider, { backgroundColor: colors.outline }]} />
-      <EntryRow entries={other} />
+      {/* Workouts, runs and weigh-ins are recorded as they happen, so they stay on today. */}
+      {isToday ? (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.outline }]} />
+          <EntryRow entries={other} />
+        </>
+      ) : null}
     </BottomSheet>
   );
 }

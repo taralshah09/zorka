@@ -11,6 +11,7 @@ export const SYNC_ENTITIES = [
   "routine",
   "activity",
   "weight_log",
+  "water_log",
   "checkin",
   "phase",
 ] as const;

@@ -31,9 +31,12 @@ export function RemainingHero({
   targets,
   consumed,
   onCloseGap,
+  title = "Remaining today",
 }: {
   targets: Targets;
   consumed: Consumed;
+  /** "Remaining today", or the past day's name when Today shows an earlier day. */
+  title?: string;
   /** P31: the hero's action pill (the S10 export's "Details ↗") opens the Gap Closer (S41). */
   onCloseGap?: () => void;
 }) {
@@ -57,13 +60,13 @@ export function RemainingHero({
             </Text>
           </View>
           <Text variant="headline-lg" color="ink">
-            Remaining today
+            {title}
           </Text>
           <Text variant="body" color="ink">
             {`Consumed ${formatInt(consumed.kcal)} kcal · ${formatInt(proteinLeft)} g protein to go`}
           </Text>
         </View>
-        <ProgressRing size="S" progress={used} color={colors.ink} accessibilityLabel="Calories eaten today">
+        <ProgressRing size="S" progress={used} color={colors.ink} accessibilityLabel="Calories eaten">
           <Text variant="label" color="ink" tabular>
             {`${Math.round((1 - Math.min(1, used)) * 100)}%`}
           </Text>

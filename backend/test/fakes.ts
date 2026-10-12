@@ -35,6 +35,8 @@ import type { UsersRepository, UserWithProfile } from "../src/modules/users/user
 import { usersService } from "../src/modules/users/users.service.js";
 import type { WeightLogRecord, WeightsRepository } from "../src/modules/weights/weights.repository.js";
 import { weightsService } from "../src/modules/weights/weights.service.js";
+import type { WaterLogRecord, WaterRepository } from "../src/modules/water/water.repository.js";
+import { waterService } from "../src/modules/water/water.service.js";
 import type { WorkoutRecord, WorkoutsRepository } from "../src/modules/workouts/workouts.repository.js";
 import { workoutsService } from "../src/modules/workouts/workouts.service.js";
 
@@ -70,6 +72,7 @@ export function memoryUsers(): UsersRepository & { rows: Map<string, UserWithPro
         coach: null,
         oilGheePrompt: false,
         stepGoal: 8000,
+        waterGoalGlasses: 8,
         checkinDetailed: false,
         onboardedAt: null,
         createdAt: now,
@@ -305,6 +308,11 @@ export function memoryWeights(): WeightsRepository & { rows: Map<string, WeightL
   return { rows: m.rows, findWeight: m.find, upsertWeight: m.upsert, softDeleteWeight: m.softDelete, listChanged: m.listChanged };
 }
 
+export function memoryWater(): WaterRepository & { rows: Map<string, WaterLogRecord> } {
+  const m = memoryEntity<WaterLogRecord>(({ loggedAt, ...w }) => ({ ...w, loggedAt: new Date(loggedAt as string) }) as WaterLogRecord);
+  return { rows: m.rows, findWater: m.find, upsertWater: m.upsert, softDeleteWater: m.softDelete, listChanged: m.listChanged };
+}
+
 export function memoryCheckins(): CheckinsRepository & { rows: Map<string, CheckinRecord> } {
   const m = memoryEntity<CheckinRecord>((c) => c as unknown as CheckinRecord);
   return { rows: m.rows, findCheckin: m.find, upsertCheckin: m.upsert, softDeleteCheckin: m.softDelete, listChanged: m.listChanged };
@@ -368,6 +376,8 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
   const activities = activitiesService(activitiesRepo);
   const weightsRepo = memoryWeights();
   const weights = weightsService(weightsRepo);
+  const waterRepo = memoryWater();
+  const water = waterService(waterRepo);
   const checkinsRepo = memoryCheckins();
   const checkins = checkinsService(checkinsRepo);
   const phasesRepo = memoryPhases();
@@ -388,6 +398,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
       routine: routines.syncRoutine,
       activity: activities.syncActivity,
       weight_log: weights.syncWeight,
+      water_log: water.syncWater,
       checkin: checkins.syncCheckin,
       phase: phases.syncPhase,
     }),
@@ -397,6 +408,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
       routine: routines.changes,
       activity: activities.changes,
       weight_log: weights.changes,
+      water_log: water.changes,
       checkin: checkins.changes,
       phase: phases.changes,
     }),
@@ -424,6 +436,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
     routines: routinesRepo,
     activities: activitiesRepo,
     weights: weightsRepo,
+    water: waterRepo,
     checkins: checkinsRepo,
     phases: phasesRepo,
   };

@@ -6,6 +6,7 @@ import { create } from "zustand";
 import type { FollowUp, Food, ParseResult, UncertainReason } from "@/core/api/types";
 import { nutritionOf } from "@/features/food/catalog";
 import { saveMeal, type Meal, type MealItem, type MealSource } from "@/features/meals/store";
+import { logTime } from "@/features/today/selectedDay";
 import {
   applyOil,
   localDate,
@@ -65,8 +66,9 @@ const itemFromFood = (food: Food, quantity: number, unit: FoodUnit): DraftItem =
   reasons: [],
 });
 
+/** A new meal is stamped on the day Today is showing (a past day logs at the current time of day). */
 function base(mealType: MealType | undefined, source: MealSource): Draft {
-  const now = new Date();
+  const now = logTime();
   return {
     mealId: null,
     mealType: mealType ?? mealTypeForTime(now),
