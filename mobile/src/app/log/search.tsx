@@ -2,7 +2,8 @@
 // so it works offline. Tabs when the query is empty: Recent · My foods (P13). With no recents yet, Recent
 // shows popular everyday foods that fit the user's diet. Each row shows the portion the user logged last time
 // (or one default portion), and its "+" logs that portion straight away (UX L2). Saved meals ("Your usual")
-// live on quick-log (UX L1).
+// live on quick-log (UX L1). With a query typed (and online), "Get nutrition … online" opens Create food filled in
+// from a web lookup.
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -66,6 +67,9 @@ export default function FoodSearch() {
 
   const open = (id: string) => router.push({ pathname: "/log/food/[id]", params: { id, ...passParams(params) } });
   const create = () => router.push({ pathname: "/log/create-food", params: { ...passParams(params), name: q.trim() } });
+  // Web lookup for what was typed: Create food opens filled in with the numbers found, to check before saving.
+  const lookUp = () =>
+    router.push({ pathname: "/log/create-food", params: { ...passParams(params), name: q.trim(), lookup: "1" } });
   const retry = () => {
     if (userId) refreshCatalog(userId, true).catch(() => {});
   };
@@ -152,6 +156,16 @@ export default function FoodSearch() {
             })
           )}
 
+          {q.trim() && online ? (
+            <Button
+              label={`Get nutrition for "${q.trim()}" online`}
+              variant="secondary"
+              icon="search"
+              onPress={lookUp}
+              accessibilityHint="Looks up its calories and macros on the web, for you to check before adding"
+              fullWidth
+            />
+          ) : null}
           <Button label="Can't find it? Create a food" variant="ghost" icon="add_circle" onPress={create} />
         </>
       )}

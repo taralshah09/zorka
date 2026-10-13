@@ -1,6 +1,6 @@
 // Where a picked food goes (S18 → S19 → …). One set of params threads through search, food detail and
 // create-food. A draft that needs a look ends on the confirm sheet (S16); one that doesn't is saved straight
-// away with "Edit · Undo" on the toast (UX L3).
+// away with "Edit · Undo" on the toast (UX L3). Voice and typed meals always end on the confirm sheet.
 import { router } from "expo-router";
 import { useCallback } from "react";
 
@@ -52,7 +52,8 @@ export function useFinishDraft() {
     (how: "push" | "replace" = "push") => {
       const d = useDraft.getState().draft;
       if (!d || !userId) return;
-      if (needsCheck(d, promptOn)) {
+      // Spoken or typed meals are always shown to check before saving: the AI can mishear or mismatch a dish.
+      if (d.source === "voice" || d.source === "text" || needsCheck(d, promptOn)) {
         if (how === "replace") router.replace("/log/confirm");
         else router.push("/log/confirm");
         return;

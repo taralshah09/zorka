@@ -2,7 +2,8 @@
 // (e.g. "1 piece = 60 g"), kcal / P / C / F for that serving, Save. The food stays in the user's own
 // account (visible only to them) and works offline at once.
 // Voice (lookup=1): the food wasn't in the list, so its nutrition is looked up on the web and pre-fills the form; the
-// person checks and edits it before saving.
+// person checks and edits it before saving. "Get nutrition online" runs the same lookup for the name typed here, and
+// fills the numbers in from it.
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Linking, StyleSheet, View } from "react-native";
@@ -32,8 +33,12 @@ export default function CreateFood() {
   const params = useLocalSearchParams<PickParams & { name?: string; lookup?: string }>();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
-  const asked = params.lookup === "1";
-  const lookup = useFoodLookup(userId, params.name ?? "", asked && online);
+  // The name being looked up: the one passed in (lookup=1), or the one typed when "Get nutrition online" is tapped.
+  const [lookupName, setLookupName] = useState(params.lookup === "1" ? (params.name ?? "") : "");
+  // A tap overwrites the numbers; the automatic lookup on open keeps anything typed while it loaded.
+  const [overwrite, setOverwrite] = useState(false);
+  const asked = !!lookupName.trim();
+  const lookup = useFoodLookup(userId, lookupName, asked && online);
   const [name, setName] = useState(params.name ?? "");
   const [diet, setDiet] = useState<DietPref>("veg");
   const [homeCooked, setHomeCooked] = useState(true);
@@ -45,12 +50,12 @@ export default function CreateFood() {
   const [fat, setFat] = useState("");
   const [tried, setTried] = useState(false);
 
-  // Fill in what the web lookup found, once, without overwriting anything typed while it loaded.
-  const [filled, setFilled] = useState(false);
+  // Fill in what each web lookup found, once per looked-up name.
+  const [filledFor, setFilledFor] = useState<string | null>(null);
   const found = lookup.data?.food;
-  if (found && !filled) {
-    setFilled(true);
-    const keep = (prev: string, n: number) => (prev.trim() ? prev : String(n));
+  if (found && filledFor !== lookupName) {
+    setFilledFor(lookupName);
+    const keep = (prev: string, n: number) => (prev.trim() && !overwrite ? prev : String(n));
     setName((prev) => prev.trim() || found.name);
     if (found.diet) setDiet(found.diet);
     setHomeCooked(found.homeCooked);
@@ -79,6 +84,15 @@ export default function CreateFood() {
   const atwater = 4 * p + 4 * c + 9 * f;
   const mismatch = k !== null && k > 0 && (p || c || f) && Math.abs(atwater - k) > Math.max(40, k * 0.3);
 
+  const fetchOnline = () => {
+    const n = name.trim();
+    if (!n) return;
+    setOverwrite(true);
+    setFilledFor(null);
+    if (n === lookupName.trim()) void lookup.refetch();
+    else setLookupName(n);
+  };
+
   const save = () => {
     setTried(true);
     if (!valid || !userId) return;
@@ -101,7 +115,8 @@ export default function CreateFood() {
     <Screen header={<Header title="Create a food" onBack={() => router.back()} />}>
       {asked ? (
         <LookupNotice
-          name={params.name ?? ""}
+          name={lookupName.trim()}
+          fromSearch={!overwrite}
           online={online}
           loading={lookup.isFetching}
           result={lookup.data}
@@ -117,6 +132,18 @@ export default function CreateFood() {
         placeholder="Mom's besan ladoo"
         error={tried ? errors.name : undefined}
       />
+      {online ? (
+        <Button
+          label={lookup.isFetching ? "Looking it up…" : "Get nutrition online"}
+          variant="secondary"
+          icon="search"
+          onPress={fetchOnline}
+          loading={lookup.isFetching}
+          disabled={!name.trim() || lookup.isFetching}
+          accessibilityHint="Looks up calories and macros for this name on the web and fills them in below"
+          fullWidth
+        />
+      ) : null}
 
       <Text variant="eyebrow" color="textSecondary">
         Diet
@@ -197,6 +224,7 @@ export default function CreateFood() {
 /** "Not in the list" + where the numbers came from, so the person knows to check them. */
 function LookupNotice({
   name,
+  fromSearch,
   online,
   loading,
   result,
@@ -204,6 +232,8 @@ function LookupNotice({
   onRetry,
 }: {
   name: string;
+  /** Opened because the item wasn't in the list (vs. "Get nutrition online" tapped here). */
+  fromSearch: boolean;
   online: boolean;
   loading: boolean;
   result: FoodLookupResult | undefined;
@@ -226,7 +256,9 @@ function LookupNotice({
     <Card>
       <View style={styles.noticeHead}>
         <Icon name="search" size={20} color={colors.warn} />
-        <Text variant="title" style={styles.flex}>{`"${name}" isn't in our food list`}</Text>
+        <Text variant="title" style={styles.flex}>
+          {fromSearch ? `"${name}" isn't in our food list` : `Nutrition for "${name}"`}
+        </Text>
       </View>
       <View style={styles.noticeBody}>
         {loading ? <ActivityIndicator size="small" color={colors.primary} /> : null}
