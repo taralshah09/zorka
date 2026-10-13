@@ -10,10 +10,21 @@ export type NextAction = {
   title: string;
   icon: IconName;
   tone: "default" | "warning" | "success";
+  /** The button on Home's brief: the one thing to tap. */
+  cta: string;
   href: "/gap" | "/gap?tab=move" | "/quick-log" | "/share?card=day";
 };
 
-const ways = (n: number) => (n > 1 ? `${n} ways to close it` : n === 1 ? "1 way to close it" : "see your options");
+const ways = (n: number, cta = false) =>
+  cta
+    ? n > 0
+      ? `Show me ${n === 1 ? "1 option" : `${n} options`}`
+      : "See your options"
+    : n > 1
+      ? `${n} ways to close it`
+      : n === 1
+        ? "1 way to close it"
+        : "see your options";
 
 export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: number, mealsToday: number): NextAction {
   switch (situation) {
@@ -23,6 +34,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: `Log anything to keep your ${f.streak}-day streak`,
         icon: "local_fire_department",
         tone: "warning",
+        cta: "Log anything now",
         href: "/quick-log",
       };
     case "over":
@@ -33,6 +45,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
           : `${formatInt(f.overKcal)} kcal over · calm ways to balance it`,
         icon: "directions_walk",
         tone: "warning",
+        cta: "See ways to balance",
         href: "/gap?tab=move",
       };
     case "over_late":
@@ -43,6 +56,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
           : `${formatInt(f.overKcal)} kcal over · rest tonight, back on plan tomorrow`,
         icon: "bedtime",
         tone: "warning",
+        cta: "See ways to balance",
         href: "/gap?tab=move",
       };
     case "done":
@@ -51,6 +65,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: "Every target done today. Share your day",
         icon: "trophy",
         tone: "success",
+        cta: "Share your day",
         href: "/share?card=day",
       };
     case "protein":
@@ -59,6 +74,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: `${formatInt(f.proteinLeftG)} g protein left · ${ways(eatOptions)}`,
         icon: "egg",
         tone: "default",
+        cta: ways(eatOptions, true),
         href: "/gap",
       };
     case "under":
@@ -67,6 +83,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: `${formatInt(f.kcalLeft)} kcal left · ${ways(eatOptions)}`,
         icon: "restaurant",
         tone: "default",
+        cta: ways(eatOptions, true),
         href: "/gap",
       };
     case "steps":
@@ -75,6 +92,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: `${formatInt(f.stepsLeft)} steps to go · a ${f.walkForSteps}-minute walk`,
         icon: "directions_walk",
         tone: "default",
+        cta: "Plan a walk",
         href: "/gap?tab=move",
       };
     case "on_track":
@@ -84,6 +102,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
             title: "Nothing to fix. Log your next meal when you eat",
             icon: "check_circle",
             tone: "success",
+            cta: "Log your next meal",
             href: "/quick-log",
           }
         : {
@@ -91,6 +110,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
             title: "Log your first meal of the day",
             icon: "restaurant",
             tone: "default",
+            cta: "Log a meal",
             href: "/quick-log",
           };
     case "morning":
@@ -100,6 +120,7 @@ export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: n
         title: "Log your first meal of the day",
         icon: "restaurant",
         tone: "default",
+        cta: "Log a meal",
         href: "/quick-log",
       };
   }

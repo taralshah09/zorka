@@ -85,6 +85,7 @@ function RootStack() {
         <Stack.Screen name="progress" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="dev" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="gap" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="day" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="notifications" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="celebrate" options={{ presentation: "transparentModal", animation: "fade" }} />
