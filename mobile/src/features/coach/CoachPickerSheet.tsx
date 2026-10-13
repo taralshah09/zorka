@@ -1,5 +1,6 @@
 // Change coach (S12 Settings and the S44 chat header). The coach is part of the server-owned profile (D23), so the
-// change needs the network; on failure a toast says so and nothing changes.
+// change needs the network; on failure a toast says so and nothing changes. Onboarding's plan step (UX O3) passes
+// `onPick` instead, so the pick only goes into the draft.
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
@@ -14,10 +15,13 @@ export function CoachPickerSheet({
   visible,
   onClose,
   current,
+  onPick,
 }: {
   visible: boolean;
   onClose: () => void;
   current: CoachId | null;
+  /** Use the pick locally instead of saving it to the profile. */
+  onPick?: (coach: CoachId) => void;
 }) {
   const { colors, radius } = useTheme();
   const userId = useActiveUser((s) => s.userId);
@@ -25,6 +29,10 @@ export function CoachPickerSheet({
   const toast = useToast();
   const pick = (coach: CoachId) => {
     if (coach === current) return onClose();
+    if (onPick) {
+      onPick(coach);
+      return onClose();
+    }
     update.mutate(
       { coach },
       {

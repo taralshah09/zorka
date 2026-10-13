@@ -1,16 +1,19 @@
-// Shared onboarding layout — DESIGN.md §6.2: top progress bar (step x of STEP_COUNT), back arrow, one question
-// per screen, primary button pinned to the bottom and disabled until the step is valid.
+// Shared onboarding layout — DESIGN.md §6.2: top progress bar (step x of the steps for this goal), back arrow, one
+// question per screen, primary button pinned to the bottom and disabled until the step is valid.
+// UX O4: the offline banner shows under the progress bar, and the step is remembered so setup resumes here.
 import { router } from "expo-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { useTheme } from "@/core/theme";
 import { Button, IconButton, ProgressBar, Text } from "@/core/ui";
-import { STEP_COUNT } from "./copy";
+import { useDraft } from "./draft";
+import { stepsFor, type StepId } from "./flow";
 
 type Props = {
-  step: number;
+  id: StepId;
   title: string;
   subtitle?: string;
   children: ReactNode;
@@ -22,9 +25,17 @@ type Props = {
   glow?: boolean;
 };
 
-export function OnboardingStep({ step, title, subtitle, children, cta, onNext, canContinue, loading, glow }: Props) {
+export function OnboardingStep({ id, title, subtitle, children, cta, onNext, canContinue, loading, glow }: Props) {
   const { colors, layout } = useTheme();
   const insets = useSafeAreaInsets();
+  const goal = useDraft((s) => s.goal);
+  const steps = stepsFor(goal);
+  const total = steps.length;
+  const step = Math.max(1, steps.indexOf(id) + 1);
+
+  useEffect(() => {
+    if (useDraft.getState().lastStep !== id) useDraft.getState().update({ lastStep: id });
+  }, [id]);
 
   return (
     <KeyboardAvoidingView
@@ -34,16 +45,14 @@ export function OnboardingStep({ step, title, subtitle, children, cta, onNext, c
       <View style={[styles.top, { paddingTop: insets.top + 8, paddingHorizontal: layout.screenMargin }]}>
         <IconButton icon="arrow_back" accessibilityLabel="Back" onPress={() => router.back()} />
         <View style={styles.progress}>
-          <ProgressBar
-            progress={step / STEP_COUNT}
-            color={colors.primary}
-            accessibilityLabel={`Step ${step} of ${STEP_COUNT}`}
-          />
+          <ProgressBar progress={step / total} color={colors.primary} accessibilityLabel={`Step ${step} of ${total}`} />
         </View>
         <Text variant="label" color="textSecondary" tabular>
-          {`${step} of ${STEP_COUNT}`}
+          {`${step} of ${total}`}
         </Text>
       </View>
+
+      <NetworkBanner />
 
       <ScrollView
         contentContainerStyle={[styles.body, { paddingHorizontal: layout.screenMargin, gap: layout.cardGap }]}

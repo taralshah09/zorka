@@ -1,5 +1,5 @@
-// S04 · Basics (step 2 of 7): age stepper, sex, height (cm or ft/in), current weight.
-// State: amber validation message on an out-of-range value.
+// S04 · Basics (step 2): age stepper (tap to type, UX O1), sex, height (cm or ft/in), current weight, and how you
+// eat (S06's diet chips, moved here in UX O3). State: amber validation message on an out-of-range value.
 // Sex uses choice chips, not a segmented control: "Prefer not to say" doesn't fit a third segment
 // at phone width (deviation recorded in D27).
 import { router } from "expo-router";
@@ -7,8 +7,9 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Chip, NumberStepper, SegmentedControl, Text, TextField } from "@/core/ui";
-import { SEX_OPTIONS } from "@/features/onboarding/copy";
+import { DIET_OPTIONS, SEX_OPTIONS } from "@/features/onboarding/copy";
 import { BOUNDS, inRange, parseNumber, useDraft } from "@/features/onboarding/draft";
+import { nextStep, stepHref } from "@/features/onboarding/flow";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 import { formatKg } from "@/features/targets/format";
 
@@ -76,12 +77,12 @@ export default function BasicsStep() {
 
   return (
     <OnboardingStep
-      step={2}
+      id="basics"
       title="A few basics"
       subtitle="Used to work out how much energy you burn."
       cta="Continue"
-      canContinue={!!draft.sex && heightOk && weightOk && inRange(draft.age, BOUNDS.age)}
-      onNext={() => router.push("/onboarding/activity")}
+      canContinue={!!draft.sex && !!draft.diet && heightOk && weightOk && inRange(draft.age, BOUNDS.age)}
+      onNext={() => router.push(stepHref(nextStep("basics", draft.goal)))}
     >
       <View style={styles.field}>
         <Text variant="label" color="textSecondary">
@@ -177,6 +178,27 @@ export default function BasicsStep() {
         onChangeText={onWeight}
         warning={weightWarning}
       />
+
+      <View style={styles.field}>
+        <Text variant="label" color="textSecondary">
+          How do you eat?
+        </Text>
+        <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Diet preference">
+          {DIET_OPTIONS.map((o) => (
+            <Chip
+              key={o.value}
+              kind="choice"
+              label={o.label}
+              diet={o.value}
+              selected={draft.diet === o.value}
+              onPress={() => update({ diet: o.value })}
+            />
+          ))}
+        </View>
+        <Text variant="caption" color="textSecondary">
+          Food suggestions will match this.
+        </Text>
+      </View>
     </OnboardingStep>
   );
 }

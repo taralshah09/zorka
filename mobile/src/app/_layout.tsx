@@ -44,6 +44,7 @@ import { ConfettiBurstHost } from "@/features/celebrate/ConfettiBurst";
 import { OrderedItPrompt } from "@/features/gap/sheets";
 import { NudgePlanner } from "@/features/nudges/NudgePlanner";
 import { useActiveUser } from "@/features/users/activeUser";
+import { startPendingProfileSync } from "@/features/users/api";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -58,7 +59,13 @@ function bootstrap() {
   startNetworkMonitoring();
   getDb();
   startSyncEngine();
-  return startRecorderLifecycle();
+  // UX O4: an onboarding plan saved offline goes to the server once the network is back.
+  const stopProfileSync = startPendingProfileSync(queryClient);
+  const stopRecorder = startRecorderLifecycle();
+  return () => {
+    stopProfileSync();
+    stopRecorder();
+  };
 }
 
 function RootStack() {

@@ -28,4 +28,8 @@ export const KV_KEYS = {
   welcomeBackSeen: "zorka.welcomeBackSeen",
   pendingOrder: "zorka.pendingOrder",
   usualMeals: "zorka.usualMeals",
+  /** UX O4: onboarding answers so far, so an app kill doesn't lose them. */
+  onboardingDraft: "zorka.onboardingDraft",
+  /** UX O4: a profile save made offline, keyed by user id, sent when the network is back. Not per-profile suffixed. */
+  pendingProfile: "zorka.pendingProfile",
 } as const;

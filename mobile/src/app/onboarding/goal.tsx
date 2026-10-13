@@ -1,9 +1,10 @@
-// S03 · Goal (step 1 of 7). States: none selected, one selected.
+// S03 · Goal (step 1). States: none selected, one selected.
 import { router } from "expo-router";
 
 import { ChoiceCard } from "@/features/onboarding/ChoiceCard";
 import { GOAL_OPTIONS } from "@/features/onboarding/copy";
 import { useDraft } from "@/features/onboarding/draft";
+import { nextStep, stepHref } from "@/features/onboarding/flow";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 
 export default function GoalStep() {
@@ -12,11 +13,11 @@ export default function GoalStep() {
 
   return (
     <OnboardingStep
-      step={1}
+      id="goal"
       title="What's your main goal?"
       cta="Continue"
       canContinue={!!goal}
-      onNext={() => router.push("/onboarding/basics")}
+      onNext={() => router.push(stepHref(nextStep("goal", goal)))}
     >
       {GOAL_OPTIONS.map((o) => (
         <ChoiceCard

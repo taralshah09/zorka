@@ -11,6 +11,9 @@ type Props = {
   /** Required: icon-only controls always carry a label (brand §12). */
   accessibilityLabel: string;
   onPress?: () => void;
+  /** Press-and-hold repeat (NumberStepper). */
+  onPressIn?: () => void;
+  onPressOut?: () => void;
   variant?: "default" | "filled";
   badge?: number;
   disabled?: boolean;
@@ -18,12 +21,23 @@ type Props = {
 
 const SIZE = 40;
 
-export function IconButton({ icon, accessibilityLabel, onPress, variant = "default", badge, disabled }: Props) {
+export function IconButton({
+  icon,
+  accessibilityLabel,
+  onPress,
+  onPressIn,
+  onPressOut,
+  variant = "default",
+  badge,
+  disabled,
+}: Props) {
   const { colors, radius } = useTheme();
   const filled = variant === "filled";
   return (
     <PressableScale
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={badge ? `${accessibilityLabel}, ${badge} new` : accessibilityLabel}

@@ -1,24 +1,46 @@
-// S07 · Target weight & pace (step 5 of 7). States: normal, capped-pace warning, calorie-floor note,
-// goal = maintain / get fitter (target weight hidden). The preview runs the P08 calculator live. The daily water
-// goal (glasses) is set here too, for every goal.
+// S07 · Target weight & pace (step 4, only for goals with a target weight, UX O3). States: normal, capped-pace
+// warning, calorie-floor note. The preview runs the P08 calculator live. UX O2: the suggested target is filled in as
+// the real value, so Continue works straight away. The water goal moved to the plan step (UX O3).
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Card, NumberStepper, Slider, Text, TextField } from "@/core/ui";
+import { Card, Slider, Text, TextField } from "@/core/ui";
 import { PACE_STOPS } from "@/features/onboarding/copy";
-import { BOUNDS, draftTargetInput, inRange, parseNumber, useDraft } from "@/features/onboarding/draft";
+import {
+  BOUNDS,
+  draftTargetInput,
+  inRange,
+  parseNumber,
+  suggestedTargetKg,
+  useDraft,
+  type Draft,
+} from "@/features/onboarding/draft";
+import { nextStep, stepHref } from "@/features/onboarding/flow";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 import { formatInt, formatKg, formatShortDate, formatWeeklyKg } from "@/features/targets/format";
 import { calculateTargets, goalHasPace, MAX_LOSS_KG_PER_WEEK, type Targets } from "@shared/domain/targets";
-import { WATER_GOAL_MAX, WATER_GOAL_MIN } from "@shared/domain/water";
+
+/** The target to start from: the saved one when it fits the goal, else the suggestion. */
+function startingTarget(d: Draft): number | null {
+  if (!d.goal || !goalHasPace(d.goal) || d.weightKg == null) return d.targetWeightKg;
+  const t = d.targetWeightKg;
+  const fits =
+    inRange(t, BOUNDS.weightKg) &&
+    (d.goal === "lose_fat" ? t < d.weightKg : d.goal === "build_muscle" ? t > d.weightKg : true);
+  return fits ? t : suggestedTargetKg(d.goal, d.weightKg);
+}
 
 export default function TargetStep() {
   const draft = useDraft();
   const { update } = draft;
-  const [text, setText] = useState(draft.targetWeightKg == null ? "" : formatKg(draft.targetWeightKg));
+  const [initial] = useState(() => startingTarget(draft));
+  const [text, setText] = useState(initial == null ? "" : formatKg(initial));
+  useEffect(() => {
+    if (initial !== useDraft.getState().targetWeightKg) useDraft.getState().update({ targetWeightKg: initial });
+  }, [initial]);
 
   const hasPace = !!draft.goal && goalHasPace(draft.goal);
   const input = draftTargetInput(draft);
@@ -39,12 +61,12 @@ export default function TargetStep() {
 
   return (
     <OnboardingStep
-      step={5}
+      id="target"
       title="Where do you want to be?"
       subtitle={hasPace ? "Pick a target and how fast to get there." : undefined}
       cta="Continue"
       canContinue={!!input && (!hasPace || inRange(t, BOUNDS.weightKg))}
-      onNext={() => router.push("/onboarding/coach")}
+      onNext={() => router.push(stepHref(nextStep("target", draft.goal)))}
     >
       {hasPace ? (
         <>
@@ -52,7 +74,7 @@ export default function TargetStep() {
             label="Target weight"
             unit="kg"
             keyboardType="decimal-pad"
-            placeholder={formatKg(draft.goal === "lose_fat" ? Math.round(current * 0.9) : Math.round(current * 1.05))}
+            placeholder={draft.goal ? formatKg(suggestedTargetKg(draft.goal, current)) : undefined}
             value={text}
             onChangeText={(v) => {
               setText(v);
@@ -78,19 +100,6 @@ export default function TargetStep() {
           </Text>
         </Card>
       )}
-      <View style={styles.water}>
-        <Text variant="label" color="textSecondary">
-          Daily water goal
-        </Text>
-        <NumberStepper
-          label="Daily water goal"
-          value={draft.waterGoalGlasses}
-          onChange={(waterGoalGlasses) => update({ waterGoalGlasses })}
-          min={WATER_GOAL_MIN}
-          max={WATER_GOAL_MAX}
-          unit={draft.waterGoalGlasses === 1 ? "glass" : "glasses"}
-        />
-      </View>
     </OnboardingStep>
   );
 }
@@ -148,7 +157,6 @@ function WarnNote({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   pace: { gap: 4 },
-  water: { gap: 4 },
   note: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
   flex: { flex: 1 },
 });

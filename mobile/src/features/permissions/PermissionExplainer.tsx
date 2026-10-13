@@ -6,6 +6,7 @@ import { Linking, StyleSheet, View } from "react-native";
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Button, Text } from "@/core/ui";
+import { DEFAULT_PER_DAY } from "@shared/domain/nudges";
 
 export type PermissionKind = "microphone" | "camera" | "gym" | "nearby" | "notifications";
 
@@ -65,7 +66,7 @@ const COPY: Record<PermissionKind, Copy> = {
     title: "Let your coach nudge you",
     reasons: [
       "A morning plan, a protein reminder, and a heads-up before your streak slips.",
-      "4 a day at most, never in your quiet hours.",
+      "{perDay} a day at most, never in your quiet hours.",
     ],
     privacy: "Nudges are planned on your phone. You choose which ones you get in Settings.",
     deniedTitle: "Notifications are off for Zorka",
@@ -78,8 +79,11 @@ export function PermissionExplainer({
   denied,
   onContinue,
   onNotNow,
+  perDay = DEFAULT_PER_DAY,
 }: {
   kind: PermissionKind;
+  /** Notifications: the user's nudges-per-day setting, for the copy (UX W8). */
+  perDay?: number;
   /** The system won't ask again: send the user to Settings instead. */
   denied: boolean;
   onContinue: () => void;
@@ -101,14 +105,16 @@ export function PermissionExplainer({
         </Text>
       ) : (
         <View style={styles.reasons}>
-          {c.reasons.map((r) => (
-            <View key={r} style={styles.reason}>
-              <Icon name="check_circle" size={20} color={colors.primaryText} />
-              <Text variant="body" style={styles.flex}>
-                {r}
-              </Text>
-            </View>
-          ))}
+          {c.reasons
+            .map((r) => r.replace("{perDay}", String(perDay)))
+            .map((r) => (
+              <View key={r} style={styles.reason}>
+                <Icon name="check_circle" size={20} color={colors.primaryText} />
+                <Text variant="body" style={styles.flex}>
+                  {r}
+                </Text>
+              </View>
+            ))}
           <Text variant="caption" color="textSecondary">
             {c.privacy}
           </Text>

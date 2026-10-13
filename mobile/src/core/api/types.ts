@@ -26,7 +26,7 @@ export type Profile = {
   coach: CoachId | null;
   /** P18: ask about oil/ghee for home-cooked food on the confirm sheet. */
   oilGheePrompt: boolean;
-  /** D48: daily step goal, 8,000–100,000. */
+  /** D48: daily step goal, 2,000–100,000 (UX F13). */
   stepGoal: number;
   /** Daily water goal, in glasses (1–20). */
   waterGoalGlasses: number;

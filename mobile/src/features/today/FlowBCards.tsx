@@ -80,7 +80,7 @@ export function NudgePromptCard({ userId }: { userId: string }) {
             </Text>
             <Text variant="title">Get a heads-up before protein or your streak slips</Text>
             <Text variant="caption" color="textSecondary">
-              Up to 4 a day, never in quiet hours.
+              {`Up to ${settings.perDay} a day, never in quiet hours.`}
             </Text>
           </View>
         </View>
@@ -94,6 +94,7 @@ export function NudgePromptCard({ userId }: { userId: string }) {
           <PermissionExplainer
             kind="notifications"
             denied={false}
+            perDay={settings.perDay}
             onContinue={async () => {
               setAccess(await requestNotifAccess());
               setSheet(false);

@@ -41,9 +41,18 @@ export const PROTEIN_G_PER_KG: Record<Goal, number> = {
 export const FAT_SHARE_OF_KCAL = 0.25;
 export const MIN_FAT_G_PER_KG = 0.6;
 export const STEP_TARGET = 8000;
-/** User-set daily step goal (D48): the default is also the floor; anything up to the max is allowed. */
-export const STEP_GOAL_MIN = STEP_TARGET;
+/** User-set daily step goal (D48). UX F13: the floor is 2,000 so a beginner can start where they are. */
+export const STEP_GOAL_MIN = 2000;
 export const STEP_GOAL_MAX = 100_000;
+
+/** UX F13: the step goal onboarding suggests for an activity level (the user can change it on the plan). */
+export const SUGGESTED_STEP_GOAL: Record<ActivityLevel, number> = {
+  sedentary: 5000,
+  light: 7000,
+  moderate: 8000,
+  active: 10_000,
+  very_active: 12_000,
+};
 
 /** A stored or typed step goal, made safe: missing → the default; out of range → the nearest bound. */
 export function clampStepGoal(goal: number | null | undefined): number {

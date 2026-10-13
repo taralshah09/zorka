@@ -5,6 +5,8 @@ import {
   calculateTargets,
   clampStepGoal,
   mifflinStJeor,
+  STEP_TARGET,
+  SUGGESTED_STEP_GOAL,
   validateTargetInput,
   type TargetInput,
 } from "../../shared/domain/targets.js";
@@ -213,10 +215,17 @@ describe("step goal (D48)", () => {
     expect(calculateTargets({ ...base, stepGoal: 12_500 }, TODAY).steps).toBe(12_500);
   });
 
-  it("keeps the goal between 8,000 and 100,000", () => {
-    expect(clampStepGoal(5000)).toBe(8000);
+  it("keeps the goal between 2,000 and 100,000 (UX F13)", () => {
+    expect(clampStepGoal(5000)).toBe(5000);
+    expect(clampStepGoal(1500)).toBe(2000);
     expect(clampStepGoal(100_000)).toBe(100_000);
     expect(clampStepGoal(250_000)).toBe(100_000);
     expect(clampStepGoal(Number.NaN)).toBe(8000);
+  });
+
+  it("suggests a goal from the activity level, inside the bounds", () => {
+    expect(SUGGESTED_STEP_GOAL.sedentary).toBe(5000);
+    expect(SUGGESTED_STEP_GOAL.moderate).toBe(STEP_TARGET);
+    for (const goal of Object.values(SUGGESTED_STEP_GOAL)) expect(clampStepGoal(goal)).toBe(goal);
   });
 });

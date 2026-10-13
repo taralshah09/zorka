@@ -25,7 +25,7 @@ import {
 import { HealthConnectSettings } from "@/features/activity/HealthConnectSettings";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { PERSONAS } from "@/features/coach/personas";
-import { useNudgeSettings } from "@/features/nudges/settings";
+import { useNotifAccess, useNudgeSettings, type NotifAccess } from "@/features/nudges/settings";
 import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
 import { StepGoalField } from "@/features/targets/StepGoalField";
@@ -62,6 +62,7 @@ export default function Settings() {
   const [stepSheet, setStepSheet] = useState(false);
   const [coachSheet, setCoachSheet] = useState(false);
   const nudges = useNudgeSettings(userId);
+  const { access: notifAccess } = useNotifAccess();
   const oilPrompt = updateProfile.isPending ? !!updateProfile.variables?.oilGheePrompt : !!profile.data?.oilGheePrompt;
   const pendingDetail = updateProfile.isPending ? updateProfile.variables?.checkinDetailed : undefined;
   const checkinStyle: CheckinStyle = (pendingDetail ?? profile.data?.checkinDetailed) ? "detailed" : "simple";
@@ -201,7 +202,7 @@ export default function Settings() {
           <ListItem
             icon="notifications"
             title="Notifications"
-            value={nudges.enabled ? `Up to ${nudges.perDay} a day` : "Off"}
+            value={nudgeValue(nudges.enabled, nudges.perDay, notifAccess)}
             chevron
             onPress={() => router.push("/notifications")}
           />
@@ -317,6 +318,14 @@ function StepGoalSheet({
       </View>
     </BottomSheet>
   );
+}
+
+/** UX F12: nudges only reach the user when the OS permission is granted, so the row says when it isn't. */
+function nudgeValue(enabled: boolean, perDay: number, access: NotifAccess | null): string {
+  if (!enabled) return "Off";
+  if (access === "unsupported") return "Not available";
+  if (access === "ask" || access === "denied") return "Off: permission needed";
+  return `Up to ${perDay} a day`;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

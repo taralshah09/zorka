@@ -34,7 +34,8 @@ export default function NotificationSettings() {
   const { access, setAccess } = useNotifAccess();
   const [explainer, setExplainer] = useState(false);
   const save = (next: Partial<StoredNudgeSettings>) => userId && saveNudgeSettings(userId, { ...settings, ...next });
-  const off = access !== "granted";
+  // UX W8: nothing until the permission is known, so the "off" card doesn't flash on load.
+  const off = access !== null && access !== "granted";
 
   return (
     <Screen header={<Header title="Notifications" onBack={() => router.back()} />}>
@@ -44,7 +45,7 @@ export default function NotificationSettings() {
           <Text variant="body" color="textSecondary">
             {access === "unsupported"
               ? "Notifications aren't available in this build of the app."
-              : "Your coach can remind you about protein, workouts and your streak. Up to 4 a day."}
+              : `Your coach can remind you about protein, workouts and your streak. Up to ${settings.perDay} a day.`}
           </Text>
           {access !== "unsupported" ? (
             <View style={styles.cta}>
@@ -140,6 +141,7 @@ export default function NotificationSettings() {
         <PermissionExplainer
           kind="notifications"
           denied={access === "denied"}
+          perDay={settings.perDay}
           onContinue={async () => {
             setAccess(await requestNotifAccess());
             setExplainer(false);

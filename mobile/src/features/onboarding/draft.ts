@@ -1,10 +1,19 @@
-// Onboarding answers while the user walks S03–S09. Kept in memory only: nothing is saved until
-// "Start today" on S09 (P09 scope: "saved to the profile").
+// Onboarding answers while the user walks the steps. Nothing goes to the server until "Start today" on the plan
+// step (P09 scope: "saved to the profile"), but every change is kept on the phone (UX O4), so an app kill, going back
+// to Welcome or being offline doesn't lose them. The saved draft is cleared once the plan is saved or queued.
 import { create } from "zustand";
 
 import type { ActivityLevel, CoachId, DietPref, Goal, Pace, Profile, Sex } from "@/core/api/types";
-import { goalHasPace, STEP_TARGET, validateTargetInput, type TargetInput } from "@shared/domain/targets";
+import { kv, KV_KEYS } from "@/core/storage/kv";
+import {
+  goalHasPace,
+  STEP_TARGET,
+  SUGGESTED_STEP_GOAL,
+  validateTargetInput,
+  type TargetInput,
+} from "@shared/domain/targets";
 import { clampWaterGoal, WATER_GOAL_DEFAULT } from "@shared/domain/water";
+import type { StepId } from "./flow";
 
 export type Draft = {
   goal: Goal | null;
@@ -16,10 +25,14 @@ export type Draft = {
   diet: DietPref | null;
   targetWeightKg: number | null;
   pace: Pace;
+  /** null: not picked, the plan uses the coach recommended for the goal (UX O3). */
   coach: CoachId | null;
-  stepGoal: number;
-  /** Daily water goal in glasses, set on the target step (S07). */
+  /** null: not set, the plan uses the goal suggested for the activity level (UX O3, F13). */
+  stepGoal: number | null;
+  /** Daily water goal in glasses. Defaulted; changed on the plan step. */
   waterGoalGlasses: number;
+  /** The last step the user was on, to pick up from there (UX O4). */
+  lastStep: StepId | null;
 };
 
 /** Sanity bounds, same as the API (D21). */
@@ -28,6 +41,14 @@ export const BOUNDS = {
   heightCm: { min: 100, max: 250 },
   weightKg: { min: 30, max: 300 },
 } as const;
+
+/** UX O3: the coach pre-picked for each goal. Change it on the plan step or later in Settings. */
+export const RECOMMENDED_COACH: Record<Goal, CoachId> = {
+  lose_fat: "calm_mentor",
+  build_muscle: "drill_sergeant",
+  maintain: "calm_mentor",
+  get_fitter: "desi_legend",
+};
 
 const EMPTY: Draft = {
   goal: null,
@@ -40,21 +61,64 @@ const EMPTY: Draft = {
   targetWeightKg: null,
   pace: "steady",
   coach: null,
-  stepGoal: STEP_TARGET,
+  stepGoal: null,
   waterGoalGlasses: WATER_GOAL_DEFAULT,
+  lastStep: null,
 };
 
 type DraftState = Draft & {
+  /** The profile these answers belong to; the saved draft is only resumed for the same one. */
+  userId: string | null;
   /** Starts a fresh draft, prefilled from the profile when redoing setup. */
-  start: (profile?: Profile | null) => void;
+  start: (userId: string, profile?: Profile | null) => void;
+  /** Loads the saved draft for this profile. False when there is none. */
+  resume: (userId: string) => boolean;
   update: (patch: Partial<Draft>) => void;
 };
 
-export const useDraft = create<DraftState>((set) => ({
+const savedKey = (userId: string) => `${KV_KEYS.onboardingDraft}.${userId}`;
+
+/** The saved draft for this profile, when the user got past the first question. */
+export function savedDraft(userId: string | null): Draft | null {
+  if (!userId) return null;
+  try {
+    const raw = kv.get(savedKey(userId));
+    if (!raw) return null;
+    const d = { ...EMPTY, ...(JSON.parse(raw) as Partial<Draft>) };
+    return d.goal ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSavedDraft(userId: string | null) {
+  if (userId) kv.remove(savedKey(userId));
+}
+
+const pick = (s: DraftState): Draft => ({
+  goal: s.goal,
+  age: s.age,
+  sex: s.sex,
+  heightCm: s.heightCm,
+  weightKg: s.weightKg,
+  activityLevel: s.activityLevel,
+  diet: s.diet,
+  targetWeightKg: s.targetWeightKg,
+  pace: s.pace,
+  coach: s.coach,
+  stepGoal: s.stepGoal,
+  waterGoalGlasses: s.waterGoalGlasses,
+  lastStep: s.lastStep,
+});
+
+export const useDraft = create<DraftState>((set, get) => ({
   ...EMPTY,
-  start: (p) =>
+  userId: null,
+  start: (userId, p) => {
+    clearSavedDraft(userId);
     set({
       ...EMPTY,
+      userId,
       ...(p
         ? {
             goal: p.goal,
@@ -67,13 +131,46 @@ export const useDraft = create<DraftState>((set) => ({
             targetWeightKg: p.targetWeightKg,
             pace: p.pace ?? EMPTY.pace,
             coach: p.coach,
-            stepGoal: p.stepGoal ?? EMPTY.stepGoal,
+            // A redo keeps the user's own goals; a first run leaves them to the suggestions.
+            stepGoal: p.onboardedAt ? (p.stepGoal ?? STEP_TARGET) : null,
             waterGoalGlasses: clampWaterGoal(p.waterGoalGlasses),
           }
         : null),
-    }),
-  update: (patch) => set(patch),
+    });
+  },
+  resume: (userId) => {
+    const d = savedDraft(userId);
+    if (!d) return false;
+    set({ ...d, userId });
+    return true;
+  },
+  update: (patch) => {
+    set(patch);
+    const s = get();
+    if (s.userId) {
+      try {
+        kv.set(savedKey(s.userId), JSON.stringify(pick(s)));
+      } catch {
+        // Saving the draft is a convenience; the answers are still in memory.
+      }
+    }
+  },
 }));
+
+/** The coach the plan uses: the user's pick, or the one recommended for the goal. */
+export function draftCoach(d: Draft): CoachId | null {
+  return d.coach ?? (d.goal ? RECOMMENDED_COACH[d.goal] : null);
+}
+
+/** The step goal the plan uses: the user's own, or the one suggested for the activity level. */
+export function draftStepGoal(d: Draft): number {
+  return d.stepGoal ?? (d.activityLevel ? SUGGESTED_STEP_GOAL[d.activityLevel] : STEP_TARGET);
+}
+
+/** UX O2: the target weight offered for a goal, 10% down to lose fat and 5% up to build muscle. */
+export function suggestedTargetKg(goal: Goal, weightKg: number): number {
+  return Math.round(goal === "lose_fat" ? weightKg * 0.9 : weightKg * 1.05);
+}
 
 /** Calculator input from the draft, or null while a field is missing or invalid. */
 export function draftTargetInput(d: Draft): TargetInput | null {
@@ -87,7 +184,7 @@ export function draftTargetInput(d: Draft): TargetInput | null {
     activityLevel: d.activityLevel,
     targetWeightKg: goalHasPace(d.goal) ? d.targetWeightKg : null,
     pace: goalHasPace(d.goal) ? d.pace : null,
-    stepGoal: d.stepGoal,
+    stepGoal: draftStepGoal(d),
   };
   return validateTargetInput(input).length ? null : input;
 }
