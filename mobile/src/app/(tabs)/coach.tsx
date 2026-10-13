@@ -125,7 +125,7 @@ export default function Coach() {
 
   return (
     <Screen withDock scroll={false} header={<AppHeader eyebrow="Coach" />}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <NetworkBanner />
         <View style={styles.coachRow}>
           <Avatar name={persona.name} accent={persona.accent} kind="coach" size={56} thinking={typing} />
@@ -212,6 +212,7 @@ export default function Coach() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.suggestedScroll}
           contentContainerStyle={styles.suggested}
           keyboardShouldPersistTaps="handled"
         >
@@ -283,7 +284,9 @@ function Bubble({
               borderColor: colors[accent === "lime" ? "primary" : accent === "lilac" ? "secondary" : "tertiary"],
             }
           : { alignSelf: "flex-end", backgroundColor: colors.surfaceHigh, borderColor: colors.outline },
+        // The corner nearest the speaker stays tight so each bubble reads as coming from its side.
         { borderRadius: radius.lg },
+        coach ? { borderBottomLeftRadius: radius.xs } : { borderBottomRightRadius: radius.xs },
       ]}
     >
       <Text variant="body-lg" accessibilityLabel={`${coach ? "Coach" : "You"}: ${text}`}>
@@ -309,6 +312,8 @@ function Bubble({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  // One gap between every block, instead of per-block margins that drifted apart.
+  body: { flex: 1, gap: 12 },
   coachRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   strip: {
     flexDirection: "row",
@@ -317,22 +322,32 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     alignSelf: "flex-start",
-    marginTop: 12,
   },
-  messages: { gap: 10, paddingVertical: 12 },
+  messages: { gap: 12, paddingVertical: 4 },
   bubble: { maxWidth: "85%", paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1 },
   error: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
-  suggested: { gap: 8, paddingVertical: 8 },
+  // A horizontal ScrollView stretches vertically in a flex column on Android unless told not to grow.
+  suggestedScroll: { flexGrow: 0 },
+  suggested: { gap: 8, alignItems: "center" },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  about: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, marginTop: 4 },
+  about: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12 },
   inputRow: {
     flexDirection: "row",
-    alignItems: "center",
+    // Send stays pinned to the bottom edge as the multiline input grows.
+    alignItems: "flex-end",
     gap: 8,
     borderWidth: 1,
     paddingLeft: 8,
     paddingRight: 4,
     paddingVertical: 4,
   },
-  input: { flex: 1, minHeight: 40, maxHeight: 120, fontSize: 16 },
+  input: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    fontSize: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
+    textAlignVertical: "center",
+  },
 });
