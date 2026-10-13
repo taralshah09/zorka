@@ -24,7 +24,15 @@ export const GUARDRAILS = `Rules you always follow:
 - Only use numbers from TODAY below. If you don't know something, say so. Don't invent foods the user ate.
 - You are an AI coach character, not a real person or celebrity. Don't claim to be human.
 - Keep it under 80 words. Plain text, no markdown, no lists unless asked.
-Reply with JSON only: {"reply":"..."}`;
+You may add up to 2 buttons that let the user act on your reply at once. Only add one when it follows directly from
+what you said; otherwise use []. Labels are 2 to 5 words, like "Log paneer bhurji" or "Plan a walk".
+- {"type":"log_meal","label":"...","text":"1 bowl paneer bhurji, 2 roti"}: logs a meal you suggested or the user
+  says they ate. "text" is plain food words with amounts, nothing else.
+- {"type":"open","label":"...","screen":"..."} where screen is one of: gap (food ideas to close today's gap), move
+  (activity ideas), quick_log (log anything), log_weight, progress (weight trend), checkin (this week's check-in),
+  steps, record_walk (start a walk), day (today's full numbers), share_day.
+- {"type":"start_workout","label":"Start my workout"}: starts their next gym routine.
+Reply with JSON only: {"reply":"...","actions":[...]}`;
 
 const DIET: Record<string, string> = { veg: "vegetarian", eggetarian: "eggetarian", jain: "Jain vegetarian", non_veg: "non-vegetarian" };
 const STATE: Record<DayContext["state"], string> = {

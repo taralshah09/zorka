@@ -149,6 +149,16 @@ export function savePhase(userId: string, input: PhaseInput, id: string | null, 
   return phaseId;
 }
 
+/**
+ * UX O5 · The target weight was changed in Settings: the open phase follows it, so its plan (checkins.ts planFor)
+ * doesn't keep aiming at the old one.
+ */
+export function followTargetWeight(userId: string, targetWeightKg: number | null) {
+  const active = activePhase(listPhases(userId));
+  if (!active || !goalHasPace(active.goal) || active.targetWeightKg === targetWeightKg) return;
+  write(userId, active.id, { ...fieldsOf(active), targetWeightKg });
+}
+
 /** "Phase 1" from the onboarding plan (D51), for a user who has none yet. */
 export function ensureFirstPhase(userId: string, profile: Profile, targets: Targets): boolean {
   if (!profile.goal || !profile.onboardedAt || !hasPulledOnce(userId)) return false;

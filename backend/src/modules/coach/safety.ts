@@ -1,7 +1,8 @@
 // P35 · Guardrails enforced in code, not just in the prompt (D60).
 //   1. The user's message: signs of self-harm or disordered eating get a fixed supportive reply. The AI isn't called.
 //   2. The AI's reply: swearing or unsafe advice is replaced with a safe line; long replies are trimmed to ~80 words.
-import type { CoachId } from "./coach.schemas.js";
+//   3. UX N1 · The AI's buttons: each one is checked on its own (checkActions); a bad one is dropped.
+import { CoachAction, MAX_ACTIONS, type CoachId } from "./coach.schemas.js";
 
 const SUPPORT_SIGNALS = [
   /\b(kill|hurt|harm)\s+myself\b/i,
@@ -47,6 +48,36 @@ export function trimReply(text: string): string {
   const cut = words.slice(0, MAX_REPLY_WORDS).join(" ");
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
   return end > cut.length / 2 ? cut.slice(0, end + 1) : `${cut}…`;
+}
+
+/** UX N1 · The button under a fallback reply, which points the user at today's numbers. */
+export const FALLBACK_ACTIONS: CoachAction[] = [{ type: "open", label: "See today's numbers", screen: "day" }];
+
+/** Same rule as the prompt: after 21:30 the coach suggests rest, not a workout (D57). */
+const LATE_NIGHT = "21:30";
+
+/**
+ * UX N1 · The buttons to send: each one well-formed, clean, not a workout late at night, no duplicates, at most
+ * MAX_ACTIONS. Anything else is dropped quietly; the reply still goes out.
+ */
+export function checkActions(raw: readonly unknown[] | undefined, localTime: string): CoachAction[] {
+  const out: CoachAction[] = [];
+  const seen = new Set<string>();
+  for (const item of raw ?? []) {
+    const parsed = CoachAction.safeParse(item);
+    if (!parsed.success) continue;
+    const a = parsed.data;
+    const words = a.type === "log_meal" ? `${a.label} ${a.text}` : a.label;
+    if (PROFANITY.test(words) || UNSAFE_ADVICE.test(words)) continue;
+    if (localTime >= LATE_NIGHT && (a.type === "start_workout" || (a.type === "open" && a.screen === "record_walk")))
+      continue;
+    const key = a.type === "open" ? `open:${a.screen}` : a.type;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+    if (out.length === MAX_ACTIONS) break;
+  }
+  return out;
 }
 
 /** The reply to send, or null when it must be replaced by FALLBACK_REPLY. */

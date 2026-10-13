@@ -34,4 +34,6 @@ export const KV_KEYS = {
   pendingProfile: "zorka.pendingProfile",
   /** UX T1: "Start without it" was picked on the screen-off ask. Per phone (the permission is too). */
   screenOffDeclined: "zorka.screenOffDeclined",
+  /** UX R1: Progress "Details" was left open. Per phone, a view preference. */
+  progressDetails: "zorka.progressDetails",
 } as const;

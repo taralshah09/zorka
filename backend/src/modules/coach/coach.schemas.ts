@@ -48,11 +48,49 @@ export const CoachChatBody = z
   })
   .strict();
 
-export const AiCoachReply = z.object({ reply: z.string().trim().min(1).max(1500) });
+/**
+ * UX N1 · Screens a coach button may open. The phone maps each to a route, so the AI never picks a raw href.
+ * gap: ways to close today's gap (eat) · move: the same, move tab · quick_log: the log sheet · log_weight · progress ·
+ * checkin: this week's check-in · steps · record_walk: the GPS recorder set to walk · day: today's full numbers ·
+ * share_day: the share card.
+ */
+export const COACH_SCREENS = [
+  "gap",
+  "move",
+  "quick_log",
+  "log_weight",
+  "progress",
+  "checkin",
+  "steps",
+  "record_walk",
+  "day",
+  "share_day",
+] as const;
+
+const label = z.string().trim().min(1).max(40);
+
+/** UX N1 · A button under a coach reply. At most MAX_ACTIONS per reply; anything malformed is dropped, not an error. */
+export const CoachAction = z.discriminatedUnion("type", [
+  /** Logs a meal from plain food words ("2 roti, 1 katori dal"); the phone runs the usual text → food parser. */
+  z.object({ type: z.literal("log_meal"), label, text: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ type: z.literal("open"), label, screen: z.enum(COACH_SCREENS) }).strict(),
+  /** Starts the user's next gym routine (the phone knows which; the server doesn't see routines). */
+  z.object({ type: z.literal("start_workout"), label }).strict(),
+]);
+export type CoachAction = z.infer<typeof CoachAction>;
+export const MAX_ACTIONS = 2;
+
+// Actions are loose here so one bad button never fails the whole reply; coach.service.ts checks each one.
+export const AiCoachReply = z.object({
+  reply: z.string().trim().min(1).max(1500),
+  actions: z.array(z.unknown()).max(6).optional(),
+});
 
 export type CoachChatResult = {
   reply: string;
   /** "support": a fixed safety reply (no AI); "fallback": the AI reply failed the filter and a safe line was used. */
   kind: "ai" | "support" | "fallback";
+  /** UX N1 · Buttons to act on the reply in place. Empty for support replies. */
+  actions: CoachAction[];
   ai: { slot: string; model: string; attempts: number } | null;
 };

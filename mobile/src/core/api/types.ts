@@ -134,9 +134,19 @@ export type CoachDayContext = {
   workoutToday: boolean;
   mealsToday: string[];
 };
+/** UX N1 · Screens a coach button may open (backend COACH_SCREENS). */
+export type CoachScreen =
+  "gap" | "move" | "quick_log" | "log_weight" | "progress" | "checkin" | "steps" | "record_walk" | "day" | "share_day";
+/** UX N1 · A button under a coach reply. */
+export type CoachAction =
+  | { type: "log_meal"; label: string; text: string }
+  | { type: "open"; label: string; screen: CoachScreen }
+  | { type: "start_workout"; label: string };
 export type CoachChatResult = {
   reply: string;
   kind: "ai" | "support" | "fallback";
+  /** Missing from a server older than UX4. */
+  actions?: CoachAction[];
   ai: { slot: string; model: string; attempts: number } | null;
 };
 

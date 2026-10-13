@@ -1,7 +1,8 @@
 // S15 · Type a meal (P15). Built from DESIGN.md §6.4 (no export yet, D35): a multiline field, recent
 // phrases as chips, Log. Text → AI → food DB → confirm sheet. Needs a connection; search works offline.
+// UX N1: a coach button opens this with `text` and `auto=1`, and the meal is read straight away.
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
@@ -26,17 +27,17 @@ function readPhrases(userId: string | null): string[] {
 }
 
 export default function TypeMeal() {
-  const params = useLocalSearchParams<{ mealType?: string }>();
+  const params = useLocalSearchParams<{ mealType?: string; text?: string; auto?: string }>();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
   const finish = useFinishDraft();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(params.text ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const phrases = readPhrases(userId);
 
-  const submit = async () => {
-    const t = text.trim();
+  const submit = async (value: string = text) => {
+    const t = value.trim();
     if (!t || !userId) return;
     setBusy(true);
     setError(null);
@@ -56,6 +57,15 @@ export default function TypeMeal() {
     }
   };
 
+  // Read a coach-suggested meal once, as soon as the screen opens (offline it just waits, prefilled).
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || params.auto !== "1" || !params.text || !online || !userId) return;
+    autoRan.current = true;
+    void submit(params.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, userId]);
+
   return (
     <Screen header={<Header title="Type a meal" onBack={() => router.back()} />}>
       {!online ? <OfflineBanner mode="offline" /> : null}
@@ -65,7 +75,7 @@ export default function TypeMeal() {
         value={text}
         onChangeText={setText}
         multiline
-        autoFocus
+        autoFocus={!params.auto}
         maxLength={500}
       />
       {phrases.length ? (
@@ -77,14 +87,19 @@ export default function TypeMeal() {
       ) : null}
 
       {error ? (
-        <ErrorState title={error.title} body={error.body} onRetry={online ? submit : undefined} retrying={busy} />
+        <ErrorState
+          title={error.title}
+          body={error.body}
+          onRetry={online ? () => void submit() : undefined}
+          retrying={busy}
+        />
       ) : null}
 
       {online ? (
         <Button
-          label={busy ? "Reading your meal…" : "Log"}
+          label={busy ? "Reading your meal…" : "Read meal"}
           icon="auto_awesome"
-          onPress={submit}
+          onPress={() => void submit()}
           loading={busy}
           disabled={!text.trim()}
           glow

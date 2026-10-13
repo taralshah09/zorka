@@ -126,6 +126,9 @@ export function effectiveTargets(
   const since = profile.onboardedAt ?? "";
   const weightKg = profile.weightKg ?? 0;
   const phase = phaseOn(phases, day);
+  // UX N3: a phase set up after the plan with another goal or target weight ("Change goal") plans for that goal,
+  // e.g. a new "Build muscle" phase that starts next Monday switches the targets that day.
+  const plan = phase && phase.updatedAt > since ? planFor(profile, phase, base) : base;
   const latest = [...checkins]
     .reverse()
     .find(
@@ -142,11 +145,11 @@ export function effectiveTargets(
     const kcal = latest.newKcal!;
     return {
       targets: {
-        ...base,
+        ...plan,
         kcal,
-        proteinG: latest.proteinG ?? base.proteinG,
-        carbsG: latest.carbsG ?? base.carbsG,
-        fatG: latest.fatG ?? base.fatG,
+        proteinG: latest.proteinG ?? plan.proteinG,
+        carbsG: latest.carbsG ?? plan.carbsG,
+        fatG: latest.fatG ?? plan.fatG,
       },
       source: "checkin",
       checkin: latest,
@@ -155,12 +158,12 @@ export function effectiveTargets(
   if (phaseTargets) {
     const kcal = phaseTargets.kcal!;
     return {
-      targets: { ...base, kcal, ...macrosFor(kcal, phaseTargets.proteinG ?? base.proteinG, weightKg) },
+      targets: { ...plan, kcal, ...macrosFor(kcal, phaseTargets.proteinG ?? plan.proteinG, weightKg) },
       source: "phase",
       checkin: null,
     };
   }
-  return { targets: base, source: "plan", checkin: null };
+  return { targets: plan, source: "plan", checkin: null };
 }
 
 // ── The pending check-in ─────────────────────────────────────────────────────────────────────────

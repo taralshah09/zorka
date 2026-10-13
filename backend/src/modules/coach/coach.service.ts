@@ -5,14 +5,14 @@ import { notFound } from "../../http/errors.js";
 import type { AiClient } from "../ai/ai.client.js";
 import { AiCoachReply, type ChatMessage, type CoachChatResult, type CoachId, type DayContext } from "./coach.schemas.js";
 import { coachSystem, coachUser } from "./prompts.js";
-import { FALLBACK_REPLY, SUPPORT_REPLY, checkReply, needsSupport } from "./safety.js";
+import { FALLBACK_ACTIONS, FALLBACK_REPLY, SUPPORT_REPLY, checkActions, checkReply, needsSupport } from "./safety.js";
 
 export function coachService(ai: AiClient, userExists: (id: string) => Promise<boolean>) {
   return {
     async chat(userId: string, input: { coach: CoachId; messages: ChatMessage[]; context: DayContext }): Promise<CoachChatResult> {
       if (!(await userExists(userId))) throw notFound("User");
       const last = input.messages[input.messages.length - 1]!.text;
-      if (needsSupport(last)) return { reply: SUPPORT_REPLY, kind: "support", ai: null };
+      if (needsSupport(last)) return { reply: SUPPORT_REPLY, kind: "support", actions: [], ai: null };
 
       const { value, meta } = await ai.json({
         system: coachSystem(input.coach, input.context),
@@ -21,7 +21,9 @@ export function coachService(ai: AiClient, userExists: (id: string) => Promise<b
       });
       const reply = checkReply(value.reply);
       const used = { slot: meta.slot, model: meta.model, attempts: meta.attempts };
-      return reply ? { reply, kind: "ai", ai: used } : { reply: FALLBACK_REPLY[input.coach], kind: "fallback", ai: used };
+      return reply
+        ? { reply, kind: "ai", actions: checkActions(value.actions, input.context.localTime), ai: used }
+        : { reply: FALLBACK_REPLY[input.coach], kind: "fallback", actions: FALLBACK_ACTIONS, ai: used };
     },
   };
 }

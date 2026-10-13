@@ -26,6 +26,7 @@ export function BriefCard({
   action,
   note,
   onAction,
+  onAsk,
 }: {
   coach: CoachId | null;
   /** The coach's line; without a coach the action's own title is the line. */
@@ -34,6 +35,8 @@ export function BriefCard({
   /** A small extra fact, e.g. "A freeze protected your streak." */
   note?: string;
   onAction: () => void;
+  /** UX N2 · Opens Coach with this brief as the topic. Only with a coach. */
+  onAsk?: () => void;
 }) {
   const { colors } = useTheme();
   const persona = coach ? PERSONAS[coach] : null;
@@ -77,6 +80,9 @@ export function BriefCard({
       ) : null}
       <View style={styles.briefCta}>
         <Button label={action.cta} icon={action.icon} onPress={onAction} fullWidth />
+        {persona && onAsk ? (
+          <Button label={`Ask ${persona.name} about this`} icon="forum" variant="ghost" size="sm" onPress={onAsk} />
+        ) : null}
       </View>
     </Card>
   );
@@ -286,7 +292,7 @@ const styles = StyleSheet.create({
   briefHead: { flexDirection: "row", alignItems: "center", gap: 12 },
   briefIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   briefLine: { marginTop: 12, marginBottom: 4 },
-  briefCta: { marginTop: 16 },
+  briefCta: { marginTop: 16, gap: 4, alignItems: "stretch" },
   stats: { flexDirection: "row", gap: 8 },
   stat: { flex: 1, gap: 2 },
   statDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 4 },

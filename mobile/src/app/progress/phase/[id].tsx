@@ -55,8 +55,9 @@ export default function PhaseDetail() {
   const close = () => {
     closePhase(phase, p.series);
     setConfirmClose(false);
-    toast({ kind: "success", message: `${phase.name} closed` });
-    celebrate(phase.userId, `phase:${phase.id}`, { kind: "phase", id: phase.id, detail: phase.name });
+    // UX F2: the celebration says it; a toast would only hide behind it.
+    if (!celebrate(phase.userId, `phase:${phase.id}`, { kind: "phase", id: phase.id, detail: phase.name }))
+      toast({ kind: "success", message: `${phase.name} closed` });
   };
 
   return (

@@ -1,6 +1,7 @@
 // S35 · Weekly check-in (P28). No export yet (D53): built from DESIGN.md §6.7. Variants (D50): Simple ("On track ✓",
 // one sentence) or Detailed (estimated-burn chart, the change explained) by the profile setting, and Not enough data
 // ("Log 5 of 7 days…"). "Accept new target" / "Keep current" store the answer as the week's target history.
+// UX F1: confetti only for an accepted on-track week, and then the toast stays silent (one haptic, not two).
 import { router } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -34,7 +35,7 @@ export default function CheckinScreen() {
           icon="check_circle"
           title="You're all caught up"
           body={`Your next check-in is on Sunday, ${formatShortDate(next)}.`}
-          actionLabel="Back to Progress"
+          actionLabel="Back"
           onAction={back}
         />
       </Screen>
@@ -46,8 +47,10 @@ export default function CheckinScreen() {
   const copy = checkinCopy(pending, detailed);
   const answer = (status: CheckinStatus) => {
     answerCheckin(p.userId!, pending, status);
-    burstConfetti();
+    const party = status === "accepted" && r.status === "ready" && r.onTrack;
+    if (party) burstConfetti();
     toast({
+      haptic: party ? "none" : undefined,
       kind: "success",
       message:
         r.status === "ready" && status === "accepted" && r.changeKcal !== 0

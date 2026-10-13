@@ -275,6 +275,9 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       );
       CREATE INDEX water_logs_day ON water_logs (user_id, local_date);
     `),
+
+  // v12 · UX N1: the buttons under a coach reply (JSON array of CoachAction, null for none).
+  (db) => db.execSync(`ALTER TABLE coach_messages ADD COLUMN actions TEXT;`),
 ];
 
 let db: SQLiteDatabase | null = null;

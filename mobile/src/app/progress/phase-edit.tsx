@@ -2,6 +2,10 @@
 // weight, calorie and protein targets (pre-filled from the plan), Create. No date-picker dependency: the start is
 // Today / Tomorrow / Next Monday and the end is a length in weeks (or open-ended). With "Follow my plan" on, the phase
 // keeps using the plan's targets (stored as null) and weekly check-ins adjust them.
+// UX N3: also "Change goal" (`?change=goal`, from Settings and Progress). The editor explains what a phase is, names
+// the phase after the goal, says plainly that saving ends the open phase, and a phase that starts today updates the
+// profile's goal too (queued when offline).
+import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -25,6 +29,8 @@ import { GOAL_LABEL } from "@/features/onboarding/copy";
 import { useProgress } from "@/features/progress/hooks";
 import { getPhase, savePhase } from "@/features/progress/phases";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
+import { goalUpdate } from "@/features/targets/targetInput";
+import { queueProfileSave } from "@/features/users/api";
 import { addDays, dayNumber, weekday } from "@shared/domain/progress";
 import { goalHasPace } from "@shared/domain/targets";
 
@@ -33,7 +39,9 @@ const DEFAULT_WEEKS = 8;
 
 export default function PhaseEditor() {
   const toast = useToast();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const queryClient = useQueryClient();
+  const { id, change } = useLocalSearchParams<{ id?: string; change?: string }>();
+  const changingGoal = change === "goal";
   const p = useProgress(useActivityClock());
   const existing = useMemo(() => (id ? getPhase(id) : null), [id]);
   const profile = p.profile.data;
@@ -48,8 +56,14 @@ export default function PhaseEditor() {
     ];
   }, [p.today]);
 
-  const [name, setName] = useState(existing?.name ?? "");
   const [goal, setGoal] = useState<Goal>(existing?.goal ?? profile?.goal ?? "lose_fat");
+  // A new phase is named after its goal until the user types a name of their own.
+  const [name, setName] = useState(existing?.name ?? GOAL_LABEL[goal]);
+  const [nameTouched, setNameTouched] = useState(!!existing);
+  const pickGoal = (g: Goal) => {
+    setGoal(g);
+    if (!nameTouched) setName(GOAL_LABEL[g]);
+  };
   const [start, setStart] = useState(existing?.startDate ?? p.today);
   const [openEnded, setOpenEnded] = useState(existing ? existing.endDate == null : false);
   const [weeks, setWeeks] = useState(
@@ -94,27 +108,58 @@ export default function PhaseEditor() {
       existing?.id ?? null,
       p.series,
     );
-    toast({ kind: "success", message: existing ? "Phase saved" : `${name.trim()} started` });
+    // The phase that's on today also sets the profile's goal, so Settings, Home and the coach agree with it.
+    const onToday = existing ? !existing.closedDate && existing.startDate <= p.today : start <= p.today;
+    const update = onToday && profile ? goalUpdate(profile, goal, usesTarget ? targetKg : null) : null;
+    if (update) queueProfileSave(queryClient, p.userId, update);
+    toast({
+      kind: "success",
+      message: existing
+        ? "Phase saved"
+        : replacing
+          ? `${name.trim()} started · ${replacing.name} ended`
+          : `${name.trim()} started`,
+    });
     router.replace(`/progress/phase/${phaseId}`);
   };
 
   return (
-    <Screen header={<Header title={existing ? "Edit phase" : "New phase"} onBack={() => router.back()} />}>
-      <TextField
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        placeholder="Summer Cut"
-        maxLength={60}
-        error={name ? (nameIssue ?? undefined) : undefined}
-      />
+    <Screen
+      header={
+        <Header
+          title={existing ? "Edit phase" : changingGoal ? "Change goal" : "New phase"}
+          onBack={() => router.back()}
+        />
+      }
+    >
+      {!existing ? (
+        <Text variant="body" color="textSecondary">
+          {changingGoal
+            ? "Pick your new goal. Zorka starts a new phase for it: a stretch of weeks with one goal, so your trend, check-ins and stats for each goal stay together."
+            : "A phase is a stretch of weeks with one goal, like an 8-week cut. Your trend, check-ins and stats are grouped by phase."}
+        </Text>
+      ) : null}
+
+      {changingGoal ? null : (
+        <TextField
+          label="Name"
+          value={name}
+          onChangeText={(t) => {
+            setName(t);
+            setNameTouched(true);
+          }}
+          placeholder="Summer Cut"
+          maxLength={60}
+          error={nameIssue ?? undefined}
+        />
+      )}
 
       <Text variant="label" color="textSecondary">
         Goal
       </Text>
       <View style={styles.chips}>
         {GOALS.map((g) => (
-          <Chip key={g} kind="choice" label={GOAL_LABEL[g]} selected={g === goal} onPress={() => setGoal(g)} />
+          <Chip key={g} kind="choice" label={GOAL_LABEL[g]} selected={g === goal} onPress={() => pickGoal(g)} />
         ))}
       </View>
 
@@ -220,9 +265,15 @@ export default function PhaseEditor() {
         )}
       </Card>
 
-      {replacing ? <Text variant="caption" color="warn">{`Creating this phase closes ${replacing.name}.`}</Text> : null}
+      {replacing ? (
+        <Card variant="warning" accessibilityLabel={`Saving ends ${replacing.name}`}>
+          <Text variant="body">
+            {`This ends ${replacing.name} on ${formatShortDate(addDays(start, -1) < replacing.startDate ? replacing.startDate : addDays(start, -1))}. Its summary stays under All phases.`}
+          </Text>
+        </Card>
+      ) : null}
       <Button
-        label={existing ? "Save" : "Create"}
+        label={existing ? "Save" : replacing ? `End ${replacing.name} and start` : "Start phase"}
         onPress={save}
         fullWidth
         disabled={!!nameIssue || !!targetIssue || !p.userId}

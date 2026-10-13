@@ -1,6 +1,7 @@
 // S12 Settings — shell. Appearance (P03, persisted), Your plan (P09/P10, plus the daily step goal,
 // D48), Food logging (P18: the oil/ghee prompt), Coach & nudges (P35/P36: change coach, S45 notifications), Demo profile
-// (P06), sync status (P07). The plan itself is changed by redoing onboarding.
+// (P06), sync status (P07). UX O5: goal, target weight, diet, activity, water and steps each have their own row, so
+// a change doesn't mean redoing setup; the goal row opens the phase editor's "Change goal" (UX N3).
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -26,13 +27,25 @@ import { HealthConnectSettings } from "@/features/activity/HealthConnectSettings
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { PERSONAS } from "@/features/coach/personas";
 import { useNotifAccess, useNudgeSettings, type NotifAccess } from "@/features/nudges/settings";
-import { GOAL_LABEL } from "@/features/onboarding/copy";
+import { ACTIVITY_LABEL, GOAL_LABEL } from "@/features/onboarding/copy";
+import {
+  ActivitySheet,
+  DIET_LABEL,
+  DietSheet,
+  TargetWeightSheet,
+  WaterGoalSheet,
+} from "@/features/settings/PlanSheets";
 import { formatInt, formatKg, formatShortDate } from "@/features/targets/format";
 import { StepGoalField } from "@/features/targets/StepGoalField";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useUpdateProfile } from "@/features/users/api";
-import { STEP_GOAL_MAX, STEP_GOAL_MIN } from "@shared/domain/targets";
+import { STEP_GOAL_MAX, STEP_GOAL_MIN, goalHasPace } from "@shared/domain/targets";
+import { clampWaterGoal } from "@shared/domain/water";
+
+type PlanSheet = "steps" | "diet" | "activity" | "water" | "target" | null;
+
+const OFFLINE = "Connect to change this.";
 
 const APPEARANCE = [
   { value: "dark", label: "Dark", icon: "dark_mode" },
@@ -59,7 +72,8 @@ export default function Settings() {
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const updateProfile = useUpdateProfile(userId);
-  const [stepSheet, setStepSheet] = useState(false);
+  const [sheet, setSheet] = useState<PlanSheet>(null);
+  const closeSheet = () => setSheet(null);
   const [coachSheet, setCoachSheet] = useState(false);
   const nudges = useNudgeSettings(userId);
   const { access: notifAccess } = useNotifAccess();
@@ -108,14 +122,27 @@ export default function Settings() {
             <>
               <ListItem
                 icon="trophy"
-                title={GOAL_LABEL[profile.data.goal]}
-                subtitle={
-                  targets.goalDate && profile.data.targetWeightKg != null
-                    ? `${formatKg(profile.data.targetWeightKg)} kg by ~${formatShortDate(targets.goalDate)}`
-                    : undefined
-                }
+                title="Goal"
+                value={GOAL_LABEL[profile.data.goal]}
+                chevron
                 divider
+                onPress={() => router.push({ pathname: "/progress/phase-edit", params: { change: "goal" } })}
               />
+              {goalHasPace(profile.data.goal) ? (
+                <ListItem
+                  icon="flag"
+                  title="Target weight"
+                  subtitle={
+                    targets.goalDate ? `By about ${formatShortDate(targets.goalDate)}` : online ? undefined : OFFLINE
+                  }
+                  value={
+                    profile.data.targetWeightKg != null ? `${formatKg(profile.data.targetWeightKg)} kg` : "Not set"
+                  }
+                  chevron
+                  divider
+                  onPress={online ? () => setSheet("target") : undefined}
+                />
+              ) : null}
               <ListItem
                 icon="restaurant"
                 title="Daily calories"
@@ -130,12 +157,38 @@ export default function Settings() {
                 divider
               />
               <ListItem
+                icon="ramen_dining"
+                title="Diet"
+                value={profile.data.diet ? DIET_LABEL[profile.data.diet] : "Not set"}
+                subtitle={online ? undefined : OFFLINE}
+                chevron
+                divider
+                onPress={online ? () => setSheet("diet") : undefined}
+              />
+              <ListItem
+                icon="directions_run"
+                title="Activity"
+                value={profile.data.activityLevel ? ACTIVITY_LABEL[profile.data.activityLevel] : "Not set"}
+                subtitle={online ? undefined : OFFLINE}
+                chevron
+                divider
+                onPress={online ? () => setSheet("activity") : undefined}
+              />
+              <ListItem
+                icon="water_drop"
+                title="Daily water goal"
+                value={`${clampWaterGoal(profile.data.waterGoalGlasses)} glasses`}
+                chevron
+                divider
+                onPress={online ? () => setSheet("water") : undefined}
+              />
+              <ListItem
                 icon="footprint"
                 title="Daily step goal"
                 value={formatInt(targets.steps)}
                 chevron
                 divider
-                onPress={() => setStepSheet(true)}
+                onPress={() => setSheet("steps")}
               />
               <ListItem icon="refresh" title="Redo setup" chevron onPress={() => router.push("/onboarding")} />
             </>
@@ -146,12 +199,18 @@ export default function Settings() {
       </Section>
 
       {profile.data ? (
-        <StepGoalSheet
-          visible={stepSheet}
-          onClose={() => setStepSheet(false)}
-          current={profile.data.stepGoal}
-          online={online}
-        />
+        <>
+          <StepGoalSheet
+            visible={sheet === "steps"}
+            onClose={closeSheet}
+            current={profile.data.stepGoal}
+            online={online}
+          />
+          <DietSheet visible={sheet === "diet"} onClose={closeSheet} profile={profile.data} online={online} />
+          <ActivitySheet visible={sheet === "activity"} onClose={closeSheet} profile={profile.data} online={online} />
+          <WaterGoalSheet visible={sheet === "water"} onClose={closeSheet} profile={profile.data} online={online} />
+          <TargetWeightSheet visible={sheet === "target"} onClose={closeSheet} profile={profile.data} online={online} />
+        </>
       ) : null}
 
       <Section title="Weekly check-in">

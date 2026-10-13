@@ -137,6 +137,12 @@ export default function Today() {
                 if (welcome.show) welcome.dismiss();
                 router.push(action.href);
               }}
+              onAsk={() =>
+                router.navigate({
+                  pathname: "/coach",
+                  params: { about: coach ? coachLine(coach, situation, facts) : action.title },
+                })
+              }
             />
           ) : null}
 

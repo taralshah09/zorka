@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import { api } from "@/core/api/client";
-import type { CoachChatResult, CoachDayContext, CoachId, Profile } from "@/core/api/types";
+import type { CoachAction, CoachChatResult, CoachDayContext, CoachId, Profile } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
 import type { DayGap } from "@/features/gap/gap";
 import type { Streak } from "@shared/domain/streak";
@@ -13,12 +13,37 @@ import type { Streak } from "@shared/domain/streak";
 export const KEEP_MESSAGES = 50;
 export const SEND_MESSAGES = 20;
 
-export type ChatMessage = { id: string; role: "user" | "coach"; text: string; coach: CoachId; createdAt: string };
+export type ChatMessage = {
+  id: string;
+  role: "user" | "coach";
+  text: string;
+  coach: CoachId;
+  createdAt: string;
+  /** UX N1 · Buttons under a coach reply. */
+  actions: CoachAction[];
+};
 
 export const useChatVersion = create<{ v: number }>(() => ({ v: 0 }));
 const bump = () => useChatVersion.setState((s) => ({ v: s.v + 1 }));
 
-type Row = { id: string; role: "user" | "coach"; text: string; coach: CoachId; created_at: string };
+type Row = {
+  id: string;
+  role: "user" | "coach";
+  text: string;
+  coach: CoachId;
+  created_at: string;
+  actions: string | null;
+};
+
+function parseActions(raw: string | null): CoachAction[] {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as unknown;
+    return Array.isArray(list) ? (list as CoachAction[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function chatMessages(userId: string): ChatMessage[] {
   return getDb()
@@ -27,20 +52,28 @@ export function chatMessages(userId: string): ChatMessage[] {
       userId,
       KEEP_MESSAGES,
     )
-    .map((r) => ({ id: r.id, role: r.role, text: r.text, coach: r.coach, createdAt: r.created_at }));
+    .map((r) => ({
+      id: r.id,
+      role: r.role,
+      text: r.text,
+      coach: r.coach,
+      createdAt: r.created_at,
+      actions: parseActions(r.actions),
+    }));
 }
 
-function add(userId: string, role: ChatMessage["role"], text: string, coach: CoachId) {
+function add(userId: string, role: ChatMessage["role"], text: string, coach: CoachId, actions: CoachAction[] = []) {
   const db = getDb();
   db.withTransactionSync(() => {
     db.runSync(
-      `INSERT INTO coach_messages (id, user_id, role, text, coach, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO coach_messages (id, user_id, role, text, coach, created_at, actions) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       randomUUID(),
       userId,
       role,
       text,
       coach,
       new Date().toISOString(),
+      actions.length ? JSON.stringify(actions) : null,
     );
     db.runSync(
       `DELETE FROM coach_messages WHERE user_id = ? AND id NOT IN
@@ -121,6 +154,6 @@ export async function sendToCoach(
     body: { coach, messages: history, context },
     timeoutMs: 30_000,
   });
-  add(userId, "coach", result.reply, coach);
+  add(userId, "coach", result.reply, coach, result.actions ?? []);
   return result;
 }

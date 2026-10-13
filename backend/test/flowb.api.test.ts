@@ -178,12 +178,44 @@ describe("POST /users/:id/coach/chat (P35)", () => {
     expect(sent).toContain("Poha");
   });
 
+  it("UX N1: good buttons pass, bad ones are dropped, at most 2", async () => {
+    const actions = [
+      { type: "log_meal", label: "Log paneer bhurji", text: "1 bowl paneer bhurji, 2 roti" },
+      { type: "open", label: "Raw link", screen: "https://evil.example.com" },
+      { type: "open", label: "See ideas", screen: "gap", href: "/x" },
+      { type: "launch_rocket", label: "Go" },
+      { type: "open", label: "Plan a walk", screen: "move" },
+      { type: "start_workout", label: "Start my workout" },
+    ];
+    const { app } = testApp({ ai: fakeAi([GROQ], aiReplying({ reply: "Paneer bhurji tonight!", actions })) });
+    const res = await request(app).post(`/v1/users/${RIYA}/coach/chat`).send(chat("What should I eat?"));
+    expect(res.status).toBe(200);
+    expect(res.body.actions).toEqual([actions[0], actions[4]]);
+  });
+
+  it("UX N1: no buttons is fine; no workout buttons after 21:30; dirty buttons are dropped", async () => {
+    const none = testApp({ ai: fakeAi([GROQ], aiReplying({ reply: "Nice work today." })) });
+    expect((await request(none.app).post(`/v1/users/${RIYA}/coach/chat`).send(chat("hi"))).body.actions).toEqual([]);
+
+    const actions = [
+      { type: "start_workout", label: "Start my workout" },
+      { type: "open", label: "Walk now", screen: "record_walk" },
+      { type: "log_meal", label: "Log it", text: "damn big pizza" },
+      { type: "open", label: "Rest up", screen: "day" },
+    ];
+    const { app } = testApp({ ai: fakeAi([GROQ], aiReplying({ reply: "Rest tonight.", actions })) });
+    const late = { ...chat("Should I train?"), context: { ...ctx, localTime: "22:10" } };
+    const res = await request(app).post(`/v1/users/${RIYA}/coach/chat`).send(late);
+    expect(res.body.actions).toEqual([actions[3]]);
+  });
+
   it("support signals get a fixed reply without calling the AI", async () => {
     const calls = { n: 0, bodies: [] as string[] };
     const { app } = testApp({ ai: fakeAi([GROQ], aiReplying({ reply: "x" }, calls)) });
     const res = await request(app).post(`/v1/users/${RIYA}/coach/chat`).send(chat("I make myself throw up after dinner"));
     expect(res.body.kind).toBe("support");
     expect(res.body.reply).toContain("14416");
+    expect(res.body.actions).toEqual([]);
     expect(calls.n).toBe(0);
   });
 
@@ -193,6 +225,7 @@ describe("POST /users/:id/coach/chat (P35)", () => {
       const res = await request(app).post(`/v1/users/${RIYA}/coach/chat`).send(chat("help", "drill_sergeant"));
       expect(res.body.kind).toBe("fallback");
       expect(res.body.reply).not.toContain(reply);
+      expect(res.body.actions).toEqual([{ type: "open", label: "See today's numbers", screen: "day" }]);
     }
   });
 
