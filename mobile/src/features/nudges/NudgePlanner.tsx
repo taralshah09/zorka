@@ -36,14 +36,15 @@ import {
   useNudgeSettings,
   useNudgeSettingsVersion,
 } from "./settings";
-import { Notifications } from "./notifications";
+import { Notifications, REST_NOTIFICATION_PREFIX } from "./notifications";
 
 // Notifications is null on web and on a dev client built before P36: nudges are then simply off.
 if (Notifications) {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
+    // The rest alert is for a locked or backgrounded phone; in the app the timer bar already buzzes.
+    handleNotification: async (n) => ({
+      shouldShowBanner: !n.request.identifier.startsWith(REST_NOTIFICATION_PREFIX),
+      shouldShowList: !n.request.identifier.startsWith(REST_NOTIFICATION_PREFIX),
       shouldPlaySound: false,
       shouldSetBadge: false,
     }),
@@ -91,7 +92,9 @@ async function schedule(
   facts: LineFacts,
   delivered: DeliveredLog,
 ) {
-  await N.cancelAllScheduledNotificationsAsync();
+  // Only nudges: a rest-timer alert (gym/rest.ts) scheduled at the same time must survive a re-plan.
+  for (const r of await N.getAllScheduledNotificationsAsync())
+    if (!r.identifier.startsWith(REST_NOTIFICATION_PREFIX)) await N.cancelScheduledNotificationAsync(r.identifier);
   const entries: LoggedPlan["entries"] = [];
   for (const n of plan) {
     const date = n.dayOffset ? addDays(today, n.dayOffset) : today;

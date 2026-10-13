@@ -40,6 +40,7 @@ import {
   finishWorkout,
   previousSets,
   removeExercise,
+  restoreExercise,
   startWorkout,
   useActiveWorkout,
   workoutStats,
@@ -309,6 +310,7 @@ function ExerciseCard({
   onCompleted: (values: SetValues, kinds: PrKind[]) => void;
 }) {
   const { colors, radius } = useTheme();
+  const toast = useToast();
   const [menu, setMenu] = useState(false);
   const [restSheet, setRestSheet] = useState(false);
   const [rest, setRest] = useState(() => restFor(userId, we.exerciseId));
@@ -376,6 +378,7 @@ function ExerciseCard({
           onPress={() => {
             setMenu(false);
             removeExercise(we);
+            toast({ kind: "info", message: `${we.name} removed`, onUndo: () => restoreExercise(userId, we) });
           }}
         />
       </BottomSheet>

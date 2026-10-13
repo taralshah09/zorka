@@ -242,6 +242,30 @@ test("completion credit is durable, profile-scoped and idempotent", async () => 
   assert.equal(store.dayCredit("b", done.localDate).kcal, 0);
   assert.equal(native.running, false);
 });
+test("UX F5: a deleted session leaves lists and credit, queues a delete, and Undo brings it back", async () => {
+  const a = store.createActivity("a", "run", 70, true);
+  await recorder.resumeRecorder(a.id);
+  tick += 30 * 60000;
+  await recorder.stopRecorder(a.id);
+  const done = store.getActivity(a.id);
+  store.deleteActivity(done);
+  assert.equal(store.getActivity(a.id), null);
+  assert.equal(store.dayCredit("a", done.localDate).kcal, 0);
+  assert.equal(store.recentActivities("a", 10).length, 0);
+  const ops = sql.prepare("SELECT action FROM outbox WHERE record_id = ? ORDER BY rowid").all(a.id);
+  assert.deepEqual(
+    ops.map((o) => o.action),
+    ["upsert", "delete"],
+  );
+  store.restoreActivity(done);
+  assert.equal(store.getActivity(a.id).status, "done");
+  assert.equal(store.dayCredit("a", done.localDate).kcal, 291);
+  assert.equal(store.recentActivities("a", 10).length, 1);
+  assert.equal(
+    sql.prepare("SELECT action FROM outbox WHERE record_id = ? ORDER BY rowid DESC").get(a.id).action,
+    "upsert",
+  );
+});
 test("completion across midnight updates the indexed day as well as metadata", async () => {
   tick = new Date("2026-10-11T23:59:00").getTime();
   const a = store.createActivity("a", "walk", 70, false);

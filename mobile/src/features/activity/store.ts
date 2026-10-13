@@ -41,7 +41,10 @@ export function useActivityClock() {
   return now;
 }
 export function getActivity(id: string): Activity | null {
-  const row = getDb().getFirstSync<{ data: string }>("SELECT data FROM activities WHERE id = ?", id);
+  const row = getDb().getFirstSync<{ data: string }>(
+    "SELECT data FROM activities WHERE id = ? AND status != 'deleted'",
+    id,
+  );
   return row ? (JSON.parse(row.data) as Activity) : null;
 }
 export function activeActivity(): Activity | null {
@@ -153,6 +156,17 @@ export function finishActivity(id: string) {
   saveActivity(a);
   queueActivity(a);
 }
+/** Finished runs, walks and rides, newest first (Train → Recent). */
+export function recentActivities(userId: string | null, limit: number): Activity[] {
+  if (!userId) return [];
+  return getDb()
+    .getAllSync<{ data: string }>(
+      "SELECT data FROM activities WHERE user_id = ? AND status = 'done' ORDER BY json_extract(data, '$.startedAt') DESC LIMIT ?",
+      userId,
+      limit,
+    )
+    .map((r) => JSON.parse(r.data) as Activity);
+}
 export function dayActivities(userId: string | null, day: string): Activity[] {
   if (!userId) return [];
   return getDb()
@@ -182,6 +196,40 @@ onAcknowledged("activity", (row) => {
     row.client_updated_at,
   );
 });
+
+/**
+ * Deletes a finished activity (UX F5). The row stays as status 'deleted' (out of every list, the budget and the
+ * streak) so a pull can't bring it back before the server has the delete; the pulled tombstone removes it.
+ */
+export function deleteActivity(a: Activity) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    db.runSync(
+      `UPDATE activities SET status = 'deleted', synced = 0, client_updated_at = ? WHERE id = ? AND status = 'done'`,
+      now,
+      a.id,
+    );
+    enqueue({
+      op_id: randomUUID(),
+      user_id: a.userId,
+      entity: "activity",
+      action: "delete",
+      record_id: a.id,
+      payload: null,
+      client_updated_at: now,
+    });
+  });
+  activityChanged();
+  notifyLocalWrite();
+}
+
+/** Undo for a just-deleted activity: back to done, sent again with a newer write (it wins over the delete). */
+export function restoreActivity(a: Activity) {
+  getDb().runSync(`UPDATE activities SET status = 'done' WHERE id = ? AND status = 'deleted'`, a.id);
+  queueActivity(a);
+  activityChanged();
+}
 
 /** The server's cap (backend activities.schemas.ts); longer routes are thinned evenly. */
 const MAX_POINTS = 50_000;

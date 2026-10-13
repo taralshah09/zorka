@@ -20,7 +20,15 @@ import {
 } from "@shared/domain/gym";
 import { CATEGORY_TILE, SET_COLUMNS } from "./format";
 import { restTimer, useRestTimer } from "./rest";
-import { completeSet, removeSet, uncompleteSet, updateSet, type WorkoutExercise, type WorkoutSet } from "./store";
+import {
+  completeSet,
+  removeSet,
+  restoreSet,
+  uncompleteSet,
+  updateSet,
+  type WorkoutExercise,
+  type WorkoutSet,
+} from "./store";
 
 /** 40–56 px category tile (brand §10 style, no photos). */
 export function ExerciseTile({ category, size = 44 }: { category: ExerciseCategory | null; size?: number }) {
@@ -244,7 +252,7 @@ function SetRow({
       <Pressable
         onLongPress={() => {
           removeSet(userId, we, set.id);
-          toast({ kind: "info", message: `Set ${index + 1} removed` });
+          toast({ kind: "info", message: `Set ${index + 1} removed`, onUndo: () => restoreSet(userId, we, set) });
         }}
         accessibilityRole="button"
         accessibilityLabel={`Set ${index + 1}${pr ? ", personal record" : ""}`}

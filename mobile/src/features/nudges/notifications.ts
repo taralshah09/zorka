@@ -17,7 +17,8 @@ export type LocalNotifications = Pick<
   | "getPermissionsAsync"
   | "requestPermissionsAsync"
   | "scheduleNotificationAsync"
-  | "cancelAllScheduledNotificationsAsync"
+  | "cancelScheduledNotificationAsync"
+  | "getAllScheduledNotificationsAsync"
   | "SchedulableTriggerInputTypes"
   | "getLastNotificationResponse"
   | "clearLastNotificationResponse"
@@ -38,7 +39,8 @@ function load(): LocalNotifications | null {
   if (NATIVE.some((name) => !requireOptionalNativeModule(name))) return null;
   try {
     const schedule = require("expo-notifications/build/scheduleNotificationAsync");
-    const cancelAll = require("expo-notifications/build/cancelAllScheduledNotificationsAsync");
+    const cancelOne = require("expo-notifications/build/cancelScheduledNotificationAsync");
+    const getAll = require("expo-notifications/build/getAllScheduledNotificationsAsync");
     const channel = require("expo-notifications/build/setNotificationChannelAsync");
     const channelTypes = require("expo-notifications/build/NotificationChannelManager.types");
     const permissions = require("expo-notifications/build/NotificationPermissions");
@@ -47,7 +49,8 @@ function load(): LocalNotifications | null {
     const types = require("expo-notifications/build/Notifications.types");
     return {
       scheduleNotificationAsync: schedule.scheduleNotificationAsync,
-      cancelAllScheduledNotificationsAsync: cancelAll.cancelAllScheduledNotificationsAsync,
+      cancelScheduledNotificationAsync: cancelOne.cancelScheduledNotificationAsync,
+      getAllScheduledNotificationsAsync: getAll.getAllScheduledNotificationsAsync,
       setNotificationChannelAsync: channel.setNotificationChannelAsync,
       AndroidImportance: channelTypes.AndroidImportance,
       getPermissionsAsync: permissions.getPermissionsAsync,
@@ -63,6 +66,9 @@ function load(): LocalNotifications | null {
   }
 }
 /* eslint-enable @typescript-eslint/no-require-imports */
+
+/** Identifier of the rest-timer alert (gym/rest.ts). The nudge planner leaves it alone when it re-plans. */
+export const REST_NOTIFICATION_PREFIX = "zorka.rest";
 
 /** null on web, or in a build without expo-notifications' native modules. */
 export const Notifications = load();

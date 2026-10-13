@@ -199,6 +199,20 @@ export function routinesLastDone(userId: string): Map<string, string> {
   return new Map(rows.map((r) => [r.routine_id, r.last]));
 }
 
+/**
+ * UX T3 · The routine the Train hero offers: one never done yet (list order), else the one done longest ago,
+ * so a push / pull / legs split rotates by itself.
+ */
+export function nextRoutine(routines: readonly Routine[], lastDone: ReadonlyMap<string, string>): Routine | null {
+  let best: Routine | null = null;
+  for (const r of routines) {
+    const at = lastDone.get(r.id);
+    if (!at) return r;
+    if (!best || at < lastDone.get(best.id)!) best = r;
+  }
+  return best;
+}
+
 export function useRoutines(userId: string | null): { routines: Routine[]; lastDone: Map<string, string> } {
   const v = useRoutinesVersion((s) => s.v);
   const w = useWorkoutsVersion((s) => s.v);

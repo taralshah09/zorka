@@ -32,4 +32,6 @@ export const KV_KEYS = {
   onboardingDraft: "zorka.onboardingDraft",
   /** UX O4: a profile save made offline, keyed by user id, sent when the network is back. Not per-profile suffixed. */
   pendingProfile: "zorka.pendingProfile",
+  /** UX T1: "Start without it" was picked on the screen-off ask. Per phone (the permission is too). */
+  screenOffDeclined: "zorka.screenOffDeclined",
 } as const;

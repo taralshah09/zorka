@@ -24,6 +24,7 @@ import { formatKg, formatShortDate } from "@/features/targets/format";
 import { checkinCopy } from "@/features/progress/copy";
 import { CheckinReadyCard, PhaseCard, StreakCard, trendHeadline, WeekStats } from "@/features/progress/components";
 import { useProgress, useWeekStats } from "@/features/progress/hooks";
+import { WeekVolume } from "@/features/gym/WeekVolume";
 import { TrendChart } from "@/features/progress/TrendChart";
 import { deleteWeight, restoreWeight } from "@/features/progress/weights";
 import { AppHeader } from "@/features/shell/AppHeader";
@@ -142,6 +143,7 @@ export default function Progress() {
             This week
           </Text>
           <WeekStats {...week} />
+          <WeekVolume userId={p.userId} />
 
           {recent.length ? (
             <Card eyebrow="Weigh-ins">

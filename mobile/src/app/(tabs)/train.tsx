@@ -1,6 +1,7 @@
-// S22 · Train hub (P19, routines P21). Layout from the S22 export (D11): title + this-week pill, the lime
-// "Start empty workout" hero (or "Resume" while one is open), My routines (P21), Record activity (runs
-// arrive in P25), this week's volume by day, recent sessions, and the exercise library.
+// S22 · Train hub (P19, routines P21). Layout from the S22 export (D11), reshaped by UX T3/T5 into one decision and
+// one list: title + this-week pill, the lime hero (resume what's open, else the routine that's up next, else an empty
+// workout), My routines (tap starts, pencil edits), Record (Run · Walk · Ride), Recent (3, merged gym + GPS, "See
+// all"), and the exercise library. This week's volume chart moved to Progress.
 import { router } from "expo-router";
 import { ScrollView, StyleSheet, View } from "react-native";
 
@@ -9,55 +10,53 @@ import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { useTheme } from "@/core/theme";
 import { Badge, Button, Card, EmptyState, ListItem, PressableScale, Screen, Text, useToast } from "@/core/ui";
 import { AppHeader } from "@/features/shell/AppHeader";
+import { activeActivity, useActivityClock } from "@/features/activity/store";
 import { getExercise, useExercises } from "@/features/gym/catalog";
-import { ExerciseTile } from "@/features/gym/components";
-import { formatDuration, formatElapsed, formatVolume, relativeDay } from "@/features/gym/format";
-import { startRoutine, useRoutines, type Routine } from "@/features/gym/routines";
-import {
-  startWorkout,
-  useActiveWorkout,
-  useRecentWorkouts,
-  useWorkoutsBetween,
-  workoutStats,
-  type Workout,
-} from "@/features/gym/store";
+import { formatElapsed, formatVolume, relativeDay } from "@/features/gym/format";
+import { RecentCard, useRecentTraining } from "@/features/gym/recent";
+import { nextRoutine, startRoutine, useRoutines, type Routine } from "@/features/gym/routines";
+import { startWorkout, useActiveWorkout, useWorkoutsBetween, workoutStats } from "@/features/gym/store";
+import { weekDays } from "@/features/gym/WeekVolume";
 import { useActiveUser } from "@/features/users/activeUser";
-import { localDate } from "@shared/domain/food";
 import { CATEGORY_LABEL } from "@shared/domain/gym";
-import { ActivityHistory } from "@/features/activity/history";
+import { ACTIVITY_LABEL } from "@shared/domain/activity";
 
-const ACTIVITIES: { icon: IconName; label: string; hint: string }[] = [
-  { icon: "directions_run", label: "Run", hint: "Pace · splits" },
-  { icon: "directions_walk", label: "Walk", hint: "Distance · steps" },
-  { icon: "directions_bike", label: "Ride", hint: "Speed · distance" },
-  { icon: "hiking", label: "Hike", hint: "Distance · time" },
+const ACTIVITIES: { icon: IconName; kind: "run" | "walk" | "ride"; label: string; hint: string }[] = [
+  { icon: "directions_run", kind: "run", label: "Run", hint: "Pace · splits" },
+  { icon: "directions_walk", kind: "walk", label: "Walk", hint: "Distance · pace" },
+  { icon: "directions_bike", kind: "ride", label: "Ride", hint: "Speed · distance" },
 ];
 
-/** Monday-to-Sunday local dates of the week containing `d`. */
-function weekDays(d: Date): string[] {
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return Array.from({ length: 7 }, (_, i) => {
-    const x = new Date(monday);
-    x.setDate(monday.getDate() + i);
-    return localDate(x);
-  });
-}
+const RECENT_COUNT = 3;
+
+type Hero = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  pill: string;
+  fab: IconName;
+  label: string;
+  onPress: () => void;
+};
 
 export default function Train() {
   const { colors, radius, layout } = useTheme();
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const active = useActiveWorkout(userId);
-  const recent = useRecentWorkouts(userId, 5);
+  const clock = useActivityClock();
+  const recording = activeActivity();
+  const openActivity = recording?.userId === userId ? recording : null;
+  const recent = useRecentTraining(userId, RECENT_COUNT + 1);
   const { routines, lastDone } = useRoutines(userId);
   const exercises = useExercises(userId);
-  const now = new Date();
+  const now = new Date(clock);
   const days = weekDays(now);
   const week = useWorkoutsBetween(userId, days[0]!, days[6]!);
   const weekVolume = week.reduce((sum, w) => sum + workoutStats(w).volumeKg, 0);
+  const upNext = nextRoutine(routines, lastDone);
 
-  const open = () => {
+  const openEmpty = () => {
     if (!userId) return;
     if (!active) startWorkout(userId);
     router.push("/train/workout");
@@ -73,6 +72,46 @@ export default function Train() {
     startRoutine(userId, r, (id) => getExercise(userId, id));
     router.push("/train/workout");
   };
+
+  const hero: Hero = active
+    ? {
+        eyebrow: "In progress",
+        title: "Resume workout",
+        body: `${active.name} · ${formatElapsed(active.startedAt, now.getTime())} · ${workoutStats(active).sets} sets done`,
+        pill: "Running",
+        fab: "play_arrow",
+        label: `Resume ${active.name}`,
+        onPress: openEmpty,
+      }
+    : openActivity
+      ? {
+          eyebrow: openActivity.status === "paused" ? "Paused" : "Recording",
+          title: `Resume ${ACTIVITY_LABEL[openActivity.kind].toLowerCase()}`,
+          body: "Your route is saved. Open the recorder to carry on or stop.",
+          pill: openActivity.status === "paused" ? "Paused" : "Recording",
+          fab: "play_arrow",
+          label: `Resume ${ACTIVITY_LABEL[openActivity.kind].toLowerCase()}`,
+          onPress: () => router.push({ pathname: "/activity/live", params: { id: openActivity.id } }),
+        }
+      : upNext
+        ? {
+            eyebrow: "Up next",
+            title: upNext.name,
+            body: `${lastDone.get(upNext.id) ? `Last done ${relativeDay(lastDone.get(upNext.id)!).toLowerCase()}` : "Not done yet"} · ${upNext.exercises.length} exercises`,
+            pill: "Rest timer ready",
+            fab: "play_arrow",
+            label: `Start ${upNext.name}`,
+            onPress: () => start(upNext),
+          }
+        : {
+            eyebrow: "Workout",
+            title: "Start empty workout",
+            body: "Log sets as you go. Last session's numbers are filled in for you.",
+            pill: "Rest timer ready",
+            fab: "add",
+            label: "Start empty workout",
+            onPress: openEmpty,
+          };
 
   return (
     <Screen withDock header={<AppHeader eyebrow="Train" />}>
@@ -95,35 +134,31 @@ export default function Train() {
         </View>
       </View>
 
-      <Card
-        variant="highlighted"
-        glow
-        onPress={open}
-        accessibilityLabel={active ? `Resume ${active.name}` : "Start empty workout"}
-      >
+      <Card variant="highlighted" glow onPress={hero.onPress} accessibilityLabel={hero.label}>
         <Text variant="eyebrow" color="ink">
-          {active ? "In progress" : "Workout"}
+          {hero.eyebrow}
         </Text>
-        <Text variant="display" color="ink" style={styles.heroTitle}>
-          {active ? "Resume workout" : "Start empty workout"}
+        <Text variant="display" color="ink" style={styles.heroTitle} numberOfLines={2}>
+          {hero.title}
         </Text>
         <Text variant="body" color="ink">
-          {active
-            ? `${active.name} · ${formatElapsed(active.startedAt, now.getTime())} · ${workoutStats(active).sets} sets done`
-            : "Log sets as you go. Last session's numbers are filled in for you."}
+          {hero.body}
         </Text>
         <View style={styles.heroFoot}>
           <View style={[styles.heroPill, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
             <Icon name="timer" size={16} color={colors.primary} />
             <Text variant="label" style={{ color: colors.primary }}>
-              {active ? "Running" : "Rest timer ready"}
+              {hero.pill}
             </Text>
           </View>
           <View style={[styles.heroFab, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
-            <Icon name={active ? "play_arrow" : "add"} size={28} color={colors.primary} />
+            <Icon name={hero.fab} size={28} color={colors.primary} />
           </View>
         </View>
       </Card>
+      {!active && !openActivity && upNext ? (
+        <Button label="Start empty workout" icon="add" variant="ghost" onPress={openEmpty} />
+      ) : null}
 
       <View style={styles.sectionHead}>
         <View style={styles.sectionTitle}>
@@ -168,21 +203,17 @@ export default function Train() {
 
       <View style={styles.sectionHead}>
         <Text variant="headline-sm" accessibilityRole="header">
-          Record activity
+          Record
         </Text>
       </View>
       <View style={styles.grid}>
         {ACTIVITIES.map((a) => (
           <PressableScale
-            key={a.label}
-            onPress={() =>
-              a.label === "Hike"
-                ? router.push({ pathname: "/coming-soon", params: { feature: "Hike recording" } })
-                : router.push({ pathname: "/activity/record", params: { kind: a.label.toLowerCase() } })
-            }
+            key={a.kind}
+            onPress={() => router.push({ pathname: "/activity/record", params: { kind: a.kind } })}
             accessibilityRole="button"
             accessibilityLabel={`Record a ${a.label.toLowerCase()}`}
-            accessibilityHint={a.label === "Hike" ? "Coming soon" : "Open the GPS recorder"}
+            accessibilityHint="Open the GPS recorder"
             containerStyle={styles.gridSlot}
             style={[
               styles.activity,
@@ -197,31 +228,31 @@ export default function Train() {
             <View style={[styles.activityIcon, { backgroundColor: colors.surfaceHigh, borderRadius: radius.full }]}>
               <Icon name={a.icon} size={20} color={colors.primaryText} />
             </View>
-            <View style={styles.flex}>
-              <Text variant="title">{a.label}</Text>
-              <Text variant="caption" color="textSecondary">
-                {a.hint}
-              </Text>
-            </View>
+            <Text variant="title">{a.label}</Text>
+            <Text variant="caption" color="textSecondary" numberOfLines={1}>
+              {a.hint}
+            </Text>
           </PressableScale>
         ))}
       </View>
 
-      <WeekVolume days={days} workouts={week} today={localDate(now)} />
-      <ActivityHistory userId={userId} />
-
       <View style={styles.sectionHead}>
         <Text variant="headline-sm" accessibilityRole="header">
-          Recent sessions
+          Recent
         </Text>
+        {recent.length > RECENT_COUNT ? (
+          <Button label="See all" size="sm" variant="ghost" onPress={() => router.push("/train/history")} />
+        ) : null}
       </View>
       {recent.length ? (
-        recent.map((w) => <SessionCard key={w.id} workout={w} />)
+        recent
+          .slice(0, RECENT_COUNT)
+          .map((item) => <RecentCard key={item.kind === "workout" ? item.workout.id : item.activity.id} item={item} />)
       ) : (
         <EmptyState
           icon="fitness_center"
-          title="No workouts yet"
-          body="Start one above. Sets, PRs and volume show up here."
+          title="No training yet"
+          body="Start a workout or record a walk. Sets, PRs and routes show up here."
         />
       )}
 
@@ -238,6 +269,7 @@ export default function Train() {
   );
 }
 
+/** UX T3: tapping the card starts the routine; the pencil opens the editor. */
 function RoutineCard({
   routine,
   lastDone,
@@ -256,14 +288,25 @@ function RoutineCard({
     .map((c) => CATEGORY_LABEL[c]);
   return (
     <PressableScale
-      onPress={() => router.push({ pathname: "/train/routine/[id]", params: { id: routine.id } })}
+      onPress={onStart}
       accessibilityRole="button"
-      accessibilityLabel={`${routine.name}, ${routine.exercises.length} exercises. Opens the editor.`}
+      accessibilityLabel={`Start ${routine.name}, ${routine.exercises.length} exercises`}
       style={[styles.routine, { backgroundColor: bg, borderRadius: radius.xl }]}
     >
-      <Text variant="headline-sm" color="ink" numberOfLines={1}>
-        {routine.name}
-      </Text>
+      <View style={styles.routineHead}>
+        <Text variant="headline-sm" color="ink" numberOfLines={1} style={styles.flex}>
+          {routine.name}
+        </Text>
+        <PressableScale
+          onPress={() => router.push({ pathname: "/train/routine/[id]", params: { id: routine.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${routine.name}`}
+          hitSlop={8}
+          style={[styles.edit, { borderColor: colors.ink, borderRadius: radius.full }]}
+        >
+          <Icon name="edit" size={20} color={colors.ink} />
+        </PressableScale>
+      </View>
       <Text variant="caption" color="ink" numberOfLines={1}>
         {groups.join(", ") || "Custom"}
       </Text>
@@ -278,106 +321,11 @@ function RoutineCard({
         <Text variant="caption" color="ink">
           {lastDone ? `Last: ${relativeDay(lastDone)}` : "Not done yet"}
         </Text>
-        <PressableScale
-          onPress={onStart}
-          accessibilityRole="button"
-          accessibilityLabel={`Start ${routine.name}`}
-          style={[styles.play, { backgroundColor: colors.ink, borderRadius: radius.full }]}
-        >
+        <View style={[styles.play, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
           <Icon name="play_arrow" size={24} color={bg} filled />
-        </PressableScale>
+        </View>
       </View>
     </PressableScale>
-  );
-}
-
-function WeekVolume({ days, workouts, today }: { days: string[]; workouts: Workout[]; today: string }) {
-  const { colors, radius } = useTheme();
-  const byDay = days.map((d) => {
-    const ws = workouts.filter((w) => w.localDate === d);
-    return { day: d, volume: ws.reduce((s, w) => s + workoutStats(w).volumeKg, 0), sessions: ws.length };
-  });
-  const max = Math.max(1, ...byDay.map((d) => d.volume));
-  const labels = ["M", "T", "W", "T", "F", "S", "S"];
-  return (
-    <Card eyebrow="This week">
-      <Text variant="title">Volume by day</Text>
-      <Text variant="caption" color="textSecondary">
-        kg lifted (weight × reps) per day
-      </Text>
-      <View
-        style={styles.bars}
-        accessible
-        accessibilityLabel={byDay.map((d, i) => `${labels[i]} ${formatVolume(d.volume)}`).join(", ")}
-      >
-        {byDay.map((d, i) => {
-          const h = d.volume ? 16 + (d.volume / max) * 84 : d.sessions ? 16 : 8;
-          const isToday = d.day === today;
-          return (
-            <View key={d.day} style={styles.barCol}>
-              <View
-                style={{
-                  width: 22,
-                  height: h,
-                  borderRadius: radius.full,
-                  backgroundColor:
-                    d.volume || d.sessions ? (isToday ? colors.primary : colors.secondary) : colors.surfaceHigh,
-                }}
-              />
-              <Text variant="caption" color={isToday ? "primaryText" : "textSecondary"}>
-                {labels[i]!}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </Card>
-  );
-}
-
-function SessionCard({ workout }: { workout: Workout }) {
-  const { colors } = useTheme();
-  const stats = workoutStats(workout);
-  const category = workout.exercises[0]?.category ?? null;
-  return (
-    <Card
-      onPress={() => router.push({ pathname: "/train/summary/[id]", params: { id: workout.id } })}
-      accessibilityLabel={`${workout.name}, ${relativeDay(workout.startedAt)}, ${formatVolume(stats.volumeKg)}, ${stats.prs.length} PRs`}
-    >
-      <View style={styles.inline}>
-        <ExerciseTile category={category} />
-        <View style={styles.flex}>
-          <Text variant="title" numberOfLines={1}>
-            {workout.name}
-          </Text>
-          <Text variant="caption" color="textSecondary">
-            {`${relativeDay(workout.startedAt)} · ${workout.exercises.length} exercises`}
-          </Text>
-        </View>
-        {stats.prs.length ? (
-          <Badge label={`${stats.prs.length} PR${stats.prs.length > 1 ? "s" : ""}`} tone="lime" icon="trophy" />
-        ) : null}
-        {!workout.synced ? <Icon name="cloud_off" size={16} color={colors.textTertiary} /> : null}
-      </View>
-      <View style={styles.statRow}>
-        <Stat label="Duration" value={formatDuration(stats.durationS)} />
-        <Stat label="Volume" value={formatVolume(stats.volumeKg)} />
-        <Stat label="Sets" value={String(stats.sets)} />
-      </View>
-    </Card>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.flex}>
-      <Text variant="unit" color="textSecondary">
-        {label}
-      </Text>
-      <Text variant="title" tabular>
-        {value}
-      </Text>
-    </View>
   );
 }
 
@@ -401,17 +349,16 @@ const styles = StyleSheet.create({
   sectionTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
   routineRow: { gap: 12, paddingRight: 16 },
   routine: { width: 240, padding: 16, gap: 4 },
+  routineHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  edit: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   routineChips: { flexDirection: "row", gap: 6, marginTop: 8 },
   routineChip: { paddingHorizontal: 10, paddingVertical: 4 },
   routineFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
   play: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   inline: { flexDirection: "row", alignItems: "center", gap: 12 },
   flex: { flex: 1, gap: 2 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  gridSlot: { width: "47%", flexGrow: 1 },
-  activity: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1 },
+  grid: { flexDirection: "row", gap: 8 },
+  gridSlot: { flex: 1 },
+  activity: { gap: 6, borderWidth: 1 },
   activityIcon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  bars: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", height: 132, marginTop: 12 },
-  barCol: { alignItems: "center", gap: 6 },
-  statRow: { flexDirection: "row", gap: 12, marginTop: 12 },
 });

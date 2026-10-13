@@ -1,16 +1,17 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { View } from "react-native";
-import { Button, Card, EmptyState, Header, Screen, Text } from "@/core/ui";
+import { Button, Card, EmptyState, Header, Screen, Text, useToast } from "@/core/ui";
 import { burstOnce } from "@/features/celebrate/ConfettiBurst";
 import { RouteMap } from "@/features/activity/components";
-import { getActivity, routePoints, useActivityClock } from "@/features/activity/store";
+import { deleteActivity, getActivity, restoreActivity, routePoints, useActivityClock } from "@/features/activity/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { ACTIVITY_LABEL, calories, clockLabel, MET, movePoints, paceLabel, routeStats } from "@shared/domain/activity";
 
 export default function ActivitySummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const userId = useActiveUser((s) => s.userId);
+  const toast = useToast();
   useActivityClock();
   const a = getActivity(id);
   const endedAt = a && a.userId === userId && a.status === "done" ? a.endedAt : null;
@@ -92,6 +93,22 @@ export default function ActivitySummary() {
         onPress={() => router.push({ pathname: "/share", params: { card: "run", id: a.id } })}
       />
       <Button label="Done" fullWidth onPress={() => router.replace("/(tabs)/train")} />
+      <Button
+        label="Delete activity"
+        icon="delete"
+        variant="ghost"
+        fullWidth
+        onPress={() => {
+          // Undo instead of a confirm dialog (UX F5); the toast stays up on Train.
+          deleteActivity(a);
+          router.replace("/(tabs)/train");
+          toast({
+            kind: "info",
+            message: `${ACTIVITY_LABEL[a.kind]} deleted`,
+            onUndo: () => restoreActivity(a),
+          });
+        }}
+      />
     </Screen>
   );
 }

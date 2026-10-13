@@ -341,6 +341,58 @@ export function removeExercise(we: WorkoutExercise): void {
   bump();
 }
 
+function reinsertSet(workoutExerciseId: string, s: WorkoutSet) {
+  getDb().runSync(
+    `INSERT OR REPLACE INTO workout_sets
+       (id, workout_exercise_id, position, weight_kg, reps, duration_s, distance_m, done, completed_at, pr_kinds)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]')`,
+    s.id,
+    workoutExerciseId,
+    s.position,
+    s.weightKg,
+    s.reps,
+    s.durationS,
+    s.distanceM,
+    s.done ? 1 : 0,
+    s.completedAt,
+  );
+}
+
+/** Undo for a removed set (UX F4): puts it back where it was, then re-checks the PRs. */
+export function restoreSet(userId: string, we: WorkoutExercise, set: WorkoutSet): void {
+  const db = getDb();
+  db.withTransactionSync(() => {
+    if (!db.getFirstSync(`SELECT id FROM workout_exercises WHERE id = ?`, we.id)) return;
+    reinsertSet(we.id, set);
+    recomputePrs(userId, we.id);
+  });
+  bump();
+}
+
+/** Undo for "Remove from workout" (UX F4): the exercise and all its sets come back while the workout is open. */
+export function restoreExercise(userId: string, we: WorkoutExercise): void {
+  const db = getDb();
+  db.withTransactionSync(() => {
+    if (!db.getFirstSync(`SELECT id FROM workouts WHERE id = ? AND status = 'active'`, we.workoutId)) return;
+    db.runSync(
+      `INSERT OR REPLACE INTO workout_exercises
+         (id, workout_id, exercise_id, position, name, type, category, target_reps)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      we.id,
+      we.workoutId,
+      we.exerciseId,
+      we.position,
+      we.name,
+      we.type,
+      we.category,
+      we.targetReps,
+    );
+    for (const s of we.sets) reinsertSet(we.id, s);
+    recomputePrs(userId, we.id);
+  });
+  bump();
+}
+
 /** Re-works out the PR kinds of every ticked set of one exercise in one workout (D39): each set is
  *  compared with the history before this workout plus the ticked sets above it. */
 function recomputePrs(userId: string, workoutExerciseId: string): Map<string, PrKind[]> {
