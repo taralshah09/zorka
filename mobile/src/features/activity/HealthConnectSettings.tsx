@@ -10,7 +10,9 @@ const STATUS: Record<HealthState, string> = {
   permission: "Not connected · Allow Steps access to show your daily ring",
   missing: "Install or update Health Connect to connect your steps",
   unsupported: "Health Connect is unavailable on this device",
-  build: "Open the installed Zorka app. Health Connect is unavailable in Expo Go.",
+  build: __DEV__
+    ? "Open the installed Zorka app. Health Connect is unavailable in Expo Go."
+    : "This version of the app can't read steps. Update it to connect.",
   error: "Could not check Health Connect. Try again.",
 };
 

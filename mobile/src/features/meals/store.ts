@@ -229,6 +229,33 @@ export const restoreMeal = (meal: Meal) => saveMeal(meal);
 // ── P13 · Repeat ─────────────────────────────────────────────────────────────────────────────────
 
 /** A copy of `meal` logged now (new ids), as the given meal type. */
+/**
+ * UX F7: changes one item's amount on a saved meal, in place. Grams and macros scale with the amount (a portion is
+ * linear in it, oil/ghee included), so the food doesn't need to still be in the catalog.
+ */
+export function setItemQuantity(meal: Meal, itemId: string, quantity: number): Meal {
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const next: Meal = {
+    ...meal,
+    synced: false,
+    items: meal.items.map((i) => {
+      if (i.id !== itemId || i.quantity <= 0) return i;
+      const k = quantity / i.quantity;
+      return {
+        ...i,
+        quantity,
+        grams: r1(i.grams * k),
+        kcal: Math.round(i.kcal * k),
+        proteinG: r1(i.proteinG * k),
+        carbsG: r1(i.carbsG * k),
+        fatG: r1(i.fatG * k),
+      };
+    }),
+  };
+  saveMeal(next);
+  return next;
+}
+
 export function repeatMeal(meal: Meal, mealType: MealType = meal.mealType, at = new Date()): Meal {
   const copy: Meal = {
     ...meal,

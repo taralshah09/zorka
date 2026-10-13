@@ -3,16 +3,18 @@
 // Save. Not shipped from the export: the "Desi Gut Balance" health-claim card and "High Accuracy 94%"
 // (brand §11: no unverifiable claims), and emoji on the oil chips.
 // Leaving with changes (header back, Android back, swipe) asks "Discard changes?" first (UX L6). Opened with
-// `add=1` ("Add to {meal}" on Home, UX F8), search opens on top in add mode.
-import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+// `add=1` ("Add to {meal}" on Home, UX F8), search opens on top in add mode. Voice items the catalog doesn't have
+// are looked up on the web in the background and shown as an "estimate" (UX L5); tapping one opens Create food.
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
+import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
 import { Badge, Button, Dialog, EmptyState, Header, reactMascot, Screen, Text, useToast } from "@/core/ui";
 import { FollowUpCard, FoodItemRow, MacroTotals, MealTypeSelector, OilGheePrompt } from "@/features/food/components";
-import { formatKcal, formatPortion, MEAL_LABEL } from "@/features/food/format";
+import { formatKcal, formatPortion, MEAL_LABEL, stepQuantity } from "@/features/food/format";
 import {
   draftActions,
   draftTotals,
@@ -24,6 +26,7 @@ import {
   useDraft,
   type DraftItem,
 } from "@/features/log/draft";
+import { useAutoEstimates } from "@/features/log/estimates";
 import { formatDayLong } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -40,6 +43,8 @@ export default function ConfirmSheet() {
   const promptOn = !!profile.data?.oilGheePrompt;
   const params = useLocalSearchParams<{ add?: string }>();
   const navigation = useNavigation();
+  const online = useNetwork((s) => s.online);
+  const looking = useAutoEstimates(userId, draft, online);
   // Set while leaving on purpose (save, or "Discard"), so the guard below lets the screen go.
   const leaving = useRef(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
@@ -67,19 +72,6 @@ export default function ConfirmSheet() {
     }
   }, [params.add]);
 
-  // Voice: a food that isn't in the list opens Create food by itself, pre-filled from the web, one item at a time.
-  useFocusEffect(
-    useCallback(() => {
-      const next = draftActions.nextAutoAdd();
-      if (next) {
-        router.push({
-          pathname: "/log/create-food",
-          params: { mode: "replace", key: next.key, name: next.query, lookup: "1" },
-        });
-      }
-    }, []),
-  );
-
   if (!draft || !userId) {
     return (
       <Screen header={<Header title="Check and save" onBack={() => router.back()} />}>
@@ -101,7 +93,13 @@ export default function ConfirmSheet() {
   const meal = MEAL_LABEL[draft.mealType];
 
   const openItem = (item: DraftItem) => {
-    if (!item.food && !item.snapshot) {
+    if (item.estimate) {
+      // Check the web's numbers in Create food (the lookup is cached, so it opens filled in).
+      router.push({
+        pathname: "/log/create-food",
+        params: { mode: "replace", key: item.key, name: item.query, lookup: "1" },
+      });
+    } else if (!item.food && !item.snapshot) {
       router.push({ pathname: "/log/search", params: { mode: "replace", key: item.key, q: item.query } });
     } else {
       router.push({ pathname: "/log/edit-item", params: { key: item.key } });
@@ -136,9 +134,11 @@ export default function ConfirmSheet() {
   const saveHint =
     draft.items.length === 0
       ? "Add at least one item."
-      : unmatched.length
-        ? `Fix or remove ${unmatched.length === 1 ? `"${unmatched[0]!.query}"` : `${unmatched.length} items`} to save.`
-        : null;
+      : looking.size
+        ? "Looking up the rest…"
+        : unmatched.length
+          ? `Fix or remove ${unmatched.length === 1 ? `"${unmatched[0]!.query}"` : `${unmatched.length} items`} to save.`
+          : null;
 
   return (
     <Screen header={<Header title="Check and save" onBack={() => router.back()} />}>
@@ -198,24 +198,34 @@ export default function ConfirmSheet() {
         const m = itemMacros(draft, item, promptOn);
         const unmatchedItem = !item.food && !item.snapshot;
         const name = item.food?.name ?? item.snapshot?.name ?? item.query;
+        const lookingUp = looking.has(item.key);
+        const step = (dir: 1 | -1) => {
+          const q = item.food ? stepQuantity(item.quantity, item.unit, dir) : null;
+          return q === null ? null : () => draftActions.setQuantity(item.key, q);
+        };
         return (
           <FoodItemRow
             key={item.key}
             name={name}
-            diet={item.food?.diet ?? item.snapshot?.diet ?? null}
+            diet={item.estimate && !item.estimate.dietKnown ? null : (item.food?.diet ?? item.snapshot?.diet ?? null)}
             portion={formatPortion(item.quantity, item.unit)}
             kcal={m.kcal}
             proteinG={m.proteinG}
-            state={unmatchedItem ? "unmatched" : item.uncertain ? "uncertain" : "ok"}
+            state={unmatchedItem && !lookingUp ? "unmatched" : item.uncertain || lookingUp ? "uncertain" : "ok"}
             note={
-              unmatchedItem
-                ? `Couldn't find "${item.query}"`
-                : item.reasons.includes("vague_quantity")
-                  ? "How much? Tap to fix"
-                  : undefined
+              lookingUp
+                ? "Looking it up…"
+                : unmatchedItem
+                  ? `Couldn't find "${item.query}"`
+                  : item.estimate
+                    ? "Estimate from the web · tap to check"
+                    : item.reasons.includes("vague_quantity")
+                      ? "How much? Tap to fix"
+                      : undefined
             }
             onPress={() => openItem(item)}
             onRemove={() => removeItem(item, name)}
+            onStep={item.food ? { down: step(-1), up: step(1) } : undefined}
           />
         );
       })}

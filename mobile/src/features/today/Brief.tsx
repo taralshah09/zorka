@@ -25,6 +25,7 @@ export function BriefCard({
   line,
   action,
   note,
+  onNotePress,
   onAction,
   onAsk,
 }: {
@@ -34,6 +35,8 @@ export function BriefCard({
   action: NextAction;
   /** A small extra fact, e.g. "A freeze protected your streak." */
   note?: string;
+  /** Makes the note a link (UX W2: the freeze note opens how streaks work). */
+  onNotePress?: () => void;
   onAction: () => void;
   /** UX N2 · Opens Coach with this brief as the topic. Only with a coach. */
   onAsk?: () => void;
@@ -74,8 +77,13 @@ export function BriefCard({
         </Text>
       ) : null}
       {note ? (
-        <Text variant="caption" color="secondaryText">
-          {note}
+        <Text
+          variant="caption"
+          color="secondaryText"
+          onPress={onNotePress}
+          accessibilityRole={onNotePress ? "link" : undefined}
+        >
+          {onNotePress ? `${note} How it works ›` : note}
         </Text>
       ) : null}
       <View style={styles.briefCta}>

@@ -92,11 +92,17 @@ export default function StepsScreen() {
       {health.state === "unsupported" || health.state === "build" ? (
         <Card>
           <Text variant="title">
-            {health.state === "build" ? "Android development build needed" : "Health Connect isn't supported here"}
+            {health.state === "build"
+              ? __DEV__
+                ? "Android development build needed"
+                : "This version of the app can't read steps"
+              : "Health Connect isn't supported here"}
           </Text>
           <Text variant="body" color="textSecondary">
-            Steps require a supported Android phone and a Zorka build with Health Connect. Move points from your
-            recorded activities still appear here.
+            {__DEV__
+              ? "Steps require a supported Android phone and a Zorka build with Health Connect. "
+              : "Steps need Health Connect on a supported Android phone. "}
+            Move points from your recorded activities still appear here.
           </Text>
         </Card>
       ) : null}
@@ -129,9 +135,9 @@ export default function StepsScreen() {
       <Card eyebrow="Move points">
         <Text variant="title">A 20-minute brisk walk earns 20 points</Text>
         <Text variant="body" color="textSecondary">
-          Moderate activity (3–5.9 MET): 1 point per minute. Vigorous activity (6+ MET): 2. We use estimates for your
-          selected activity: Walk 3.8, Run 8.3, Ride 6.8 MET. Paused time earns nothing. Steps alone cannot tell us
-          intensity.
+          {
+            "Move points count the minutes you spend moving with some effort. A walk earns 1 point a minute, a run or a ride earns 2. Paused time earns nothing. Steps alone can't tell how hard you moved, so only recorded activities earn points."
+          }
         </Text>
         <Button
           label="Start walk"

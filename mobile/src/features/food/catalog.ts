@@ -171,9 +171,8 @@ export type NewFood = {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-/** Saves a user-created food locally (searchable at once, even offline) and queues it for sync. */
-export function createFood(userId: string, input: NewFood): Food {
-  const id = randomUUID();
+/** A food built from one serving's numbers, not saved anywhere (UX L5 uses it for a web estimate on a draft). */
+export function foodFromServing(input: NewFood, id: string = randomUUID()): Food {
   const now = new Date().toISOString();
   const per100 = 100 / input.serving.grams;
   const base: FoodUnit = input.liquid ? "ml" : "g";
@@ -204,6 +203,13 @@ export function createFood(userId: string, input: NewFood): Food {
     custom: true,
     updatedAt: now,
   };
+  return food;
+}
+
+/** Saves a user-created food locally (searchable at once, even offline) and queues it for sync. */
+export function createFood(userId: string, input: NewFood): Food {
+  const food = foodFromServing(input);
+  const { id, updatedAt: now } = food;
   const db = getDb();
   db.withTransactionSync(() => {
     db.runSync(

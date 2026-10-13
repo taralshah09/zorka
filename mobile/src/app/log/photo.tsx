@@ -1,31 +1,39 @@
 // S14 · Photo capture & review (P17). Built from DESIGN.md §6.4 (no export yet, D35). Uses the system
 // camera / photo picker (expo-image-picker, D33) rather than an in-app viewfinder. States: choose,
 // camera permission (S49), recognising, not recognised ("Couldn't tell. Try search?"), offline, error.
+// UX F6: offline (or when the connection drops mid-read) the photo is kept and waits on Today, like a voice note;
+// opened from there (`queued=<id>`) it's read at once.
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { File } from "expo-file-system";
+import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
-import { describeError } from "@/core/api/client";
+import { ApiError, describeError } from "@/core/api/client";
 import { Icon } from "@/core/icons/Icon";
 import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
-import { Button, ErrorState, Header, OfflineBanner, Screen, Skeleton, Text } from "@/core/ui";
+import { Button, ErrorState, Header, OfflineBanner, Screen, Skeleton, Text, useToast } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
 import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parsePhoto, preparePhoto } from "@/features/log/parse";
+import { queuePhoto, removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { useActiveUser } from "@/features/users/activeUser";
+import { mealTypeForTime } from "@shared/domain/food";
 
 type Phase = "choose" | "explain" | "denied" | "recognising" | "not_recognised" | "error";
 
 export default function PhotoCapture() {
-  const params = useLocalSearchParams<{ mealType?: string }>();
+  const params = useLocalSearchParams<{ mealType?: string; queued?: string }>();
   const { colors, radius, layout } = useTheme();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
   const finish = useFinishDraft();
-  const mealType = mealTypeParam(params);
+  const toast = useToast();
+  const queue = useVoiceQueue(userId);
+  const queuedNote = params.queued ? queue.find((n) => n.id === params.queued && n.kind === "photo") : undefined;
+  const mealType = queuedNote?.mealType ?? mealTypeParam(params);
   const [phase, setPhase] = useState<Phase>("choose");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
@@ -35,13 +43,21 @@ export default function PhotoCapture() {
     ImagePicker.getCameraPermissionsAsync().then((p) => setCameraAsked(p.granted || !p.canAskAgain));
   }, []);
 
-  const recognise = async (asset: ImagePicker.ImagePickerAsset) => {
+  const saveForLater = (uri: string) => {
+    if (!userId) return;
+    queuePhoto(userId, uri, mealType ?? mealTypeForTime(new Date()));
+    toast({ kind: "info", message: "Photo saved. We'll read it when you're back online." });
+    router.back();
+  };
+
+  const read = async (photo: { uri: string; base64: string }) => {
     if (!userId) return;
     setPhase("recognising");
+    setPhotoUri(photo.uri);
     try {
-      const photo = await preparePhoto(asset.uri, asset.width, asset.height);
-      setPhotoUri(photo.uri);
       const { result, clientMs } = await parsePhoto(userId, photo.base64);
+      // The file is now the meal's photo, so the queue keeps it.
+      if (queuedNote) removeVoice(queuedNote, true);
       if (!result.items.length) {
         setPhase("not_recognised");
         return;
@@ -49,10 +65,46 @@ export default function PhotoCapture() {
       draftActions.startFromParse(result, { mealType, photoUri: photo.uri, clientMs });
       finish("replace");
     } catch (e) {
+      if (!queuedNote && e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) {
+        saveForLater(photo.uri);
+        return;
+      }
       setError(describeError(e));
       setPhase("error");
     }
   };
+
+  const recognise = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!userId) return;
+    setPhase("recognising");
+    try {
+      const photo = await preparePhoto(asset.uri, asset.width, asset.height);
+      if (!online) {
+        saveForLater(photo.uri);
+        return;
+      }
+      await read(photo);
+    } catch (e) {
+      setError(describeError(e));
+      setPhase("error");
+    }
+  };
+
+  // A photo saved offline, opened from Today: read it straight away once online.
+  const queuedRan = useRef(false);
+  useEffect(() => {
+    if (!queuedNote || queuedRan.current || !online) return;
+    queuedRan.current = true;
+    setPhotoUri(queuedNote.uri);
+    new File(queuedNote.uri)
+      .base64()
+      .then((base64) => read({ uri: queuedNote.uri, base64 }))
+      .catch((e: unknown) => {
+        setError(describeError(e));
+        setPhase("error");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queuedNote, online]);
 
   const takePhoto = async () => {
     const perm = await ImagePicker.getCameraPermissionsAsync();
@@ -154,31 +206,28 @@ export default function PhotoCapture() {
               {"Shoot from above, in good light. You'll check every item before saving."}
             </Text>
           </View>
-          {online ? (
-            <>
-              <Button
-                label="Take a photo"
-                icon="photo_camera"
-                onPress={cameraAsked === false ? () => setPhase("explain") : takePhoto}
-                fullWidth
-                glow
-              />
-              <Button
-                label="Choose from gallery"
-                variant="secondary"
-                icon="photo_library"
-                onPress={pickFromGallery}
-                fullWidth
-              />
-            </>
-          ) : (
-            <>
-              <Text variant="body" color="textSecondary">
-                Reading a photo needs a connection. Search works offline.
-              </Text>
-              <Button label="Search" icon="search" onPress={toSearch} fullWidth />
-            </>
-          )}
+          {!online ? (
+            <Text variant="body" color="textSecondary">
+              {"You're offline. Take the photo now: it's kept, and read when you're back online."}
+            </Text>
+          ) : null}
+          <Button
+            label="Take a photo"
+            icon="photo_camera"
+            onPress={cameraAsked === false ? () => setPhase("explain") : takePhoto}
+            fullWidth
+            glow
+          />
+          <Button
+            label="Choose from gallery"
+            variant="secondary"
+            icon="photo_library"
+            onPress={pickFromGallery}
+            fullWidth
+          />
+          {!online ? (
+            <Button label="Search instead" variant="ghost" icon="search" onPress={toSearch} fullWidth />
+          ) : null}
         </>
       )}
     </Screen>

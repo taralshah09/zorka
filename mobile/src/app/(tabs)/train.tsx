@@ -1,7 +1,8 @@
 // S22 · Train hub (P19, routines P21). Layout from the S22 export (D11), reshaped by UX T3/T5 into one decision and
 // one list: title + this-week pill, the lime hero (resume what's open, else the routine that's up next, else an empty
 // workout), My routines (tap starts, pencil edits), Record (Run · Walk · Ride), Recent (3, merged gym + GPS, "See
-// all"), and the exercise library. This week's volume chart moved to Progress.
+// all"), and the exercise library. While a workout is running, the hero and that routine's card show pause, not play,
+// so the Train tab says "this is running" when you come back to it.
 import { router } from "expo-router";
 import { ScrollView, StyleSheet, View } from "react-native";
 
@@ -12,11 +13,10 @@ import { Badge, Button, Card, EmptyState, ListItem, PressableScale, Screen, Text
 import { AppHeader } from "@/features/shell/AppHeader";
 import { activeActivity, useActivityClock } from "@/features/activity/store";
 import { getExercise, useExercises } from "@/features/gym/catalog";
-import { formatElapsed, formatVolume, relativeDay } from "@/features/gym/format";
+import { formatElapsed, formatVolume, relativeDay, weekDays } from "@/features/gym/format";
 import { RecentCard, useRecentTraining } from "@/features/gym/recent";
 import { nextRoutine, startRoutine, useRoutines, type Routine } from "@/features/gym/routines";
 import { startWorkout, useActiveWorkout, useWorkoutsBetween, workoutStats } from "@/features/gym/store";
-import { weekDays } from "@/features/gym/WeekVolume";
 import { useActiveUser } from "@/features/users/activeUser";
 import { CATEGORY_LABEL } from "@shared/domain/gym";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
@@ -65,7 +65,8 @@ export default function Train() {
   const start = (r: Routine) => {
     if (!userId) return;
     if (active) {
-      toast({ kind: "info", message: "Finish or discard the open workout first" });
+      // The running routine just opens; another one has to wait for it.
+      if (active.routineId !== r.id) toast({ kind: "info", message: "Finish or discard the open workout first" });
       router.push("/train/workout");
       return;
     }
@@ -79,7 +80,7 @@ export default function Train() {
         title: "Resume workout",
         body: `${active.name} · ${formatElapsed(active.startedAt, now.getTime())} · ${workoutStats(active).sets} sets done`,
         pill: "Running",
-        fab: "play_arrow",
+        fab: "pause",
         label: `Resume ${active.name}`,
         onPress: openEmpty,
       }
@@ -89,7 +90,7 @@ export default function Train() {
           title: `Resume ${ACTIVITY_LABEL[openActivity.kind].toLowerCase()}`,
           body: "Your route is saved. Open the recorder to carry on or stop.",
           pill: openActivity.status === "paused" ? "Paused" : "Recording",
-          fab: "play_arrow",
+          fab: openActivity.status === "paused" ? "play_arrow" : "pause",
           label: `Resume ${ACTIVITY_LABEL[openActivity.kind].toLowerCase()}`,
           onPress: () => router.push({ pathname: "/activity/live", params: { id: openActivity.id } }),
         }
@@ -183,6 +184,7 @@ export default function Train() {
               routine={r}
               lastDone={lastDone.get(r.id)}
               tint={i % 2 ? "orchid" : "lilac"}
+              running={active?.routineId === r.id ? formatElapsed(active.startedAt, now.getTime()) : null}
               onStart={() => start(r)}
             />
           ))}
@@ -274,11 +276,14 @@ function RoutineCard({
   routine,
   lastDone,
   tint,
+  running,
   onStart,
 }: {
   routine: Routine;
   lastDone: string | undefined;
   tint: "lilac" | "orchid";
+  /** Elapsed time while this routine's workout is open; null otherwise. */
+  running: string | null;
   onStart: () => void;
 }) {
   const { colors, radius } = useTheme();
@@ -290,7 +295,11 @@ function RoutineCard({
     <PressableScale
       onPress={onStart}
       accessibilityRole="button"
-      accessibilityLabel={`Start ${routine.name}, ${routine.exercises.length} exercises`}
+      accessibilityLabel={
+        running
+          ? `${routine.name} is running, ${running}. Open it`
+          : `Start ${routine.name}, ${routine.exercises.length} exercises`
+      }
       style={[styles.routine, { backgroundColor: bg, borderRadius: radius.xl }]}
     >
       <View style={styles.routineHead}>
@@ -319,10 +328,10 @@ function RoutineCard({
       </View>
       <View style={styles.routineFoot}>
         <Text variant="caption" color="ink">
-          {lastDone ? `Last: ${relativeDay(lastDone)}` : "Not done yet"}
+          {running ? `In progress · ${running}` : lastDone ? `Last: ${relativeDay(lastDone)}` : "Not done yet"}
         </Text>
         <View style={[styles.play, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
-          <Icon name="play_arrow" size={24} color={bg} filled />
+          <Icon name={running ? "pause" : "play_arrow"} size={24} color={bg} filled />
         </View>
       </View>
     </PressableScale>

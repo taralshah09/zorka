@@ -1,8 +1,20 @@
 // Copy helpers for the gym screens (DESIGN.md §8.1: always show the unit).
 import type { IconName } from "@/core/icons/Icon";
+import { localDate } from "@shared/domain/food";
 import { formatClock, formatKg, type Bests, type ExerciseCategory, type ExerciseType } from "@shared/domain/gym";
 
 /** "18,450 kg". */
+/** Monday-to-Sunday local dates of the week containing `d`. */
+export function weekDays(d: Date): string[] {
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => {
+    const x = new Date(monday);
+    x.setDate(monday.getDate() + i);
+    return localDate(x);
+  });
+}
+
 export const formatVolume = (kg: number) => `${Math.round(kg).toLocaleString("en-IN")} kg`;
 
 /** 2520 → "42 min", 3900 → "1 h 05 min". */

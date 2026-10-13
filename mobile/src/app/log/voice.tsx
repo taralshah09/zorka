@@ -2,7 +2,8 @@
 // m4a → speech-to-text → the P15 pipeline → confirm sheet. States: permission (S49), ready, listening
 // (live level bars), reading ("Reading your meal…"), no speech, saved offline (queued), error.
 // Whisper isn't streaming, so the transcript shows on the confirm sheet, not live while talking.
-// The mic starts once the hold ring around the button has filled (HOLD_MS); a shorter press records nothing.
+// The mic starts once the hold ring around the button has filled (HOLD_MS); a shorter press is tap-to-start, and
+// the next tap stops (UX L4). From the quick-log mic (`autostart=1`) it starts listening as soon as it can.
 import {
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
@@ -43,7 +44,7 @@ const deleteFile = (uri: string | null) => {
 };
 
 export default function VoiceCapture() {
-  const params = useLocalSearchParams<{ mealType?: string; queued?: string }>();
+  const params = useLocalSearchParams<{ mealType?: string; queued?: string; autostart?: string }>();
   const { colors, radius, elevation, isDark } = useTheme();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
@@ -57,6 +58,9 @@ export default function VoiceCapture() {
   const [hint, setHint] = useState<string | null>(null);
   const [levels, setLevels] = useState<number[]>(() => Array(BARS).fill(0));
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Started with a tap (not a hold): the next tap stops.
+  const [latched, setLatched] = useState(false);
+  const autostarted = useRef(false);
   const starting = useRef<Promise<void> | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopTicker = () => {
@@ -139,6 +143,8 @@ export default function VoiceCapture() {
   };
 
   const stop = async () => {
+    const tapped = latched;
+    setLatched(false);
     stopTicker();
     await starting.current?.catch(() => {});
     starting.current = null;
@@ -149,7 +155,7 @@ export default function VoiceCapture() {
     const uri = recorder.uri;
     if (!uri || duration < MIN_MS) {
       deleteFile(uri);
-      setHint("Keep holding while you talk.");
+      setHint(tapped ? "Too short. Tap and say your meal." : "Keep holding while you talk.");
       setPhase("ready");
       return;
     }
@@ -161,6 +167,21 @@ export default function VoiceCapture() {
     }
     void read(uri);
   };
+
+  const startTapped = () => {
+    setLatched(true);
+    start();
+  };
+
+  // Quick log's mic: one tap there means "listen now", so start once the mic is ready (also right after the
+  // permission ask).
+  useEffect(() => {
+    if (params.autostart && phase === "ready" && !autostarted.current) {
+      autostarted.current = true;
+      startTapped();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.autostart, phase]);
 
   const seconds = Math.floor(elapsedMs / 1000);
 
@@ -232,8 +253,8 @@ export default function VoiceCapture() {
           )}
           <Text variant="body" color="textSecondary" style={styles.textCenter}>
             {phase === "recording"
-              ? `${seconds} s · release to log`
-              : 'Hold the button until the ring fills, then say it, like "2 roti, 1 katori rajma, a glass of chaas".'}
+              ? `${seconds} s · ${latched ? "tap to log" : "release to log"}`
+              : 'Tap or hold the button and say it, like "2 roti, 1 katori rajma, a glass of chaas".'}
           </Text>
 
           <View style={styles.bars} accessible={false}>
@@ -253,10 +274,15 @@ export default function VoiceCapture() {
           <HoldToTalk
             onArmed={start}
             onRelease={() => void stop()}
-            onCancel={() => setHint("Keep holding until the ring fills.")}
+            onTap={startTapped}
+            latched={latched && phase === "recording"}
             disabled={phase === "checking"}
-            accessibilityLabel="Hold to talk"
-            accessibilityHint="Hold until the ring fills, talk, then release to log your meal"
+            accessibilityLabel={latched ? "Stop and log" : "Talk"}
+            accessibilityHint={
+              latched
+                ? "Stops listening and reads your meal"
+                : "Tap to start and tap again to stop, or hold while you talk"
+            }
             style={[
               styles.mic,
               styles.micBig,
@@ -264,10 +290,10 @@ export default function VoiceCapture() {
               isDark || phase === "recording" ? { boxShadow: elevation.glow } : null,
             ]}
           >
-            <Icon name="mic" size={28} color={colors.ink} filled />
+            <Icon name={latched ? "stop" : "mic"} size={28} color={colors.ink} filled />
           </HoldToTalk>
           <Text variant="label" color={hint ? "warn" : "textSecondary"}>
-            {hint ?? (phase === "recording" ? "Release to log" : "Hold to talk")}
+            {hint ?? (phase === "recording" ? (latched ? "Tap to log" : "Release to log") : "Tap or hold to talk")}
           </Text>
           {!online ? (
             <Text variant="caption" color="textSecondary" style={styles.textCenter}>

@@ -24,7 +24,7 @@ import { useDayGap } from "@/features/gap/gap";
 import { nextAction } from "@/features/gap/nextAction";
 import { lineFacts, situationFor } from "@/features/gap/situation";
 import { useWelcomeBack } from "@/features/gap/welcomeBack";
-import { removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
+import { queuedHref, queuedLabel, removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
 import { useDayMeals } from "@/features/meals/store";
 import { consumePendingRoute } from "@/features/nudges/NudgePlanner";
 import { checkinCopy } from "@/features/progress/copy";
@@ -132,7 +132,12 @@ export default function Today() {
               coach={coach}
               line={coach ? coachLine(coach, situation, facts) : null}
               action={action}
-              note={welcome.show && welcome.freezeUsed ? "A freeze protected your streak." : undefined}
+              note={
+                welcome.show && welcome.freezeUsed
+                  ? "A streak freeze covered the day you missed, so your streak is safe."
+                  : undefined
+              }
+              onNotePress={welcome.show && welcome.freezeUsed ? () => router.push("/progress/streak") : undefined}
               onAction={() => {
                 if (welcome.show) welcome.dismiss();
                 router.push(action.href);
@@ -161,24 +166,24 @@ export default function Today() {
               ) : null}
               {voice ? (
                 <NeedsYouRow
-                  icon={online ? "mic" : "cloud_off"}
-                  title={
-                    voiceNotes.length === 1 ? "A voice note to check" : `${voiceNotes.length} voice notes to check`
+                  icon={
+                    !online
+                      ? "cloud_off"
+                      : voice.kind === "photo"
+                        ? "photo_camera"
+                        : voice.kind === "text"
+                          ? "keyboard"
+                          : "mic"
                   }
+                  title={queuedLabel(voiceNotes)}
                   subtitle={
                     online
-                      ? `${MEAL_LABEL[voice.mealType]} · ready to read and check`
+                      ? `${MEAL_LABEL[voice.mealType]}${voice.text ? ` · "${voice.text}"` : ""} · ready to read and check`
                       : "We'll read it when you're back online."
                   }
-                  onPress={
-                    online ? () => router.push({ pathname: "/log/voice", params: { queued: voice.id } }) : undefined
-                  }
+                  onPress={online ? () => router.push(queuedHref(voice)) : undefined}
                   trailing={
-                    <IconButton
-                      icon="close"
-                      accessibilityLabel="Discard voice note"
-                      onPress={() => removeVoice(voice)}
-                    />
+                    <IconButton icon="close" accessibilityLabel="Discard it" onPress={() => removeVoice(voice)} />
                   }
                 />
               ) : null}

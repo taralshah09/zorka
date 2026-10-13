@@ -7,7 +7,7 @@ import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
 import { Button, Card, Text } from "@/core/ui";
 import { MEAL_LABEL } from "@/features/food/format";
-import { removeVoice, type VoiceNote } from "@/features/log/voiceQueue";
+import { queuedHref, removeVoice, type VoiceNote } from "@/features/log/voiceQueue";
 
 export function VoiceQueueCard({ notes }: { notes: readonly VoiceNote[] }) {
   const { colors } = useTheme();
@@ -37,7 +37,7 @@ export function VoiceQueueCard({ notes }: { notes: readonly VoiceNote[] }) {
               label="Read it now"
               size="sm"
               icon="auto_awesome"
-              onPress={() => router.push({ pathname: "/log/voice", params: { queued: next.id } })}
+              onPress={() => router.push(queuedHref(next))}
               fullWidth
             />
           </View>

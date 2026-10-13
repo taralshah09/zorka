@@ -1,7 +1,8 @@
 // P22 · "Say a set" (S24 voice-add state). Hold to talk, release to add: same recording format as meal voice
 // (D32), mic permission explained first (S49 gym variant). Offline, it hands over to typed entry instead of
 // recording (D41), since a set is quicker to type than to queue. The mic starts once the hold ring has filled
-// (HOLD_MS); offline or without mic permission the press acts at once.
+// (HOLD_MS); a short press is tap-to-start and the next tap stops (UX L4). Offline or without mic permission the
+// press acts at once.
 import {
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
@@ -51,6 +52,8 @@ export function VoiceSetButton({
   const [explain, setExplain] = useState(false);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  // Started with a tap (not a hold): the next tap stops.
+  const [latched, setLatched] = useState(false);
   const starting = useRef<Promise<void> | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -62,6 +65,11 @@ export function VoiceSetButton({
       if (ticker.current) clearInterval(ticker.current);
     };
   }, []);
+
+  const startTapped = () => {
+    if (online && perm === "granted") setLatched(true);
+    start();
+  };
 
   const start = () => {
     if (busy) return;
@@ -89,6 +97,8 @@ export function VoiceSetButton({
   };
 
   const stop = async () => {
+    const tapped = latched;
+    setLatched(false);
     if (ticker.current) clearInterval(ticker.current);
     ticker.current = null;
     await starting.current?.catch(() => {});
@@ -101,7 +111,7 @@ export function VoiceSetButton({
     const uri = recorder.uri;
     if (!uri || duration < MIN_MS) {
       deleteFile(uri);
-      toast({ kind: "info", message: "Keep holding while you talk." });
+      toast({ kind: "info", message: tapped ? "Too short. Tap and say the set." : "Keep holding while you talk." });
       return;
     }
     onRecorded(uri);
@@ -113,17 +123,22 @@ export function VoiceSetButton({
     setExplain(false);
   };
 
-  const label = busy ? "Reading…" : recording ? `Listening… ${Math.floor(elapsed / 1000)} s` : "Say a set";
+  const label = busy
+    ? "Reading…"
+    : recording
+      ? `Listening… ${Math.floor(elapsed / 1000)} s${latched ? " · tap to add" : ""}`
+      : "Say a set";
   return (
     <>
       <HoldToTalk
         onArmed={start}
         onRelease={() => void stop()}
-        onCancel={() => toast({ kind: "info", message: "Keep holding until the ring fills." })}
+        onTap={startTapped}
+        latched={latched && recording}
         holdMs={online && perm === "granted" ? undefined : 0}
         disabled={busy}
-        accessibilityLabel="Hold to say a set"
-        accessibilityHint='Hold until the ring fills and say it, like "bench 80 kilos, 8 reps". Release to add it.'
+        accessibilityLabel={latched ? "Stop and add the set" : "Say a set"}
+        accessibilityHint='Tap or hold and say it, like "bench 80 kilos, 8 reps". Tap again or release to add it.'
         style={[
           styles.button,
           {

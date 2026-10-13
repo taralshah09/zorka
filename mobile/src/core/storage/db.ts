@@ -278,6 +278,14 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
 
   // v12 · UX N1: the buttons under a coach reply (JSON array of CoachAction, null for none).
   (db) => db.execSync(`ALTER TABLE coach_messages ADD COLUMN actions TEXT;`),
+
+  // v13 · UX F6: photo and typed meals made offline wait in the same queue as voice notes. `uri` is the photo for
+  // a photo and '' for typed text; `text` is the typed meal.
+  (db) =>
+    db.execSync(`
+      ALTER TABLE voice_queue ADD COLUMN kind TEXT NOT NULL DEFAULT 'voice';
+      ALTER TABLE voice_queue ADD COLUMN text TEXT;
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

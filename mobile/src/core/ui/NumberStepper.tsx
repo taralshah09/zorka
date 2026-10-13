@@ -1,5 +1,6 @@
 // Number stepper — DESIGN.md §7.1: default, min/max reached.
 // UX O1: tap the number to type it (out-of-range values snap to the nearest bound), and hold − / + to repeat.
+// UX W7: a `clock` stepper (minutes after midnight) is typed as a time: "22:30", "2230" or "22".
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
@@ -16,6 +17,8 @@ type Props = {
   step?: number;
   unit?: string;
   format?: (v: number) => string;
+  /** The value is minutes after midnight, shown with `format` as hh:mm and typed as a time. */
+  clock?: boolean;
 };
 
 /** Hold this long before − / + starts repeating, then speed up to the fastest interval. */
@@ -25,17 +28,25 @@ const REPEAT_FASTEST_MS = 40;
 
 const decimalsOf = (n: number) => (String(n).split(".")[1] ?? "").length;
 
-/** Typed text → number. Accepts a decimal comma, and "m:ss" / "hh:mm" for clock-formatted steppers. */
-export function parseStepperText(text: string): number | null {
+/**
+ * Typed text → number. Accepts a decimal comma, and "m:ss" / "hh:mm" for clock-formatted steppers. With `clock`,
+ * digits alone are a time of day: "2230" → 22:30, "7" → 07:00.
+ */
+export function parseStepperText(text: string, timeOfDay = false): number | null {
   const t = text.trim().replace(",", ".");
   if (!t) return null;
+  if (timeOfDay && /^\d{1,4}$/.test(t)) {
+    const hours = t.length <= 2 ? Number(t) : Number(t.slice(0, -2));
+    const minutes = t.length <= 2 ? 0 : Number(t.slice(-2));
+    return minutes < 60 && hours < 24 ? hours * 60 + minutes : null;
+  }
   const clock = /^(\d+):(\d{1,2})$/.exec(t);
   if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
 
-export function NumberStepper({ label, value, onChange, min, max, step = 1, unit, format = String }: Props) {
+export function NumberStepper({ label, value, onChange, min, max, step = 1, unit, format = String, clock }: Props) {
   const { colors, radius, type } = useTheme();
   const clamp = (v: number) => Math.min(max, Math.max(min, +v.toFixed(Math.max(2, decimalsOf(step)))));
 
@@ -79,12 +90,12 @@ export function NumberStepper({ label, value, onChange, min, max, step = 1, unit
   };
 
   const beginTyping = () => {
-    setText(String(value));
+    setText(clock ? format(value).replace(":", "") : String(value));
     setEditing(true);
   };
   const commit = () => {
     setEditing(false);
-    const n = parseStepperText(text);
+    const n = parseStepperText(text, clock);
     if (n == null) return;
     // Whole-number steppers stay whole; a decimal stepper keeps the step's precision.
     const rounded = +n.toFixed(decimalsOf(step));

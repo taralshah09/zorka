@@ -118,6 +118,7 @@ export default function NotificationSettings() {
                 max={DAY - 30}
                 step={30}
                 format={hhmm}
+                clock
                 onChange={(quietStart) => save({ quietStart })}
               />
               <NumberStepper
@@ -127,6 +128,7 @@ export default function NotificationSettings() {
                 max={DAY - 30}
                 step={30}
                 format={hhmm}
+                clock
                 onChange={(quietEnd) => save({ quietEnd })}
               />
             </View>

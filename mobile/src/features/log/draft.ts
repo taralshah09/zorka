@@ -31,6 +31,11 @@ export type DraftItem = {
   reasons: UncertainReason[];
   /** Edited meals only: the saved item, used as-is when its food is no longer in the catalog. */
   snapshot?: MealItem;
+  /**
+   * Voice (UX L5): `food` is a web estimate built in memory, not a catalog food. It saves with no food id, and the
+   * diet only when the web said it.
+   */
+  estimate?: { dietKnown: boolean };
 };
 
 export type Draft = {
@@ -46,7 +51,7 @@ export type Draft = {
   transcript: string | null;
   /** Measured parse time (P15 target < ~5 s), shown in dev builds. */
   parseMs: number | null;
-  /** Voice only: unmatched items whose Create food (pre-filled from the web) still opens by itself, in order. */
+  /** Voice only: unmatched items to look up on the web and fill with an estimate (UX L5). */
   autoAdd: string[];
 };
 
@@ -158,17 +163,38 @@ export const draftActions = {
   },
 
   clear: () => useDraft.setState({ draft: null }),
-  /** Takes the next voice item still waiting for its Create food; null when none are left. Each opens only once. */
-  nextAutoAdd(): DraftItem | null {
+  /**
+   * UX L5: fills an unmatched voice item with the web's estimate (marked "estimate", still to check). The app did
+   * this, not the user, so it doesn't count as a change for "Discard changes?".
+   */
+  applyEstimate(key: string, food: Food, dietKnown: boolean) {
     const d = useDraft.getState().draft;
-    if (!d?.autoAdd.length) return null;
-    const pending = d.autoAdd
-      .map((key) => d.items.find((i) => i.key === key))
-      .filter((i): i is DraftItem => !!i && !i.food && !i.snapshot);
-    const next = pending[0] ?? null;
-    useDraft.setState({ draft: { ...d, autoAdd: pending.slice(1).map((i) => i.key) } });
-    return next;
+    const item = d?.items.find((i) => i.key === key);
+    if (!d || !item || item.food || item.snapshot) return;
+    const wasDirty = isDraftDirty();
+    const fits = food.units.some((u) => u.unit === item.unit);
+    const byWeight = item.unit === "g" || item.unit === "ml";
+    const next: Draft = {
+      ...d,
+      autoAdd: d.autoAdd.filter((k) => k !== key),
+      items: d.items.map((i) =>
+        i.key === key
+          ? {
+              ...i,
+              food,
+              unit: fits ? i.unit : food.defaultUnit,
+              quantity: fits || !byWeight ? i.quantity : 1,
+              uncertain: true,
+              estimate: { dietKnown },
+            }
+          : i,
+      ),
+    };
+    useDraft.setState({ draft: next });
+    if (!wasDirty) baseline = fingerprint(next);
   },
+  /** The web had nothing for this item: stop looking, it stays unmatched for the user to fix. */
+  dropAutoAdd: (key: string) => set((d) => ({ ...d, autoAdd: d.autoAdd.filter((k) => k !== key) })),
   /** Undo for a just-removed item: puts the earlier draft back if it's still the one being checked. */
   restore: (prev: Draft) => set((d) => (d.mealId === prev.mealId && d.loggedAt === prev.loggedAt ? prev : d)),
   setMealType: (mealType: MealType) => set((d) => ({ ...d, mealType })),
@@ -182,6 +208,18 @@ export const draftActions = {
     set((d) => ({
       ...d,
       items: d.items.map((i) => (i.key === key ? { ...itemFromFood(food, quantity, unit), key } : i)),
+    })),
+
+  /** UX F7: the row's − / +. Settles "How much?" (vague quantity), but not a wrong match or a web estimate. */
+  setQuantity: (key: string, quantity: number) =>
+    set((d) => ({
+      ...d,
+      items: d.items.map((i) => {
+        if (i.key !== key) return i;
+        const reasons = i.reasons.filter((r) => r !== "vague_quantity");
+        const settled = i.uncertain && !i.estimate && reasons.length === 0;
+        return { ...i, quantity, reasons, uncertain: settled ? false : i.uncertain };
+      }),
     })),
 
   removeItem: (key: string) =>
@@ -268,7 +306,7 @@ export function saveDraft(userId: string, promptOn: boolean): string {
       const m = itemMacros(d, i, promptOn);
       return {
         id: randomUUID(),
-        foodId: i.food!.id,
+        foodId: i.estimate ? null : i.food!.id,
         name: i.food!.name,
         quantity: i.quantity,
         unit: i.unit,
@@ -277,7 +315,7 @@ export function saveDraft(userId: string, promptOn: boolean): string {
         proteinG: m.proteinG,
         carbsG: m.carbsG,
         fatG: m.fatG,
-        diet: i.food!.diet,
+        diet: i.estimate && !i.estimate.dietKnown ? null : i.food!.diet,
         category: i.food!.category,
       };
     });

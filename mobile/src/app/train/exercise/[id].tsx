@@ -1,6 +1,9 @@
 // S27 · Exercise history (P21). No export yet: built from DESIGN.md §6.5 (D41). Best set, estimated max,
 // a progress chart (top set / est. 1RM / volume, 12 weeks or all time) and the session list, plus the
 // MuscleWiki how-to link (D38). Your own exercises can be edited or deleted here.
+// The chart is one bar per workout day with the value written on it (weight over "× reps" for the top set); record
+// days are highlighted. It says what it shows (one line per metric), how much it moved over the range, and reads out
+// the set behind any bar you tap.
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
@@ -23,7 +26,7 @@ import {
 import { deleteExercise, useExercise } from "@/features/gym/catalog";
 import { ExerciseTile, PRBadge } from "@/features/gym/components";
 import { formatDay, formatVolume } from "@/features/gym/format";
-import { LineChart, type ChartPoint } from "@/features/gym/LineChart";
+import { BarChart, type Bar } from "@/features/gym/BarChart";
 import { useExerciseSessions, type ExerciseSession } from "@/features/gym/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import {
@@ -37,12 +40,41 @@ import {
   topSet,
   TYPE_LABEL,
   type ExerciseType,
+  type PrKind,
 } from "@shared/domain/gym";
 
 type Metric = "top" | "e1rm" | "volume";
 type Range = "12w" | "all";
 
 const TWELVE_WEEKS_MS = 84 * 86_400_000;
+
+/** What each chart shows, in plain words. */
+const METRIC_HELP: Record<Metric, string> = {
+  top: "Your heaviest set in each session.",
+  e1rm: "The most you could lift once, estimated from weight × reps of your best set.",
+  volume: "Weight × reps of every set, added up per session.",
+};
+
+/** The record kinds that count as a record on this chart (volume has none). */
+function prKindsFor(type: ExerciseType, metric: Metric): readonly PrKind[] {
+  switch (type) {
+    case "weight_reps":
+      return metric === "top" ? ["weight", "reps"] : metric === "e1rm" ? ["e1rm"] : [];
+    case "reps":
+      return ["reps"];
+    case "time":
+      return ["time"];
+    case "distance_time":
+      return ["distance"];
+  }
+}
+
+/** The set behind a session's e1RM point. */
+const bestE1rmSet = (s: ExerciseSession) =>
+  s.sets.reduce<ExerciseSession["sets"][number] | null>(
+    (b, x) => ((e1rm(x.weightKg, x.reps) ?? 0) > (b ? (e1rm(b.weightKg, b.reps) ?? 0) : 0) ? x : b),
+    null,
+  );
 
 /** One number per session for the chart. */
 function sessionValue(type: ExerciseType, metric: Metric, s: ExerciseSession): number | null {
@@ -88,11 +120,37 @@ export default function ExerciseHistory() {
   const bests = bestsOf(type, allSets);
   const best = topSet(type, allSets);
   const since = openedAt - TWELVE_WEEKS_MS;
-  const points: ChartPoint[] = sessions
+  const recordKinds = prKindsFor(type, metric);
+  const charted = sessions
     .filter((s) => range === "all" || new Date(s.startedAt).getTime() >= since)
-    .map((s) => ({ at: new Date(s.startedAt).getTime(), value: sessionValue(type, metric, s) }))
-    .filter((p): p is ChartPoint => p.value !== null)
+    .map((s) => ({ session: s, value: sessionValue(type, metric, s) }))
+    .filter((c): c is { session: ExerciseSession; value: number } => c.value !== null)
     .reverse();
+  /** What's written on a bar: the number, and a second line (reps for a top set, else the unit). */
+  const barText = (session: ExerciseSession, value: number): { label: string; sub?: string } => {
+    switch (type) {
+      case "weight_reps": {
+        if (metric === "volume") {
+          return { label: value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${Math.round(value)}`, sub: "kg" };
+        }
+        if (metric === "e1rm") return { label: formatKg(Math.round(value * 10) / 10), sub: "kg" };
+        const top = topSet(type, session.sets);
+        return { label: formatKg(value), sub: top?.reps ? `× ${top.reps}` : undefined };
+      }
+      case "reps":
+        return { label: String(Math.round(value)), sub: "reps" };
+      case "time":
+        return { label: formatClock(value) };
+      case "distance_time":
+        return { label: formatKg(Math.round(value * 10) / 10), sub: "km" };
+    }
+  };
+  const points: Bar[] = charted.map(({ session, value }) => ({
+    at: new Date(session.startedAt).getTime(),
+    value,
+    highlight: session.sets.some((x) => x.prKinds.some((k) => recordKinds.includes(k))),
+    ...barText(session, value),
+  }));
   const fmt = (v: number) =>
     type === "time"
       ? formatClock(v)
@@ -103,6 +161,29 @@ export default function ExerciseHistory() {
           : metric === "volume"
             ? formatVolume(v)
             : `${formatKg(Math.round(v * 10) / 10)} kg`;
+
+  const describe = (_: Bar, i: number) => {
+    const c = charted[i]!;
+    const day = formatDay(c.session.startedAt);
+    if (type === "weight_reps" && metric === "volume") {
+      return `${day} · ${formatVolume(c.value)} over ${c.session.sets.length} sets`;
+    }
+    if (type === "weight_reps" && metric === "e1rm") {
+      const from = bestE1rmSet(c.session);
+      return `${day} · ${fmt(c.value)}${from ? ` (from ${formatSet(type, from)})` : ""}`;
+    }
+    const top = topSet(type, c.session.sets);
+    return `${day} · ${top ? formatSet(type, top) : fmt(c.value)}`;
+  };
+  const first = points[0];
+  const last = points[points.length - 1];
+  const delta = first && last ? last.value - first.value : 0;
+  const change =
+    first && last && points.length >= 2
+      ? Math.abs(delta) < 1e-9
+        ? `No change since ${formatDay(charted[0]!.session.startedAt)}`
+        : `${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta))} since ${formatDay(charted[0]!.session.startedAt)}`
+      : null;
 
   const tiles =
     type === "weight_reps"
@@ -209,12 +290,25 @@ export default function ExerciseHistory() {
                 ]}
               />
             ) : null}
+            <Text variant="caption" color="textSecondary" style={styles.help}>
+              {type === "weight_reps"
+                ? METRIC_HELP[metric]
+                : type === "reps"
+                  ? "Your most reps in a set, each session."
+                  : "Your best set in each session."}
+            </Text>
+            {change ? (
+              <Text variant="title" tabular>
+                {change}
+              </Text>
+            ) : null}
             <View style={styles.chart}>
               {points.length >= 2 ? (
-                <LineChart
-                  points={points}
+                <BarChart
+                  bars={points}
                   color={metric === "e1rm" ? colors.dataProtein : colors.primary}
-                  format={fmt}
+                  highlightColor={metric === "e1rm" ? colors.primary : colors.secondary}
+                  describe={describe}
                   accessibilityLabel={`Progress over ${points.length} sessions, from ${fmt(points[0]!.value)} to ${fmt(points[points.length - 1]!.value)}`}
                 />
               ) : (
@@ -295,6 +389,7 @@ const styles = StyleSheet.create({
   badges: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tiles: { flexDirection: "row", gap: 12 },
   bestLine: { marginTop: 12 },
+  help: { marginTop: 10 },
   chart: { marginVertical: 12, minHeight: 60, justifyContent: "center" },
   sessionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   sets: { marginTop: 8 },

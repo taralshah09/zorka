@@ -1,6 +1,6 @@
 // Gym domain components (DESIGN.md §7.2): ExerciseTile, ExerciseRow (S23), PRBadge (S24/S25/S27),
 // SetTable + SetRow with previous ghost values and PR state (S24), RestTimerBar (S24, P20).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import type { Exercise } from "@/core/api/types";
@@ -218,6 +218,21 @@ function SetRow({
     updateSet(userId, we, set.id, current());
     setEdits({});
   };
+
+  // UX F10: typed values are saved while typing (debounced), so leaving the app mid-edit doesn't lose them. The
+  // text stays as typed until editing ends; leaving the screen saves what's pending at once.
+  const save = useRef<() => void>(() => {});
+  useEffect(() => {
+    save.current = () => {
+      if (Object.keys(edits).length) updateSet(userId, we, set.id, current());
+    };
+  });
+  useEffect(() => {
+    if (!Object.keys(edits).length) return;
+    const t = setTimeout(() => save.current(), 600);
+    return () => clearTimeout(t);
+  }, [edits]);
+  useEffect(() => () => save.current(), []);
 
   const toggle = () => {
     if (set.done) {

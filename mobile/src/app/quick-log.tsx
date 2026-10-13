@@ -134,7 +134,7 @@ export default function QuickLog() {
     >
       <View style={styles.micWrap}>
         <PressableScale
-          onPress={() => router.replace({ pathname: "/log/voice", params: { mealType } })}
+          onPress={() => router.replace({ pathname: "/log/voice", params: { mealType, autostart: "1" } })}
           accessibilityRole="button"
           accessibilityLabel="Talk to log a meal"
           style={[

@@ -96,6 +96,8 @@ const ICONS = [
   "water_drop",
   "calendar_month",
   "undo",
+  "stop",
+  "pause",
 ];
 
 // Brand name → file name, for symbols missing from this package version.

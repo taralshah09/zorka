@@ -49,3 +49,21 @@ export const CUISINE_LABEL = {
   continental: "Continental",
   other: null,
 } as const;
+
+/**
+ * One −/+ tap on an item row (UX F7): half a piece/katori/plate, or 25 g/ml. Null when it would go below the
+ * smallest amount (the row's ✕ removes an item instead).
+ */
+export function stepQuantity(quantity: number, unit: FoodUnit, direction: 1 | -1): number | null {
+  const byWeight = unit === "g" || unit === "ml";
+  const step = byWeight ? 25 : 0.5;
+  const min = byWeight ? 25 : 0.5;
+  const max = byWeight ? 2000 : 20;
+  // Snap odd amounts (e.g. 130 g) onto the step first.
+  const next =
+    direction === 1
+      ? Math.floor(quantity / step + 1e-9) * step + step
+      : Math.ceil(quantity / step - 1e-9) * step - step;
+  if (next < min || next > max) return null;
+  return next;
+}

@@ -91,7 +91,12 @@ export async function resumeRecorder(id: string) {
     if (a.background && !(await Location.getBackgroundPermissionsAsync()).granted)
       throw new Error("Allow location all the time for locked-screen recording.");
     if (a.background && !(await TaskManager.isAvailableAsync()))
-      throw new Error("Background recording needs a development build, not Expo Go.");
+      // UX W3: build details only in development.
+      throw new Error(
+        __DEV__
+          ? "Background recording needs a development build, not Expo Go."
+          : "Recording with the screen off isn't available on this phone. Keep the screen on, or update the app.",
+      );
     await detach();
     setRecording(id, true);
     try {

@@ -9,7 +9,7 @@ import { BottomSheet, Button, Chip, NumberStepper, reactMascot, Text, useToast }
 import { addDays } from "@shared/domain/progress";
 import { localDate } from "@shared/domain/food";
 import { formatKg, formatShortDate } from "@/features/targets/format";
-import { logWeight, MAX_WEIGHT_KG, MIN_WEIGHT_KG, useWeights } from "@/features/progress/weights";
+import { deleteWeight, logWeight, MAX_WEIGHT_KG, MIN_WEIGHT_KG, useWeights } from "@/features/progress/weights";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useProfile } from "@/features/users/api";
 
@@ -43,11 +43,13 @@ export default function LogWeight() {
 
   const save = () => {
     if (!userId) return;
-    logWeight(userId, kg, day);
+    const saved = logWeight(userId, kg, day);
     reactMascot("happy");
     toast({
       kind: "success",
       message: `${formatKg(kg)} kg logged${day === today ? "" : ` for ${label(day).toLowerCase()}`}`,
+      // UX F9: a mistyped weight comes straight back out.
+      onUndo: () => deleteWeight(saved),
     });
     router.back();
   };

@@ -38,8 +38,13 @@ export function WelcomeBackCard({
             {body}
           </Text>
           {freezeUsed ? (
-            <Text variant="caption" color="secondaryText">
-              A freeze protected your streak.
+            <Text
+              variant="caption"
+              color="secondaryText"
+              accessibilityRole="link"
+              onPress={() => router.push("/progress/streak")}
+            >
+              A streak freeze covered the day you missed, so your streak is safe. How it works ›
             </Text>
           ) : null}
         </View>

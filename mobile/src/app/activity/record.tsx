@@ -127,7 +127,11 @@ export default function RecordSetup() {
         await begin(true);
       }
     } catch {
-      setError("This build couldn't request location. Install a development build and try again.");
+      setError(
+        __DEV__
+          ? "This build couldn't request location. Install a development build and try again."
+          : "Couldn't ask for location. Update the app and try again.",
+      );
     } finally {
       setBusy(false);
     }

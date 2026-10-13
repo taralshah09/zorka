@@ -1,14 +1,23 @@
 // S21 · Meal detail (P12/P13). Built from DESIGN.md §6.4 (no export yet, D35): meal name and time,
 // photo if any, items, totals, and Edit / Repeat / Save as usual / Delete. Repeat and Delete act straight away
-// and offer Undo (UX F3); Repeat keeps the meal's type (UX L1).
+// and offer Undo (UX F3); Repeat keeps the meal's type (UX L1). Each item's − / + changes its amount in place
+// (UX F7); tapping the item still opens the full editor.
 import { router, useLocalSearchParams } from "expo-router";
 import { Image, StyleSheet, View } from "react-native";
 
 import { Badge, Button, EmptyState, Header, Screen, Text, useToast } from "@/core/ui";
 import { FoodItemRow, MacroTotals } from "@/features/food/components";
-import { formatPortion, MEAL_LABEL } from "@/features/food/format";
+import { formatPortion, MEAL_LABEL, stepQuantity } from "@/features/food/format";
 import { editMeal } from "@/features/log/nav";
-import { deleteMeal, mealKey, mealTotals, repeatMeal, restoreMeal, useMeal } from "@/features/meals/store";
+import {
+  deleteMeal,
+  mealKey,
+  mealTotals,
+  repeatMeal,
+  restoreMeal,
+  setItemQuantity,
+  useMeal,
+} from "@/features/meals/store";
 import { removeUsual, saveUsual, useUsualMeals } from "@/features/meals/usual";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useTheme } from "@/core/theme";
@@ -91,18 +100,25 @@ export default function MealDetail() {
         />
       ) : null}
 
-      {meal.items.map((i) => (
-        <FoodItemRow
-          key={i.id}
-          name={i.name}
-          diet={i.diet}
-          portion={formatPortion(i.quantity, i.unit)}
-          kcal={i.kcal}
-          proteinG={i.proteinG}
-          state="ok"
-          onPress={edit}
-        />
-      ))}
+      {meal.items.map((i) => {
+        const step = (dir: 1 | -1) => {
+          const q = stepQuantity(i.quantity, i.unit, dir);
+          return q === null ? null : () => setItemQuantity(meal, i.id, q);
+        };
+        return (
+          <FoodItemRow
+            key={i.id}
+            name={i.name}
+            diet={i.diet}
+            portion={formatPortion(i.quantity, i.unit)}
+            kcal={i.kcal}
+            proteinG={i.proteinG}
+            state="ok"
+            onPress={edit}
+            onStep={{ down: step(-1), up: step(1) }}
+          />
+        );
+      })}
 
       <MacroTotals totals={mealTotals(meal)} />
 

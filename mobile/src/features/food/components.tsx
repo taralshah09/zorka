@@ -96,6 +96,7 @@ export function FoodItemRow({
   note,
   onPress,
   onRemove,
+  onStep,
 }: {
   name: string;
   diet: Diet | null;
@@ -107,6 +108,8 @@ export function FoodItemRow({
   onPress: () => void;
   /** Shows a remove (✕) button, for dropping a wrong item without opening it. */
   onRemove?: () => void;
+  /** Shows − / + around the portion, to fix the amount in place (UX F7). Null for a side that can't step. */
+  onStep?: { down: (() => void) | null; up: (() => void) | null };
 }) {
   const { colors, radius, layout } = useTheme();
   const warn = state === "uncertain";
@@ -150,9 +153,19 @@ export function FoodItemRow({
             </Text>
           ) : (
             <View style={styles.metaRow}>
-              <Text variant="caption" color="textSecondary">
-                {portion}
-              </Text>
+              {onStep ? (
+                <View style={styles.stepRow}>
+                  <StepButton icon="remove" label={`Less ${name}`} onPress={onStep.down} />
+                  <Text variant="caption" color="textSecondary">
+                    {portion}
+                  </Text>
+                  <StepButton icon="add" label={`More ${name}`} onPress={onStep.up} />
+                </View>
+              ) : (
+                <Text variant="caption" color="textSecondary">
+                  {portion}
+                </Text>
+              )}
               <Text variant="caption" color="primaryText" tabular>
                 {formatKcal(kcal)}
               </Text>
@@ -186,6 +199,27 @@ export function FoodItemRow({
           </Text>
         </View>
       ) : null}
+    </PressableScale>
+  );
+}
+
+/** The small − / + on an item row (UX F7). Tighter than IconButton so it fits the meta line. */
+function StepButton({ icon, label, onPress }: { icon: "add" | "remove"; label: string; onPress: (() => void) | null }) {
+  const { colors, radius } = useTheme();
+  return (
+    <PressableScale
+      onPress={onPress ?? undefined}
+      disabled={!onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !onPress }}
+      hitSlop={8}
+      style={[
+        styles.step,
+        { borderRadius: radius.full, backgroundColor: colors.surfaceHigh, opacity: onPress ? 1 : 0.4 },
+      ]}
+    >
+      <Icon name={icon} size={16} color={colors.primaryText} />
     </PressableScale>
   );
 }
@@ -381,7 +415,9 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   item: { gap: 10 },
   itemTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  metaRow: { flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 2 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 2 },
+  stepRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  step: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
   check: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   callout: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

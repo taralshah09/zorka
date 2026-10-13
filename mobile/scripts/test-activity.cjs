@@ -171,8 +171,9 @@ test("Expo Go and older builds report missing Health Connect without loading or 
 
 test("all migrations apply and only one recording/paused session can exist across profiles", () => {
   store.createActivity("a", "run", 70, false);
-  // v10 since P31–P36 (target_eases, coach_messages, nearby_cache), v11 water_logs, v12 coach_messages.actions (UX N1).
-  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 12);
+  // v10 since P31–P36 (target_eases, coach_messages, nearby_cache), v11 water_logs, v12 coach_messages.actions (UX N1),
+  // v13 voice_queue.kind/text (UX F6).
+  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 13);
   assert.throws(() => store.createActivity("b", "walk", 70, false), /Finish/);
   assert.throws(
     () =>
@@ -199,6 +200,10 @@ test("SQLite upgrade preserves an existing meal and workout", () => {
     "DROP TABLE route_points; DROP TABLE health_steps; DROP TABLE activities; " +
       "DROP TABLE weight_logs; DROP TABLE checkins; DROP TABLE phases; " +
       "DROP TABLE target_eases; DROP TABLE coach_messages; DROP TABLE nearby_cache; DROP TABLE water_logs; " +
+      // voice_queue as v3 made it (v13 adds two columns).
+      "DROP TABLE voice_queue; CREATE TABLE voice_queue (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, " +
+      "uri TEXT NOT NULL, mime_type TEXT NOT NULL, duration_ms INTEGER NOT NULL, meal_type TEXT NOT NULL, " +
+      "created_at TEXT NOT NULL); " +
       "PRAGMA user_version = 6",
   );
   modules.delete(path.join(mobileRoot, "src/core/storage/db.ts"));
