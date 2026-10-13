@@ -1,18 +1,17 @@
 // S21 · Meal detail (P12/P13). Built from DESIGN.md §6.4 (no export yet, D35): meal name and time,
-// photo if any, items, totals, and Edit / Repeat / Delete (with Undo).
+// photo if any, items, totals, and Edit / Repeat / Save as usual / Delete. Repeat and Delete act straight away
+// and offer Undo (UX F3); Repeat keeps the meal's type (UX L1).
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
-import { Badge, Button, Dialog, EmptyState, Header, Screen, Text, useToast } from "@/core/ui";
+import { Badge, Button, EmptyState, Header, Screen, Text, useToast } from "@/core/ui";
 import { FoodItemRow, MacroTotals } from "@/features/food/components";
 import { formatPortion, MEAL_LABEL } from "@/features/food/format";
-import { getFood } from "@/features/food/catalog";
-import { draftActions } from "@/features/log/draft";
-import { deleteMeal, mealTotals, repeatMeal, restoreMeal, useMeal } from "@/features/meals/store";
+import { editMeal } from "@/features/log/nav";
+import { deleteMeal, mealKey, mealTotals, repeatMeal, restoreMeal, useMeal } from "@/features/meals/store";
+import { removeUsual, saveUsual, useUsualMeals } from "@/features/meals/usual";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useTheme } from "@/core/theme";
-import { mealTypeForTime } from "@shared/domain/food";
 
 const OIL_LABEL = { little: "Little oil/ghee", normal: "Normal oil/ghee", heavy: "Heavy oil/ghee" } as const;
 
@@ -22,7 +21,7 @@ export default function MealDetail() {
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const meal = useMeal(id);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const usuals = useUsualMeals(userId);
 
   if (!meal || !userId) {
     return (
@@ -40,20 +39,34 @@ export default function MealDetail() {
   const time = new Date(meal.loggedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
   const title = `${MEAL_LABEL[meal.mealType]} · ${time}`;
 
-  const edit = () => {
-    draftActions.startFromMeal(meal, (foodId) => getFood(userId, foodId));
-    router.push("/log/confirm");
-  };
+  const edit = () => editMeal(userId, meal);
+  const usual = usuals.find((u) => mealKey(u) === mealKey(meal)) ?? null;
 
   const repeat = () => {
-    const type = mealTypeForTime(new Date());
-    repeatMeal(meal, type);
-    toast({ kind: "success", message: `Logged again as ${MEAL_LABEL[type].toLowerCase()}` });
+    const copy = repeatMeal(meal);
+    toast({
+      kind: "success",
+      message: `${MEAL_LABEL[meal.mealType]} logged again`,
+      onUndo: () => deleteMeal(copy),
+    });
     router.back();
   };
 
+  const toggleUsual = () => {
+    if (usual) {
+      removeUsual(userId, usual.id);
+      toast({ kind: "info", message: "Removed from your usual meals" });
+    } else {
+      const saved = saveUsual(userId, meal);
+      toast({
+        kind: "success",
+        message: "Saved. It's on quick log now",
+        onUndo: () => removeUsual(userId, saved.id),
+      });
+    }
+  };
+
   const remove = () => {
-    setConfirmDelete(false);
     deleteMeal(meal);
     toast({ kind: "info", message: `${MEAL_LABEL[meal.mealType]} deleted`, onUndo: () => restoreMeal(meal) });
     router.back();
@@ -102,25 +115,17 @@ export default function MealDetail() {
         </View>
       </View>
       <Button
-        label="Delete meal"
-        variant="destructive"
-        icon="delete"
-        onPress={() => setConfirmDelete(true)}
+        label={usual ? "Saved as usual" : "Save as usual"}
+        variant="ghost"
+        icon={usual ? "check_circle" : "add_circle"}
+        onPress={toggleUsual}
+        accessibilityHint={usual ? "Removes it from quick log" : "Puts it on quick log for one-tap logging"}
         fullWidth
       />
+      <Button label="Delete meal" variant="destructive" icon="delete" onPress={remove} fullWidth />
       <Text variant="caption" color="textTertiary" style={styles.center}>
-        Repeat logs this meal again now.
+        {`Repeat logs this ${MEAL_LABEL[meal.mealType].toLowerCase()} again now.`}
       </Text>
-
-      <Dialog
-        visible={confirmDelete}
-        title="Delete this meal?"
-        body="It comes off today's totals. You can undo right after."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={remove}
-        onCancel={() => setConfirmDelete(false)}
-      />
     </Screen>
   );
 }

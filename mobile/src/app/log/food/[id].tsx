@@ -1,5 +1,6 @@
 // S19 · Food detail & portion (P12). Built from DESIGN.md §6.4 (no export yet, D35): name, cuisine tag,
-// diet marker, portion (quantity + Indian unit), macros for that portion, Add.
+// diet marker, portion (quantity + Indian unit), macros for that portion, Add. The portion starts at what the
+// user logged last time (UX L2).
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -8,8 +9,9 @@ import { Badge, Button, DietMarker, EmptyState, Header, NumberStepper, Screen, T
 import { FoodTile, MacroTotals, UnitPicker } from "@/features/food/components";
 import { CUISINE_LABEL, MEAL_LABEL, unitName } from "@/features/food/format";
 import { getFood, nutritionOf, useFoods } from "@/features/food/catalog";
-import { finishPick, mealTypeParam, pickMode, type PickParams } from "@/features/log/nav";
+import { finishPick, mealTypeParam, pickMode, useFinishDraft, type PickParams } from "@/features/log/nav";
 import { useDraft } from "@/features/log/draft";
+import { lastPortion } from "@/features/meals/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime, portion, unitOptions, type FoodUnit } from "@shared/domain/food";
 
@@ -25,7 +27,11 @@ export default function FoodDetail() {
   const spoken = useDraft((s) =>
     s.draft?.source === "voice" && params.key ? s.draft.items.find((i) => i.key === params.key && !i.food) : undefined,
   );
-  const keep = food && spoken && unitOptions(nutritionOf(food)).some((u) => u.unit === spoken.unit) ? spoken : null;
+  const hasUnit = (u: FoodUnit) => !!food && unitOptions(nutritionOf(food)).some((o) => o.unit === u);
+  // Read once: the portion only seeds the starting amount.
+  const [last] = useState(() => (food && userId ? lastPortion(userId, food.id) : null));
+  const keep = spoken ? (hasUnit(spoken.unit) ? spoken : null) : last && hasUnit(last.unit) ? last : null;
+  const finish = useFinishDraft();
 
   const [unit, setUnit] = useState<FoodUnit>(keep?.unit ?? food?.defaultUnit ?? "g");
   const [quantity, setQuantity] = useState(keep?.quantity ?? (food && isBase(food.defaultUnit) ? 100 : 1));
@@ -89,7 +95,13 @@ export default function FoodDetail() {
 
       <MacroTotals totals={macros} />
 
-      <Button label={actionLabel} icon="add" onPress={() => finishPick(food, quantity, unit, params)} glow fullWidth />
+      <Button
+        label={actionLabel}
+        icon="add"
+        onPress={() => finishPick(food, quantity, unit, params, finish)}
+        glow
+        fullWidth
+      />
     </Screen>
   );
 }

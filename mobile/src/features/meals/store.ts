@@ -245,19 +245,30 @@ export function repeatMeal(meal: Meal, mealType: MealType = meal.mealType, at = 
   return copy;
 }
 
-/** Yesterday's meal of this type (the latest one if there were several), for S11's repeat row. */
-export function yesterdaysMeal(userId: string, mealType: MealType, today = new Date()): Meal | null {
-  const y = new Date(today);
-  y.setDate(y.getDate() - 1);
+/**
+ * The latest meal of this type in the `lookbackDays` before `today` (S11's repeat row). Looks back a week
+ * (UX L1), so missing a day doesn't lose the shortcut.
+ */
+export function lastMealOfType(userId: string, mealType: MealType, today = new Date(), lookbackDays = 7): Meal | null {
+  const from = new Date(today);
+  from.setDate(from.getDate() - lookbackDays);
   const row = getDb().getFirstSync<MealRow>(
-    `SELECT * FROM meal_logs WHERE user_id = ? AND local_date = ? AND meal_type = ? AND deleted = 0
+    `SELECT * FROM meal_logs WHERE user_id = ? AND local_date >= ? AND local_date < ? AND meal_type = ? AND deleted = 0
      ORDER BY logged_at DESC LIMIT 1`,
     userId,
-    localDate(y),
+    localDate(from),
+    localDate(today),
     mealType,
   );
   return row ? hydrate([row])[0]! : null;
 }
+
+/** Same items in the same amounts = the same meal, whatever it was logged as. */
+export const mealKey = (meal: Pick<Meal, "items">): string =>
+  meal.items
+    .map((i) => `${i.foodId ?? i.name}:${i.quantity}:${i.unit}`)
+    .sort()
+    .join("|");
 
 /** Recent distinct meals (by their item list), newest first. */
 export function recentMeals(userId: string, limit = 8): Meal[] {
@@ -270,16 +281,38 @@ export function recentMeals(userId: string, limit = 8): Meal[] {
   const seen = new Set<string>();
   const out: Meal[] = [];
   for (const m of meals) {
-    const key = m.items
-      .map((i) => `${i.foodId ?? i.name}:${i.quantity}:${i.unit}`)
-      .sort()
-      .join("|");
+    const key = mealKey(m);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(m);
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/** How much of this food the user logged last time (UX L2), or null if never. */
+export function lastPortion(userId: string, foodId: string): { quantity: number; unit: FoodUnit } | null {
+  return getDb().getFirstSync<{ quantity: number; unit: FoodUnit }>(
+    `SELECT i.quantity AS quantity, i.unit AS unit
+       FROM meal_items i JOIN meal_logs m ON m.id = i.meal_id
+      WHERE m.user_id = ? AND m.deleted = 0 AND i.food_id = ?
+      ORDER BY m.logged_at DESC LIMIT 1`,
+    userId,
+    foodId,
+  );
+}
+
+/** `lastPortion` for every food the user has logged, in one read (S18 rows). */
+export function lastPortions(userId: string): Map<string, { quantity: number; unit: FoodUnit }> {
+  // SQLite returns the bare columns from the row that holds MAX(logged_at).
+  const rows = getDb().getAllSync<{ food_id: string; quantity: number; unit: FoodUnit }>(
+    `SELECT i.food_id AS food_id, i.quantity AS quantity, i.unit AS unit, MAX(m.logged_at) AS last
+       FROM meal_items i JOIN meal_logs m ON m.id = i.meal_id
+      WHERE m.user_id = ? AND m.deleted = 0 AND i.food_id IS NOT NULL
+      GROUP BY i.food_id`,
+    userId,
+  );
+  return new Map(rows.map((r) => [r.food_id, { quantity: r.quantity, unit: r.unit }]));
 }
 
 // ── Pull ─────────────────────────────────────────────────────────────────────────────────────────
@@ -391,11 +424,11 @@ export function useMeal(id: string | undefined): Meal | null {
 }
 
 /** `day` (a local date) is the day being logged to; defaults to today. */
-export function useYesterdaysMeal(userId: string | null, mealType: MealType, day?: string): Meal | null {
+export function useLastMealOfType(userId: string | null, mealType: MealType, day?: string): Meal | null {
   const stamp = useMealsStamp();
   return useMemo(() => {
     void stamp;
-    return userId ? yesterdaysMeal(userId, mealType, day ? new Date(`${day}T12:00:00`) : undefined) : null;
+    return userId ? lastMealOfType(userId, mealType, day ? new Date(`${day}T12:00:00`) : undefined) : null;
   }, [userId, mealType, day, stamp]);
 }
 

@@ -2,18 +2,21 @@
 // question (P18), follow-up question (P17), item rows (uncertain = amber, brand §3.5), add item, totals,
 // Save. Not shipped from the export: the "Desi Gut Balance" health-claim card and "High Accuracy 94%"
 // (brand §11: no unverifiable claims), and emoji on the oil chips.
-import { router, useFocusEffect } from "expo-router";
-import { useCallback } from "react";
+// Leaving with changes (header back, Android back, swipe) asks "Discard changes?" first (UX L6). Opened with
+// `add=1` ("Add to {meal}" on Home, UX F8), search opens on top in add mode.
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Badge, Button, EmptyState, Header, reactMascot, Screen, Text, useToast } from "@/core/ui";
+import { Badge, Button, Dialog, EmptyState, Header, reactMascot, Screen, Text, useToast } from "@/core/ui";
 import { FollowUpCard, FoodItemRow, MacroTotals, MealTypeSelector, OilGheePrompt } from "@/features/food/components";
 import { formatKcal, formatPortion, MEAL_LABEL } from "@/features/food/format";
 import {
   draftActions,
   draftTotals,
+  isDraftDirty,
   itemMacros,
   oilApplies,
   saveDraft,
@@ -35,13 +38,44 @@ export default function ConfirmSheet() {
   const draft = useDraft((s) => s.draft);
   const { profile, targets } = useTargets();
   const promptOn = !!profile.data?.oilGheePrompt;
+  const params = useLocalSearchParams<{ add?: string }>();
+  const navigation = useNavigation();
+  // Set while leaving on purpose (save, or "Discard"), so the guard below lets the screen go.
+  const leaving = useRef(false);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
+
+  useEffect(
+    () =>
+      navigation.addListener("beforeRemove", (e) => {
+        if (leaving.current) return;
+        if (!isDraftDirty()) {
+          draftActions.clear();
+          return;
+        }
+        e.preventDefault();
+        setPendingLeave(() => () => navigation.dispatch(e.data.action));
+      }),
+    [navigation],
+  );
+
+  // "Add to {meal}": open search once, on top of the meal being edited.
+  const addOpened = useRef(false);
+  useEffect(() => {
+    if (params.add === "1" && !addOpened.current) {
+      addOpened.current = true;
+      router.push({ pathname: "/log/search", params: { mode: "add" } });
+    }
+  }, [params.add]);
 
   // Voice: a food that isn't in the list opens Create food by itself, pre-filled from the web, one item at a time.
   useFocusEffect(
     useCallback(() => {
       const next = draftActions.nextAutoAdd();
       if (next) {
-        router.push({ pathname: "/log/create-food", params: { mode: "replace", key: next.key, name: next.query, lookup: "1" } });
+        router.push({
+          pathname: "/log/create-food",
+          params: { mode: "replace", key: next.key, name: next.query, lookup: "1" },
+        });
       }
     }, []),
   );
@@ -86,12 +120,16 @@ export default function ConfirmSheet() {
     reactMascot("happy");
     toast({ kind: "success", message: editing ? `${meal} updated` : `${meal} saved · ${formatKcal(totals.kcal)}` });
     // Navigate first; clearing the draft re-renders this screen, which is gone by then.
+    leaving.current = true;
     router.dismissTo("/(tabs)/today");
     draftActions.clear();
   };
 
-  const close = () => {
-    router.back();
+  const discard = () => {
+    const go = pendingLeave;
+    setPendingLeave(null);
+    leaving.current = true;
+    go?.();
     draftActions.clear();
   };
 
@@ -103,7 +141,7 @@ export default function ConfirmSheet() {
         : null;
 
   return (
-    <Screen header={<Header title="Check and save" onBack={close} />}>
+    <Screen header={<Header title="Check and save" onBack={() => router.back()} />}>
       <View
         style={[
           styles.titleCard,
@@ -210,6 +248,17 @@ export default function ConfirmSheet() {
           {saveHint}
         </Text>
       ) : null}
+
+      <Dialog
+        visible={!!pendingLeave}
+        title="Discard changes?"
+        body={draft.mealId ? "Your edits to this meal won't be saved." : "This meal won't be logged."}
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={discard}
+        onCancel={() => setPendingLeave(null)}
+      />
     </Screen>
   );
 }

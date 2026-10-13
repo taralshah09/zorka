@@ -1,6 +1,8 @@
 // S18 · Food search (P12). Built from DESIGN.md §6.4 (no export yet, D35). Searches the on-device catalog,
 // so it works offline. Tabs when the query is empty: Recent · My foods (P13). With no recents yet, Recent
-// shows popular everyday foods that fit the user's diet. "Favourites" isn't in any phase's scope yet.
+// shows popular everyday foods that fit the user's diet. Each row shows the portion the user logged last time
+// (or one default portion), and its "+" logs that portion straight away (UX L2). Saved meals ("Your usual")
+// live on quick-log (UX L1).
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -20,10 +22,11 @@ import {
   useCatalogStatus,
   useFoods,
 } from "@/features/food/catalog";
-import { passParams, type PickParams } from "@/features/log/nav";
+import { finishPick, passParams, useFinishDraft, type PickParams } from "@/features/log/nav";
+import { lastPortions, useMealsVersion } from "@/features/meals/store";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
-import { portion } from "@shared/domain/food";
+import { portion, unitOptions, type FoodUnit } from "@shared/domain/food";
 
 type Tab = "recent" | "mine";
 
@@ -36,6 +39,12 @@ export default function FoodSearch() {
   const diet = useTargets().profile.data?.diet ?? null;
   const [q, setQ] = useState(params.q ?? "");
   const [tab, setTab] = useState<Tab>("recent");
+  const finish = useFinishDraft();
+  const mealsV = useMealsVersion((s) => s.v);
+  const lastUsed = useMemo(() => {
+    void mealsV;
+    return userId ? lastPortions(userId) : new Map<string, { quantity: number; unit: FoodUnit }>();
+  }, [userId, mealsV]);
 
   const empty = catalog.length === 0;
 
@@ -120,17 +129,24 @@ export default function FoodSearch() {
             </View>
           ) : (
             list.map((f) => {
-              const p = portion(nutritionOf(f), 1, f.defaultUnit);
+              const n = nutritionOf(f);
+              const last = lastUsed.get(f.id);
+              const usual = last && unitOptions(n).some((u) => u.unit === last.unit) ? last : null;
+              const quantity = usual?.quantity ?? 1;
+              const unit = usual?.unit ?? f.defaultUnit;
+              const p = portion(n, quantity, unit);
+              const amount = `${formatPortion(quantity, unit)} · ${Math.round(p.grams)} ${f.liquid ? "ml" : "g"}`;
               return (
                 <FoodRow
                   key={f.id}
                   name={f.name}
                   diet={f.diet}
                   category={f.category}
-                  meta={`${formatPortion(1, f.defaultUnit)} · ${Math.round(p.grams)} ${f.liquid ? "ml" : "g"}`}
+                  meta={usual ? `Last time: ${amount}` : amount}
                   kcal={p.macros.kcal}
                   badge={f.custom ? "Mine" : undefined}
                   onPress={() => open(f.id)}
+                  onAdd={() => finishPick(f, quantity, unit, params, finish)}
                 />
               );
             })

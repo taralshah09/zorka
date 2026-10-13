@@ -53,6 +53,27 @@ export type Draft = {
 type DraftState = { draft: Draft | null };
 export const useDraft = create<DraftState>(() => ({ draft: null }));
 
+/** What the user can change on the confirm sheet; two equal fingerprints mean nothing was changed. */
+const fingerprint = (d: Draft) =>
+  JSON.stringify([
+    d.mealType,
+    d.oilLevel,
+    d.followUp?.answered ?? null,
+    d.items.map((i) => [i.key, i.food?.id ?? null, i.quantity, i.unit]),
+  ]);
+
+/** The draft as it was started (UX L6): back only asks "Discard changes?" when the draft moved from this. */
+let baseline: string | null = null;
+const start = (draft: Draft) => {
+  baseline = fingerprint(draft);
+  useDraft.setState({ draft });
+};
+
+export const isDraftDirty = (): boolean => {
+  const d = useDraft.getState().draft;
+  return !!d && fingerprint(d) !== baseline;
+};
+
 const set = (fn: (d: Draft) => Draft) => {
   const d = useDraft.getState().draft;
   if (d) useDraft.setState({ draft: fn(d) });
@@ -88,7 +109,7 @@ function base(mealType: MealType | undefined, source: MealSource): Draft {
 
 export const draftActions = {
   startWithFood(food: Food, quantity: number, unit: FoodUnit, mealType?: MealType) {
-    useDraft.setState({ draft: { ...base(mealType, "search"), items: [itemFromFood(food, quantity, unit)] } });
+    start({ ...base(mealType, "search"), items: [itemFromFood(food, quantity, unit)] });
   },
 
   startFromParse(result: ParseResult, opts: { mealType?: MealType; photoUri?: string | null; clientMs?: number }) {
@@ -101,42 +122,38 @@ export const draftActions = {
       uncertain: i.uncertain,
       reasons: i.reasons,
     }));
-    useDraft.setState({
-      draft: {
-        ...base(opts.mealType, result.source),
-        items,
-        autoAdd: result.source === "voice" ? items.filter((i) => !i.food).map((i) => i.key) : [],
-        followUp: result.followUp ? { ...result.followUp, answered: null } : null,
-        photoUri: opts.photoUri ?? null,
-        transcript: result.transcript,
-        parseMs: opts.clientMs ?? result.timings.totalMs,
-      },
+    start({
+      ...base(opts.mealType, result.source),
+      items,
+      autoAdd: result.source === "voice" ? items.filter((i) => !i.food).map((i) => i.key) : [],
+      followUp: result.followUp ? { ...result.followUp, answered: null } : null,
+      photoUri: opts.photoUri ?? null,
+      transcript: result.transcript,
+      parseMs: opts.clientMs ?? result.timings.totalMs,
     });
   },
 
   /** S21 → Edit. Items whose food left the catalog stay as fixed snapshots (food = null, not uncertain). */
   startFromMeal(meal: Meal, foods: (id: string | null) => Food | null) {
-    useDraft.setState({
-      draft: {
-        ...base(meal.mealType, meal.source),
-        mealId: meal.id,
-        loggedAt: meal.loggedAt,
-        oilLevel: meal.oilLevel ?? "normal",
-        photoUri: meal.photoUri,
-        items: meal.items.map((i) => {
-          const food = foods(i.foodId);
-          return {
-            key: i.id,
-            query: i.name,
-            food,
-            quantity: i.quantity,
-            unit: i.unit,
-            uncertain: false,
-            reasons: [],
-            snapshot: food ? undefined : i,
-          };
-        }),
-      },
+    start({
+      ...base(meal.mealType, meal.source),
+      mealId: meal.id,
+      loggedAt: meal.loggedAt,
+      oilLevel: meal.oilLevel ?? "normal",
+      photoUri: meal.photoUri,
+      items: meal.items.map((i) => {
+        const food = foods(i.foodId);
+        return {
+          key: i.id,
+          query: i.name,
+          food,
+          quantity: i.quantity,
+          unit: i.unit,
+          uncertain: false,
+          reasons: [],
+          snapshot: food ? undefined : i,
+        };
+      }),
     });
   },
 
@@ -153,8 +170,7 @@ export const draftActions = {
     return next;
   },
   /** Undo for a just-removed item: puts the earlier draft back if it's still the one being checked. */
-  restore: (prev: Draft) =>
-    set((d) => (d.mealId === prev.mealId && d.loggedAt === prev.loggedAt ? prev : d)),
+  restore: (prev: Draft) => set((d) => (d.mealId === prev.mealId && d.loggedAt === prev.loggedAt ? prev : d)),
   setMealType: (mealType: MealType) => set((d) => ({ ...d, mealType })),
   setOil: (oilLevel: OilLevel) => set((d) => ({ ...d, oilLevel })),
 
@@ -226,6 +242,16 @@ export const draftTotals = (d: Draft, promptOn: boolean): Macros =>
 
 /** Items that can't be saved yet: no food matched and no snapshot. */
 export const unmatchedItems = (d: Draft) => d.items.filter((i) => !i.food && !i.snapshot);
+
+/**
+ * Whether the draft needs the confirm sheet (UX L3): an item is unsure or unmatched, a follow-up question is
+ * open, or the oil/ghee question applies (the user turned it on to be asked). Otherwise it saves straight away.
+ */
+export const needsCheck = (d: Draft, promptOn: boolean): boolean =>
+  d.items.length === 0 ||
+  d.items.some((i) => i.uncertain || (!i.food && !i.snapshot)) ||
+  (!!d.followUp && d.followUp.answered === null) ||
+  oilApplies(d, promptOn);
 
 /** Writes the draft as a meal (new or replacing the edited one). Returns the saved meal's id. */
 export function saveDraft(userId: string, promptOn: boolean): string {

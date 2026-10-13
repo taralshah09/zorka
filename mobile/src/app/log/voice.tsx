@@ -21,7 +21,7 @@ import { useTheme } from "@/core/theme";
 import { Button, ErrorState, Header, Screen, Text } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
 import { HoldToTalk } from "@/features/log/HoldToTalk";
-import { mealTypeParam } from "@/features/log/nav";
+import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parseVoice, VOICE_MIME, VOICE_RECORDING } from "@/features/log/parse";
 import { queueVoice, removeVoice, useVoiceQueue, type VoiceNote } from "@/features/log/voiceQueue";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
@@ -48,6 +48,7 @@ export default function VoiceCapture() {
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
   const queue = useVoiceQueue(userId);
+  const finish = useFinishDraft();
   const mealType = mealTypeParam(params) ?? mealTypeForTime(new Date());
 
   const recorder = useAudioRecorder(VOICE_RECORDING);
@@ -77,7 +78,7 @@ export default function VoiceCapture() {
           return;
         }
         draftActions.startFromParse(result, { mealType: note?.mealType ?? mealType, clientMs });
-        router.replace("/log/confirm");
+        finish("replace");
       } catch (e) {
         // Lost the connection mid-way: keep the note for later instead of losing it.
         if (!note && e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) {
@@ -90,7 +91,7 @@ export default function VoiceCapture() {
         setPhase("error");
       }
     },
-    [userId, mealType, elapsedMs],
+    [userId, mealType, elapsedMs, finish],
   );
 
   // A queued note opened from Today: read it straight away.

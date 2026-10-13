@@ -27,4 +27,5 @@ export const KV_KEYS = {
   nudgeLog: "zorka.nudgeLog",
   welcomeBackSeen: "zorka.welcomeBackSeen",
   pendingOrder: "zorka.pendingOrder",
+  usualMeals: "zorka.usualMeals",
 } as const;

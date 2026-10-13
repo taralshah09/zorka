@@ -1,4 +1,4 @@
-// Toast — brand §8: floating surface-highest pill, icon + text + optional "Undo" in primary-text.
+// Toast — brand §8: floating surface-highest pill, icon + text + optional action ("Edit") and "Undo" in primary-text.
 // Variants: success, info, error. One at a time; auto-hides after 3.5 s. A success toast is how the app says "saved",
 // so it also gives the light save tap (brand §9); `haptic: "success"` swaps in the PR/milestone pattern.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -11,7 +11,14 @@ import { useTheme } from "@/core/theme";
 import { Text } from "./Text";
 
 export type ToastKind = "success" | "info" | "error";
-type ToastInput = { message: string; kind?: ToastKind; onUndo?: () => void; haptic?: "tap" | "success" | "none" };
+type ToastInput = {
+  message: string;
+  kind?: ToastKind;
+  onUndo?: () => void;
+  /** A second way out next to Undo, e.g. "Edit" after a meal was saved without the check screen. */
+  action?: { label: string; onPress: () => void };
+  haptic?: "tap" | "success" | "none";
+};
 type ToastState = ToastInput & { id: number };
 
 const ToastContext = createContext<((t: ToastInput) => void) | null>(null);
@@ -84,6 +91,21 @@ function ToastView({ toast, onDone }: { toast: ToastState; onDone: () => void })
         <Text variant="label" style={styles.flex} numberOfLines={2}>
           {toast.message}
         </Text>
+        {toast.action ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={toast.action.label}
+            hitSlop={12}
+            onPress={() => {
+              toast.action?.onPress();
+              onDone();
+            }}
+          >
+            <Text variant="label-lg" color="primaryText">
+              {toast.action.label}
+            </Text>
+          </Pressable>
+        ) : null}
         {toast.onUndo ? (
           <Pressable
             accessibilityRole="button"

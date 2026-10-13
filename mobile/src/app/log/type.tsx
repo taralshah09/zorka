@@ -9,7 +9,7 @@ import { useNetwork } from "@/core/network/network";
 import { kv } from "@/core/storage/kv";
 import { Button, Chip, ErrorState, Header, OfflineBanner, Screen, Text, TextField } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
-import { mealTypeParam } from "@/features/log/nav";
+import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parseText } from "@/features/log/parse";
 import { useActiveUser } from "@/features/users/activeUser";
 
@@ -29,6 +29,7 @@ export default function TypeMeal() {
   const params = useLocalSearchParams<{ mealType?: string }>();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
+  const finish = useFinishDraft();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
@@ -47,7 +48,7 @@ export default function TypeMeal() {
         return;
       }
       draftActions.startFromParse(result, { mealType: mealTypeParam(params), clientMs });
-      router.replace("/log/confirm");
+      finish("replace");
     } catch (e) {
       setError(describeError(e));
     } finally {

@@ -12,7 +12,7 @@ import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
 import { Button, ErrorState, Header, OfflineBanner, Screen, Skeleton, Text } from "@/core/ui";
 import { draftActions } from "@/features/log/draft";
-import { mealTypeParam } from "@/features/log/nav";
+import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parsePhoto, preparePhoto } from "@/features/log/parse";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -24,6 +24,7 @@ export default function PhotoCapture() {
   const { colors, radius, layout } = useTheme();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
+  const finish = useFinishDraft();
   const mealType = mealTypeParam(params);
   const [phase, setPhase] = useState<Phase>("choose");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -46,7 +47,7 @@ export default function PhotoCapture() {
         return;
       }
       draftActions.startFromParse(result, { mealType, photoUri: photo.uri, clientMs });
-      router.replace("/log/confirm");
+      finish("replace");
     } catch (e) {
       setError(describeError(e));
       setPhase("error");

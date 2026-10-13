@@ -5,7 +5,17 @@ import { StyleSheet, View } from "react-native";
 import type { FoodCategory } from "@/core/api/types";
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Chip, DietMarker, IconButton, MacroBar, NumberUnit, PressableScale, SegmentedControl, Text, type Diet } from "@/core/ui";
+import {
+  Chip,
+  DietMarker,
+  IconButton,
+  MacroBar,
+  NumberUnit,
+  PressableScale,
+  SegmentedControl,
+  Text,
+  type Diet,
+} from "@/core/ui";
 import { MEAL_TYPES, type FoodUnit, type Macros, type MealType, type OilLevel } from "@shared/domain/food";
 import { CATEGORY_TILE, formatKcal, MEAL_LABEL, unitName } from "./format";
 
@@ -29,6 +39,7 @@ export function FoodRow({
   meta,
   kcal,
   onPress,
+  onAdd,
   badge,
 }: {
   name: string;
@@ -37,6 +48,8 @@ export function FoodRow({
   meta: string;
   kcal: number;
   onPress?: () => void;
+  /** Shows a "+" that logs the portion in `meta` without opening the food (UX L2). */
+  onAdd?: () => void;
   badge?: string;
 }) {
   const { colors, radius, layout } = useTheme();
@@ -67,6 +80,7 @@ export function FoodRow({
       <Text variant="label" color="primaryText" tabular>
         {formatKcal(kcal)}
       </Text>
+      {onAdd ? <IconButton icon="add" accessibilityLabel={`Add ${name}, ${meta}`} onPress={onAdd} /> : null}
     </PressableScale>
   );
 }

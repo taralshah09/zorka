@@ -14,6 +14,7 @@ import { coachLine } from "@/features/coach/lines";
 import { useActivityClock } from "@/features/activity/store";
 import { MEAL_LABEL } from "@/features/food/format";
 import { draftActions } from "@/features/log/draft";
+import { useFinishDraft } from "@/features/log/nav";
 import { deleteMeal, repeatMeal } from "@/features/meals/store";
 import { useStreak } from "@/features/progress/streak";
 import { addEase, useUpcomingEases } from "@/features/gap/eases";
@@ -38,6 +39,7 @@ export default function GapCloser() {
   const dg = useDayGap(clock);
   const streak = useStreak(userId, clock);
   const toast = useToast();
+  const finish = useFinishDraft();
   const profileDiet = profile.data?.diet ?? "non_veg";
   const [side, setSide] = useState<"veg" | "non_veg" | null>(null);
   const diet = dietForSwitch(profileDiet, side ?? switchSideFor(profileDiet));
@@ -109,7 +111,7 @@ export default function GapCloser() {
       });
     } else if (a.kind === "food") {
       draftActions.startWithFood(a.food, a.quantity, a.unit, mealType);
-      router.push("/log/confirm");
+      finish();
     } else if (userId) {
       void openNearby(userId, a.option).then((ok) => {
         if (!ok)

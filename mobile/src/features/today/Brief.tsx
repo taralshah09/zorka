@@ -16,6 +16,7 @@ import { mealTotals, type Meal } from "@/features/meals/store";
 import { formatInt } from "@/features/targets/format";
 import { MEAL_TYPES, mealTypeForTime } from "@shared/domain/food";
 import type { Targets } from "@shared/domain/targets";
+import { AddToMealButton } from "./AddToMeal";
 import type { Consumed } from "./TodayCards";
 
 /** The brief: the coach's read of the day in their voice, and the one action that follows from it. */
@@ -222,7 +223,7 @@ export function NeedsYouRow({
   );
 }
 
-/** Today's meals in one card: what's logged, then a single row for the meal that's due. */
+/** Today's meals in one card: what's logged (each with "+" to add to it), then a single row for the meal that's due. */
 export function TodayMeals({ meals, now }: { meals: readonly Meal[]; now: Date }) {
   const { colors } = useTheme();
   const logged = new Set(meals.map((m) => m.mealType));
@@ -258,6 +259,7 @@ export function TodayMeals({ meals, now }: { meals: readonly Meal[]; now: Date }
               <Text variant="label" color="primaryText" tabular>
                 {`${formatInt(t.kcal)} kcal`}
               </Text>
+              <AddToMealButton meal={m} />
             </PressableScale>
           );
         })

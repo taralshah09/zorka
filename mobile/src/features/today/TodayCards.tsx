@@ -11,6 +11,7 @@ import { useTheme } from "@/core/theme";
 import { Card, NumberUnit, PressableScale, ProgressBar, ProgressRing, Text } from "@/core/ui";
 import { MEAL_LABEL } from "@/features/food/format";
 import { mealTotals, type Meal } from "@/features/meals/store";
+import { AddToMealButton } from "./AddToMeal";
 import { formatInt } from "@/features/targets/format";
 import { MEAL_TYPES, sumMacros } from "@shared/domain/food";
 import type { Targets } from "@shared/domain/targets";
@@ -285,7 +286,7 @@ export function NextActionCard({
   );
 }
 
-/** Meals timeline (P12): logged meals per slot, open S21; empty slots open quick-log for that meal. */
+/** Meals timeline (P12): logged meals per slot, open S21, "+" adds to them (UX F8); empty slots open quick-log. */
 export function MealSlots({
   targets,
   consumed,
@@ -367,6 +368,7 @@ export function MealSlots({
               <Text variant="label" color="primaryText" tabular>
                 {`${formatInt(t.kcal)} kcal`}
               </Text>
+              <AddToMealButton meal={m} />
             </PressableScale>
           );
         });
