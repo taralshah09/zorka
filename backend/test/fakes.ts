@@ -3,7 +3,7 @@ import { pino } from "pino";
 
 import { EXERCISE_SOURCE, EXERCISES } from "../prisma/data/exercises.js";
 import { FOOD_SOURCE, FOODS } from "../prisma/data/foods.js";
-import { createApp } from "../src/app.js";
+import { createApp, type AppDeps } from "../src/app.js";
 import { createAiClient, type AiClient } from "../src/modules/ai/ai.client.js";
 import type { AiSlot } from "../src/modules/ai/ai.config.js";
 import type { Fetch } from "../src/modules/ai/providers.js";
@@ -359,7 +359,9 @@ export function fakeSearch(
   return createSearchClient({ keys, order: ["tavily", "firecrawl", "anakin"], logger: pino({ level: "silent" }), fetchImpl });
 }
 
-export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchClient; now?: () => number } = {}) {
+export function testApp(
+  opts: { dbUp?: boolean; ai?: AiClient; search?: SearchClient; now?: () => number; rateLimit?: AppDeps["rateLimit"] } = {},
+) {
   const ids = [RIYA, ARJUN];
   const users = memoryUsers();
   const sync = memorySync(ids);
@@ -426,6 +428,7 @@ export function testApp(opts: { dbUp?: boolean; ai?: AiClient; search?: SearchCl
     ai,
     search,
     devRoutes: true,
+    rateLimit: opts.rateLimit,
   });
   return {
     app,

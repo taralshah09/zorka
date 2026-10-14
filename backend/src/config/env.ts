@@ -43,6 +43,23 @@ const EnvSchema = z.object({
     .default("tavily,firecrawl,anakin")
     .transform((s) => s.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean))
     .pipe(z.array(z.enum(["tavily", "firecrawl", "anakin"])).min(1)),
+
+  // Rate limits (src/http/rateLimit.ts). Counters are in memory, so they reset when the instance sleeps or redeploys.
+  /** Set to false for load tests: one k6 machine is one IP and would hit the per-IP ceiling. */
+  RATE_LIMIT_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /** Proxy hops in front of the app, for the client IP (Render: 1). 0 = use the socket address. */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  RATE_LIMIT_PER_MIN_USER: z.coerce.number().int().positive().default(120),
+  RATE_LIMIT_PER_MIN_IP: z.coerce.number().int().positive().default(300),
+  /** AI routes: meal parse (text/voice/photo), gym voice parse, coach chat. One shared bucket per user. */
+  RATE_LIMIT_AI_PER_MIN: z.coerce.number().int().positive().default(10),
+  RATE_LIMIT_AI_PER_DAY: z.coerce.number().int().positive().default(100),
+  /** AI + search routes: food lookup, nearby. One shared bucket per user. */
+  RATE_LIMIT_SEARCH_PER_MIN: z.coerce.number().int().positive().default(5),
+  RATE_LIMIT_SEARCH_PER_DAY: z.coerce.number().int().positive().default(30),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

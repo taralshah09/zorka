@@ -47,3 +47,10 @@ services:
         sync: false
       - key: SEARCH_PROVIDER_ORDER
         value: tavily,firecrawl,anakin
+      # Rate limits (backend/src/http/rateLimit.ts). Defaults live in backend/src/config/env.ts.
+      # One proxy hop (Render's load balancer) in front of the app, so req.ip is the phone's IP.
+      # Check `clientIp` in the request logs: it must differ per device, not be one shared address.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"

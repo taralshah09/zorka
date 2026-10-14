@@ -4,6 +4,7 @@ import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
 
 import { errorHandler, notFoundHandler } from "./http/errors.js";
+import { rateLimit, type RateLimitConfig, type RateLimitStore } from "./http/rateLimit.js";
 import type { AiClient } from "./modules/ai/ai.client.js";
 import { aiDevRoutes } from "./modules/ai/ai.routes.js";
 import { coachRoutes } from "./modules/coach/coach.routes.js";
@@ -54,6 +55,10 @@ export type AppDeps = {
   search: SearchClient;
   /** Mounts /v1/dev/* (never in production). */
   devRoutes: boolean;
+  /** Per-user / per-IP request limits. Omitted (e.g. in tests) means no limits. */
+  rateLimit?: { config: RateLimitConfig; store: RateLimitStore };
+  /** Proxy hops in front of the app (Render: its load balancer), so req.ip is the client's address. */
+  trustProxy?: number;
 };
 
 const smallJson = express.json({ limit: "256kb" });
@@ -86,7 +91,17 @@ export function createApp(deps: AppDeps) {
   } = deps;
   const app = express();
   app.disable("x-powered-by");
-  app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/v1/health" } }));
+  if (deps.trustProxy) app.set("trust proxy", deps.trustProxy);
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: { ignore: (req) => req.url === "/v1/health" },
+      // The client IP the rate limiter sees (depends on TRUST_PROXY), to check it in the Render logs.
+      customProps: (req) => ({ clientIp: (req as express.Request).ip }),
+    }),
+  );
+  // Before body parsing, so a limited request doesn't get its (up to 20 MB) body parsed first.
+  if (deps.rateLimit) app.use(rateLimit(deps.rateLimit.config, deps.rateLimit.store));
   app.use((req, res, next) =>
     (SYNC_PATH.test(req.path)
       ? syncJson

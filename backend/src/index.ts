@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { loadEnv } from "./config/env.js";
+import { memoryRateLimitStore } from "./http/rateLimit.js";
 import { createLogger } from "./lib/logger.js";
 import { disconnectPrisma, getPrisma } from "./lib/prisma.js";
 import { prismaActivitiesRepository } from "./modules/activities/activities.repository.js";
@@ -102,6 +103,17 @@ const app = createApp({
   ai,
   search,
   devRoutes: env.NODE_ENV !== "production",
+  trustProxy: env.TRUST_PROXY,
+  rateLimit: env.RATE_LIMIT_ENABLED
+    ? {
+        store: memoryRateLimitStore(),
+        config: {
+          general: { perMinutePerUser: env.RATE_LIMIT_PER_MIN_USER, perMinutePerIp: env.RATE_LIMIT_PER_MIN_IP },
+          ai: { perMinute: env.RATE_LIMIT_AI_PER_MIN, perDay: env.RATE_LIMIT_AI_PER_DAY },
+          search: { perMinute: env.RATE_LIMIT_SEARCH_PER_MIN, perDay: env.RATE_LIMIT_SEARCH_PER_DAY },
+        },
+      }
+    : undefined,
 });
 
 const server = app.listen(env.PORT, () => {
@@ -111,6 +123,7 @@ const server = app.listen(env.PORT, () => {
   // Service names only, never keys.
   const searchReady = search.status().configured;
   logger.info({ search: searchReady }, searchReady.length ? "Search ready" : "No search keys set: nearby options and food lookup are off");
+  logger.info(env.RATE_LIMIT_ENABLED ? "Rate limits on" : "Rate limits OFF (RATE_LIMIT_ENABLED=false)");
 });
 
 const shutdown = (signal: string) => {
