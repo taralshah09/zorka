@@ -7,6 +7,9 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   /** Neon POOLED connection string (host contains "-pooler"). Used by the app at runtime. */
   DATABASE_URL: z.string().url(),
+  /** Max open DB connections in the pg pool. Each query holds one for a full round trip, so this caps
+   *  throughput (k6 load test, Oct 2026: the pg default of 10 capped the API at ~9 req/s). */
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(20),
 
   // P14 · AI providers (D30). Comma-separated keys, one per account. Any of them may be empty; the
   // AI features then answer "AI isn't set up" and the app falls back to search.

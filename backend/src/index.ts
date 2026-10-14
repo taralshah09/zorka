@@ -38,7 +38,7 @@ import { workoutsService } from "./modules/workouts/workouts.service.js";
 
 const env = loadEnv();
 const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV === "development");
-const prisma = getPrisma(env.DATABASE_URL);
+const prisma = getPrisma(env.DATABASE_URL, env.DB_POOL_MAX);
 
 const foodsRepo = prismaFoodsRepository(prisma);
 const foods = foodsService(foodsRepo);

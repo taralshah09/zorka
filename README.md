@@ -31,6 +31,7 @@ discipline shapes their whole life into something better.
   <img src="https://img.shields.io/badge/Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/OpenRouter-6566F1?style=for-the-badge&logoColor=white" alt="OpenRouter" />
   <img src="https://img.shields.io/badge/Render-46E3B7?style=for-the-badge&logo=render&logoColor=black" alt="Render" />
+  <img src="https://img.shields.io/badge/k6-7D64FF?style=for-the-badge&logo=k6&logoColor=white" alt="k6" />
 </p>
 
 ---
@@ -109,6 +110,26 @@ The full diagram is in `docs-arch/architecture.excalidraw` (open it at [excalidr
 | Free-tier AI with fallbacks | One paid model | Zero cost; the confirm step absorbs model variance |
 | Search snippets for nearby food | Live menus | No scraping; every number is marked as an estimate |
 
+## Performance
+
+Load-tested with [k6](https://k6.io) (October 2026). Each virtual user replays an app session: open the app, browse
+foods, workouts and routines, and push a sync batch one time in three. AI and search endpoints are left out because
+they call paid providers.
+
+| Setup | Throughput | p50 / p95 / p99 | Errors |
+|---|---|---|---|
+| API + Postgres on one PC, 50 users | 80 req/s | 32 / 178 / 354 ms | 0% |
+| Same, stress up to 800 users | 110–120 req/s ceiling | 2.4 s / 8.4 s / 18.6 s | 0% |
+| Hosted on Render free, 10 users | not at a limit | 881 ms / 1.9 s / 2.5 s | 0% |
+
+- **Comfortable limit:** about 50 very active users at once (each opening the app every ~3 s) before p95 passes 300 ms.
+- **It slows down, it doesn't fall over:** no failed requests even at 800 concurrent users.
+- **The bottleneck is one CPU core,** mostly spent turning large `/changes` sync responses into JSON.
+- **Database distance matters most.** With the API on a PC far from the Neon database in Ohio, every query cost a
+  230 ms round trip and the old 10-connection pool capped the API at ~9 req/s. The pool size is now configurable
+  (`DB_POOL_MAX`, default 20).
+- **Still to measure:** a Render-sized box (0.1 CPU, 512 MB) with `npm run loadtest:constrained`, and a 2-hour soak.
+
 ## Future plans
 
 - Real accounts and auth
@@ -131,3 +152,24 @@ cd mobile && npm install
 echo "EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:4000" > .env
 npx expo run:android
 ```
+
+### Load tests
+
+Needs [k6](https://k6.io) and Docker. Tests run against a throwaway local Postgres, never your Neon database.
+
+```powershell
+# backend/, terminal 1: local database + API in production mode on port 4100
+npm run loadtest:db:up
+$env:DATABASE_URL="postgresql://postgres@127.0.0.1:5433/zorka_load"; $env:DIRECT_URL=$env:DATABASE_URL
+npx prisma migrate deploy; npm run db:seed; npm run db:seed:demo
+npm run build; $env:NODE_ENV="production"; $env:LOG_LEVEL="warn"; $env:PORT="4100"
+node --env-file-if-exists=.env dist/backend/src/index.js
+
+# backend/, terminal 2: pick a profile (smoke, load, stress, spike, soak, constrained)
+npm run loadtest:load -- -e BASE_URL=http://127.0.0.1:4100/v1
+
+npm run loadtest:db:down   # when done
+```
+
+HTML and JSON reports land in `backend/loadtest/reports/` (git-ignored). The script and its profiles are in
+`backend/loadtest/k6.js`.

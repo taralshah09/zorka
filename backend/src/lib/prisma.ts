@@ -6,9 +6,9 @@ import { PrismaClient } from "../generated/prisma/client.js";
 
 let client: PrismaClient | undefined;
 
-export function getPrisma(databaseUrl: string): PrismaClient {
+export function getPrisma(databaseUrl: string, poolMax = 20): PrismaClient {
   if (!client) {
-    client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: poolMax }) });
   }
   return client;
 }

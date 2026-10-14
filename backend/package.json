@@ -19,7 +19,16 @@
     "db:seed:arjun": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts --write",
     "db:seed:arjun:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts",
     "db:seed:demo": "tsx --env-file-if-exists=.env prisma/seed-demo-personas.ts --write",
-    "db:seed:demo:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-personas.ts"
+    "db:seed:demo:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-personas.ts",
+    "loadtest:db:up": "docker compose -f loadtest/docker-compose.yml up -d --wait",
+    "loadtest:db:down": "docker compose -f loadtest/docker-compose.yml down -v",
+    "loadtest:smoke": "k6 run -e PROFILE=smoke loadtest/k6.js",
+    "loadtest:load": "k6 run -e PROFILE=load --out web-dashboard=export=loadtest/reports/load.html --summary-export=loadtest/reports/load.json loadtest/k6.js",
+    "loadtest:stress": "k6 run -e PROFILE=stress --out web-dashboard=export=loadtest/reports/stress.html --summary-export=loadtest/reports/stress.json loadtest/k6.js",
+    "loadtest:spike": "k6 run -e PROFILE=spike --out web-dashboard=export=loadtest/reports/spike.html --summary-export=loadtest/reports/spike.json loadtest/k6.js",
+    "loadtest:soak": "k6 run -e PROFILE=soak --out web-dashboard=export=loadtest/reports/soak.html --summary-export=loadtest/reports/soak.json loadtest/k6.js",
+    "loadtest:constrained": "k6 run -e PROFILE=constrained --out web-dashboard=export=loadtest/reports/constrained.html --summary-export=loadtest/reports/constrained.json loadtest/k6.js",
+    "loadtest:render": "k6 run -e PROFILE=render --out web-dashboard=export=loadtest/reports/render.html --summary-export=loadtest/reports/render.json loadtest/k6.js"
   },
   "engines": {
     "node": ">=22"
