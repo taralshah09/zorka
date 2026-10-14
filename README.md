@@ -2,8 +2,6 @@
   <img src="mobile/assets/icon.png" alt="Zorka" width="120" />
 </p>
 
-<h1 align="center">Zorka</h1>
-
 <p align="center">
   Your calories, workouts and cardio in one app, and it tells you what to do next.
 </p>
