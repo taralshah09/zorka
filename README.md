@@ -107,6 +107,7 @@ The full diagram is in `docs-arch/architecture.excalidraw` (open it at [excalidr
 | Local notifications | Push from a server | No Firebase, and it works offline |
 | Free-tier AI with fallbacks | One paid model | Zero cost; the confirm step absorbs model variance |
 | Search snippets for nearby food | Live menus | No scraping; every number is marked as an estimate |
+| In-memory rate-limit counters | Redis | One Render instance, so no new infra yet; the store can be swapped for Redis later |
 
 ## Performance
 
@@ -128,9 +129,32 @@ they call paid providers.
   (`DB_POOL_MAX`, default 20).
 - **Still to measure:** a Render-sized box (0.1 CPU, 512 MB) with `npm run loadtest:constrained`, and a 2-hour soak.
 
+## Rate limits
+
+Every API route is rate limited, with tighter limits on the routes that call AI models and the search API. User ids
+aren't authenticated yet, so each request also counts against a per-IP ceiling: switching ids doesn't get around it.
+
+| Routes | Limit | Env vars |
+|---|---|---|
+| Every route, per user id | 120 / min | `RATE_LIMIT_PER_MIN_USER` |
+| Every route, per IP | 300 / min | `RATE_LIMIT_PER_MIN_IP` |
+| AI: meal parse (text, voice, photo), gym voice parse, coach chat | 10 / min, 100 / day per user | `RATE_LIMIT_AI_PER_MIN`, `RATE_LIMIT_AI_PER_DAY` |
+| AI + search: food lookup, nearby | 5 / min, 30 / day per user | `RATE_LIMIT_SEARCH_PER_MIN`, `RATE_LIMIT_SEARCH_PER_DAY` |
+
+- **Over the limit:** `429` with the usual error shape (`code: "RATE_LIMITED"`, `details.retryAfterSeconds`) and a
+  `Retry-After` header. The app shows the message, and sync retries with backoff.
+- **Never limited:** `/v1/health` and `/`, so Render's health check and the app's warm-up ping always get through.
+- **Daily caps reset at 00:00 UTC.** Requests turned away by the per-minute limit don't use up the daily quota.
+- **Counters live in memory,** so they reset when the free instance sleeps or redeploys. Moving them to Redis would
+  make daily caps survive restarts and work across several instances.
+- **Behind Render's proxy,** `TRUST_PROXY=1` makes the client IP the phone's, not the load balancer's. Check that
+  `clientIp` in the request logs differs between devices.
+- `RATE_LIMIT_ENABLED=false` turns it all off (used for load tests). The code is in `backend/src/http/rateLimit.ts`.
+
 ## Future plans
 
 - Real accounts and auth
+- Redis-backed rate limits
 - Community features: follows, kudos and leagues
 - Hinglish voice logging
 - iOS support with HealthKit
@@ -161,6 +185,7 @@ npm run loadtest:db:up
 $env:DATABASE_URL="postgresql://postgres@127.0.0.1:5433/zorka_load"; $env:DIRECT_URL=$env:DATABASE_URL
 npx prisma migrate deploy; npm run db:seed; npm run db:seed:demo
 npm run build; $env:NODE_ENV="production"; $env:LOG_LEVEL="warn"; $env:PORT="4100"
+$env:RATE_LIMIT_ENABLED="false"   # k6 sends from one IP and would hit the per-IP limit
 node --env-file-if-exists=.env dist/backend/src/index.js
 
 # backend/, terminal 2: pick a profile (smoke, load, stress, spike, soak, constrained)
