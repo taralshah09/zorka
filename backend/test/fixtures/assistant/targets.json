@@ -1,0 +1,54 @@
+{
+  "group": "targets",
+  "about": "D99: one day's protein, calorie or step target, as the user said it. Pass bar: always Approve, the number must be in what was said, dates today to a week out. Spreading the rest is the planner's job, not an action.",
+  "cases": [
+    {
+      "id": "tg-01",
+      "said": "i would be out of city tmrw so logging 131g of protein would be difficult change it to 75g tmrw and distribute the rest on the coming days",
+      "router": {
+        "actions": [
+          { "kind": "set_day", "dayType": "away", "date": "2026-10-21", "note": "out of city tmrw" },
+          { "kind": "set_target", "metric": "protein", "value": 75, "date": "2026-10-21" }
+        ]
+      },
+      "brief": { "blocks": [], "whereabouts": "other_city", "flags": [] },
+      "expect": [["set_day", "approve"], ["set_target", "approve"]]
+    },
+    {
+      "id": "tg-02",
+      "said": "keep today at 1,800 calories",
+      "router": { "actions": [{ "kind": "set_target", "metric": "kcal", "value": 1800, "date": "2026-10-20" }] },
+      "expect": [["set_target", "approve"]]
+    },
+    {
+      "id": "tg-03",
+      "said": "8k steps on sunday is enough",
+      "router": { "actions": [{ "kind": "set_target", "metric": "steps", "value": 8000, "date": "2026-10-25" }] },
+      "expect": [["set_target", "approve"]]
+    },
+    {
+      "id": "tg-04",
+      "said": "kal protein 90 gram kar do",
+      "router": { "actions": [{ "kind": "set_target", "metric": "protein", "value": 90, "date": "2026-10-21" }] },
+      "expect": [["set_target", "approve"]]
+    },
+    {
+      "id": "tg-05",
+      "said": "lower my protein tomorrow",
+      "router": { "actions": [{ "kind": "set_target", "metric": "protein", "value": 90, "date": "2026-10-21" }] },
+      "expect": []
+    },
+    {
+      "id": "tg-06",
+      "said": "yesterday's protein should have been 100g",
+      "router": { "actions": [{ "kind": "set_target", "metric": "protein", "value": 100, "date": "2026-10-19" }] },
+      "expect": []
+    },
+    {
+      "id": "tg-07",
+      "said": "make tomorrow 75g protein",
+      "router": { "actions": [{ "kind": "set_target", "metric": "protein", "value": 75, "date": "2026-10-21", "kcal": 1200 }] },
+      "expect": []
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import {
   lowerConfidence,
   matchConfidence,
   MAX_ACTIONS_PER_TURN,
+  numberInTranscript,
   numbersGrounded,
   planTurn,
   quantityUnusual,
@@ -53,7 +54,9 @@ describe("checkAction", () => {
   });
 
   it("rejects kinds outside the catalogue", () => {
-    expect(reason({ kind: "set_target", kcal: 600 })).toBe("unknown_kind");
+    expect(reason({ kind: "set_calories", kcal: 600 })).toBe("unknown_kind");
+    // D99: set_target exists, but only in its own shape.
+    expect(reason({ kind: "set_target", kcal: 600 })).toBe("bad_value");
     expect(reason({ kind: "delete_all" })).toBe("unknown_kind");
     expect(reason({ kind: "run_sql", sql: "drop table meals" })).toBe("unknown_kind");
     expect(reason(null)).toBe("unknown_kind");
@@ -281,6 +284,8 @@ describe("planTurn", () => {
       ["fast for days", [{ kind: "set_day", dayType: "fast", date: "2026-10-20" }]],
       ["fifty pizzas", Array.from({ length: 50 }, () => ({ kind: "log_meal", span: "pizza", confidence: "high" }))],
       ["far past", [{ kind: "log_weight", kg: 40, date: "2025-01-01", confidence: "high" }]],
+      ["starvation target", [{ kind: "set_target", metric: "kcal", value: 600, date: "2026-10-20" }]],
+      ["absurd target", [{ kind: "set_target", metric: "protein", value: 5000, date: "2026-10-20" }]],
     ];
 
     for (const [name, actions] of attacks) {
@@ -289,7 +294,7 @@ describe("planTurn", () => {
         for (const it of turn.items) {
           expect(Object.keys(it.action)).not.toContain("kcal");
           expect(Object.keys(it.action)).not.toContain("userId");
-          if (it.action.kind === "set_day") expect(it.tier).toBe("approve");
+          if (it.action.kind === "set_day" || it.action.kind === "set_target") expect(it.tier).toBe("approve");
         }
         expect(turn.items.length).toBeLessThanOrEqual(MAX_ACTIONS_PER_TURN);
         expect(turn.items.filter((i) => i.action.kind === "undo" || i.action.kind === "correct").length).toBeLessThanOrEqual(1);
@@ -300,6 +305,44 @@ describe("planTurn", () => {
       const turn = planTurn(Array.from({ length: 50 }, () => ({ kind: "log_meal", span: "pizza", confidence: "high" })), CTX);
       expect(turn.items).toHaveLength(1);
     });
+  });
+});
+
+describe("set_target (D99)", () => {
+  const target = (extra: Record<string, unknown> = {}) => ({ kind: "set_target", metric: "protein", value: 75, date: "2026-10-21", ...extra });
+
+  it("keeps one day's number, rounded, and is always approved first", () => {
+    const a = ok(target({ value: 74.6 }));
+    expect(a).toEqual({ kind: "set_target", metric: "protein", value: 75, date: "2026-10-21" });
+    expect(tierFor(a, CTX)).toBe("approve");
+    expect(tierFor(ok(target({ date: "2026-10-20" })), CTX)).toBe("approve");
+  });
+
+  it("rejects a bad metric, a silly number, a missing or past date, and anything past a week out", () => {
+    expect(reason(target({ metric: "carbs" }))).toBe("bad_value");
+    expect(reason(target({ value: 0 }))).toBe("bad_value");
+    expect(reason(target({ value: -40 }))).toBe("bad_value");
+    expect(reason(target({ value: 401 }))).toBe("bad_value");
+    expect(reason(target({ metric: "kcal", value: 6001 }))).toBe("bad_value");
+    expect(reason(target({ date: undefined }))).toBe("bad_date");
+    expect(reason(target({ date: "2026-10-19" }))).toBe("date_out_of_range");
+    expect(reason(target({ date: "2026-10-28" }))).toBe("date_out_of_range");
+  });
+
+  it("is not an edit of a saved record, so it sits next to one", () => {
+    const turn = planTurn([target(), { kind: "delete_entry", target: "meal", mealType: "lunch" }], CTX);
+    expect(turn.items.map((i) => i.action.kind)).toEqual(["set_target", "delete_entry"]);
+  });
+
+  it("only takes a number the user said", () => {
+    expect(numberInTranscript(75, "change it to 75g tmrw")).toBe(true);
+    expect(numberInTranscript(1800, "keep today at 1,800 calories")).toBe(true);
+    expect(numberInTranscript(8000, "8k steps on sunday")).toBe(true);
+    expect(numberInTranscript(1500, "1.5k steps")).toBe(true);
+    expect(numberInTranscript(75, "only 75 kcal of snacks")).toBe(true);
+    expect(numberInTranscript(75000, "only 75 kcal of snacks")).toBe(false);
+    expect(numberInTranscript(90, "lower my protein tomorrow")).toBe(false);
+    expect(numberInTranscript(56, "131g down to 75g")).toBe(false);
   });
 });
 

@@ -140,12 +140,17 @@ export function TurnView({
                     router.push({ pathname: "/plan/tomorrow", params: { date: a.date, text: a.note ?? turn.heard.text } });
                     void dismiss(messageId, i);
                   }
-                : a.kind === "log_weight"
+                : a.kind === "set_target"
                   ? () => {
-                      router.push("/log-weight");
+                      router.push({ pathname: "/plan/tomorrow", params: { date: a.date } });
                       void dismiss(messageId, i);
                     }
-                  : null
+                  : a.kind === "log_weight"
+                    ? () => {
+                        router.push("/log-weight");
+                        void dismiss(messageId, i);
+                      }
+                    : null
             : null;
         const answer = item.resolved?.kind === "answer" ? item.resolved : null;
         return (

@@ -289,6 +289,44 @@ test("set_day keeps a brief the user already gave and only changes the day type"
   assert.equal(briefs.briefFor("a", TODAY).rawText, "office 9 to 6");
 });
 
+const RIYA = {
+  userId: "a", displayName: "Riya", goal: "lose_fat", age: 30, sex: "female", heightCm: 160, weightKg: 62, activityLevel: "light",
+  diet: "veg", targetWeightKg: 56, pace: "steady", coach: null, oilGheePrompt: false, stepGoal: 8000, waterGoalGlasses: 8,
+  checkinDetailed: false, onboardedAt: "2026-10-01T00:00:00.000Z", updatedAt: null,
+};
+const targetItem = (value, date) => ({ action: { kind: "set_target", metric: "protein", value, date }, tier: "approve", resolved: null, ask: null, line: "Set it? Tap OK." });
+
+test("set_target (D99): picks one day's protein in its brief, keeps the rest of the brief, re-plans, and Undo puts it back", async () => {
+  preferences.set("zorka.profileCache.a", JSON.stringify(RIYA));
+  const thread = feature("assistant/thread");
+  const briefs = feature("life/briefs");
+  const tomorrow = load(path.join(root, "../shared/domain/progress.ts")).addDays(TODAY, 1);
+  const base = feature("targets/targetInput").targetsFromProfile(RIYA).proteinG;
+  const value = Math.round(base * 0.6);
+  briefs.saveBrief("a", tomorrow, "out of city", { blocks: [], whereabouts: "other_city", mealAccess: {}, flags: [] }, "confirmed");
+  const t = await saveTurn(result([targetItem(value, tomorrow)], `make it ${value}g tomorrow`));
+  assert.equal(t.turn().items[0].state, "pending");
+  await thread.approve(t.id, 0);
+  const now = briefs.briefFor("a", tomorrow);
+  assert.equal(now.facts.targets.proteinG, value);
+  assert.equal(now.facts.whereabouts, "other_city");
+  assert.equal(now.rawText, "out of city");
+  assert.match(t.turn().items[0].receipt, /tomorrow's protein/);
+  assert.equal(feature("assistant/replan").takeReplanRequest("a"), true);
+  await thread.undo(t.id, 0);
+  assert.equal(briefs.briefFor("a", tomorrow).facts.targets, undefined);
+});
+
+test("set_target (D99): a number outside the planner's limits is refused before any OK, with the range", async () => {
+  preferences.set("zorka.profileCache.a", JSON.stringify(RIYA));
+  const briefs = feature("life/briefs");
+  const t = await saveTurn(result([targetItem(10, TODAY)], "only 10g protein today"));
+  const item = t.turn().items[0];
+  assert.equal(item.state, "refused");
+  assert.match(item.receipt, /It can go from \d+ g to \d+ g/);
+  assert.equal(briefs.briefFor("a", TODAY), null);
+});
+
 test("a chip swaps the food on the saved meal and remembers the word (D97)", async () => {
   const thread = feature("assistant/thread");
   const t = await saveTurn(result([mealItem("dahl", [parsedItem("dahl", DAL_FRY, 1, [DAL])])]));

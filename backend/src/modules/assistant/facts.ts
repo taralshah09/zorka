@@ -39,6 +39,9 @@ const SCREEN_WORD: Record<string, string> = {
   menu_scan: "the menu scan",
 };
 
+const TARGET_WORD: Record<string, string> = { protein: "protein", kcal: "calories", steps: "steps" };
+const TARGET_UNIT: Record<string, string> = { protein: " g", kcal: " kcal", steps: "" };
+
 const qty = (q: number) => (Number.isInteger(q) ? String(q) : (Math.round(q * 10) / 10).toString());
 
 /** "poha, 1 full plate (280 kcal)" for each matched item; unmatched ones by the words heard. */
@@ -103,6 +106,13 @@ export function receipt(item: TurnItem, today: string): { line: string; numbers:
     case "set_day": {
       const day = a.date === today ? "today" : WEEKDAY[new Date(`${a.date}T00:00:00Z`).getUTCDay()]!;
       return { line: `I can make ${day} ${DAY_WORD[a.dayType] ?? "a different day"}. Tap OK and I'll re-plan it.`, numbers: [] };
+    }
+    case "set_target": {
+      const day = a.date === today ? "today" : WEEKDAY[new Date(`${a.date}T00:00:00Z`).getUTCDay()]!;
+      return {
+        line: `Set ${day}'s ${TARGET_WORD[a.metric]} to ${a.value.toLocaleString("en-IN")}${TARGET_UNIT[a.metric]}? The days left this week pick up the difference. Tap OK.`,
+        numbers: [a.value],
+      };
     }
     case "remind_me": {
       const h = Math.floor(a.minute / 60);

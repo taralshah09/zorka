@@ -12,6 +12,7 @@ import {
   ASK_TOPICS,
   ASSISTANT_SCREENS,
   ROUTINE_NAME_MAX,
+  TARGET_METRICS,
   TURN_TEXT_MAX,
   type AssistantAction,
   type Confidence,
@@ -36,7 +37,8 @@ const num = z.number().finite();
 // ── What the router (AI) may say ─────────────────────────────────────────────────────────────────
 
 /**
- * One action, exactly as the router must write it. No action carries a calorie, protein or step number (D91), and no
+ * One action, exactly as the router must write it. Only `set_target` carries a calorie, protein or step number, and only
+ * one the user said (D99: checked against the transcript); no other action does (D91). No
  * user id (identity comes from the URL, Guardrails 5). `confidence` is never the router's: the server sets it from the
  * transcript and the food match.
  */
@@ -48,6 +50,7 @@ export const RouterAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("stop_activity") }),
   z.strictObject({ kind: z.literal("log_weight"), kg: num, date: date.optional() }),
   z.strictObject({ kind: z.literal("set_day"), dayType: z.enum(DAY_TYPES), date, note: z.string().trim().max(120).optional() }),
+  z.strictObject({ kind: z.literal("set_target"), metric: z.enum(TARGET_METRICS), value: z.number().finite().positive(), date }),
   z.strictObject({ kind: z.literal("plan_meal"), span, mealType: z.enum(MEAL_TYPES), date: date.optional() }),
   z.strictObject({
     kind: z.literal("remind_me"),

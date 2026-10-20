@@ -63,6 +63,8 @@ function change(userId: string, item: StoredItem, source: "voice" | "text") {
     );
     goTo("/log/confirm");
   } else if (a.kind === "set_day") goTo({ pathname: "/plan/tomorrow", params: { date: a.date, text: a.note ?? "" } });
+  // D99: Plan a day has "Set my own numbers" for that date.
+  else if (a.kind === "set_target") goTo({ pathname: "/plan/tomorrow", params: { date: a.date } });
   else if (a.kind === "log_weight") goTo("/log-weight");
 }
 

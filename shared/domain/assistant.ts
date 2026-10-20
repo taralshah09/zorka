@@ -3,8 +3,9 @@
 //
 // The router (AI) only names actions from this list and copies words out of the transcript. Every action is checked
 // here twice: on the server before it's sent, and on the phone before it runs, so a wrong or tampered answer still
-// can't write outside these bounds (D96). No action carries a calorie, protein or step number: target changes only go
-// through `set_day`, and the planner computes the numbers above the floor (D91).
+// can't write outside these bounds (D96). Day types go through `set_day` and the planner computes the numbers (D91).
+// The one number a target may take is the user's own, said out loud (`set_target`, D99): it must be in the transcript,
+// it is always approved first, and the planner keeps it inside `chosenLimits` and moves the rest over the week.
 import type { ActivityKind } from "./activity.js";
 import { classifyDay, DAY_TYPES, type DayType } from "./dayType.js";
 import { MEAL_TYPES, type FoodUnit, type MealType } from "./food.js";
@@ -71,6 +72,11 @@ const AHEAD_TARGETS: ReadonlySet<DeleteTarget> = new Set(["reminder", "planned_m
 /** replace: the meal is now these foods · add: these foods join it · remove: the named food leaves it. */
 export const EDIT_MODES = ["replace", "add", "remove"] as const;
 export type EditMode = (typeof EDIT_MODES)[number];
+/** D99 · Which of a day's targets `set_target` sets: the numbers the Plan-a-day screen lets the user pick. */
+export const TARGET_METRICS = ["protein", "kcal", "steps"] as const;
+export type TargetMetric = (typeof TARGET_METRICS)[number];
+/** Outer bounds a said target must sit in before the planner's own limits (`chosenLimits`) are checked on the phone. */
+export const TARGET_VALUE_MAX: Record<TargetMetric, number> = { protein: 400, kcal: 6000, steps: 50_000 };
 
 export type AssistantAction =
   | { kind: "log_meal"; span: string; mealType?: MealType; date?: string; confidence: Confidence }
@@ -80,6 +86,12 @@ export type AssistantAction =
   | { kind: "stop_activity" }
   | { kind: "log_weight"; kg: number; date?: string; confidence: Confidence }
   | { kind: "set_day"; dayType: DayType; date: string; note?: string }
+  /**
+   * D99 · One day's protein, calorie or step target, as the user said it ("only 75 g protein tomorrow"). The rest of
+   * the week moves around it (week.ts `chosen`). Always approved first; the phone refuses a number outside the day's
+   * `chosenLimits`.
+   */
+  | { kind: "set_target"; metric: TargetMetric; value: number; date: string }
   | { kind: "plan_meal"; span: string; mealType: MealType; date?: string }
   | { kind: "remind_me"; what: string; minute: number; date?: string }
   /**
@@ -119,6 +131,7 @@ export const ACTION_KINDS: readonly ActionKind[] = [
   "stop_activity",
   "log_weight",
   "set_day",
+  "set_target",
   "plan_meal",
   "remind_me",
   "ask",
@@ -274,6 +287,15 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
       }
       return { ok: true, action: { kind: "set_day", dayType: a.dayType, date: a.date, note } };
     }
+    case "set_target": {
+      if (!oneOf(TARGET_METRICS, a.metric)) return fail("bad_value");
+      const value = a.value;
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > TARGET_VALUE_MAX[a.metric]) return fail("bad_value");
+      if (typeof a.date !== "string") return fail("bad_date");
+      const bad = checkDate(a.date, ctx.today, 0);
+      if (bad) return fail(bad);
+      return { ok: true, action: { kind: "set_target", metric: a.metric, value: Math.round(value), date: a.date } };
+    }
     case "plan_meal": {
       const span = cleanText(a.span, SPAN_MAX);
       if (isReason(span)) return fail(span);
@@ -404,6 +426,8 @@ export function tierFor(action: AssistantAction, ctx: TurnContext): Tier {
     case "exercise_ref":
       return "answer";
     case "set_day":
+    // D99: a picked number is always shown first.
+    case "set_target":
     // A routine is shown, exercise by exercise, before it's saved.
     case "create_routine":
     // D92: anything that changes or deletes a saved record is shown before it happens.
@@ -595,6 +619,20 @@ export function spanInTranscript(span: string, transcript: string): boolean {
   if (!words.length) return false;
   const heard = new Set(t.split(" "));
   return words.filter((w) => heard.has(w)).length / words.length >= 0.6;
+}
+
+/**
+ * D99 · A target's number must be one the user said ("75g", "1,800 kcal", "8000 steps"). The router may convert a unit
+ * but never invent a number, so a value not in the transcript drops the action.
+ */
+export function numberInTranscript(value: number, transcript: string): boolean {
+  // "8k steps" is 8000; the k of "75 kcal" is not.
+  for (const match of transcript.match(/\d[\d,]*(?:\.\d+)?(?:\s*k(?![a-z]))?/gi) ?? []) {
+    const thousands = /k$/i.test(match);
+    const n = Number(match.replace(/[,\sk]/gi, "")) * (thousands ? 1000 : 1);
+    if (Number.isFinite(n) && Math.round(n) === Math.round(value)) return true;
+  }
+  return false;
 }
 
 // ── Learned aliases (D97) ────────────────────────────────────────────────────────────────────────

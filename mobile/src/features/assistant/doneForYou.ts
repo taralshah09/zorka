@@ -31,6 +31,8 @@ function phrase(i: StoredItem, today: string): string | null {
       return "weighed in";
     case "set_day":
       return a.date === today ? `made today ${DAY_PHRASE[a.dayType]}` : `planned ${a.date} as ${DAY_PHRASE[a.dayType]}`;
+    case "set_target":
+      return a.date === today ? `set today's ${a.metric === "kcal" ? "calories" : a.metric}` : `set ${a.date}'s ${a.metric === "kcal" ? "calories" : a.metric}`;
     case "start_activity":
       return `${ACTIVITY_LABEL[a.activity].toLowerCase()} started`;
     case "plan_meal":

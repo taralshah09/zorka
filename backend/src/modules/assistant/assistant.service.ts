@@ -15,6 +15,7 @@ import {
   matchConfidence,
   mealTypeAt,
   minuteOf,
+  numberInTranscript,
   numbersGrounded,
   OUT_OF_SCOPE_LINE,
   planTurn,
@@ -308,7 +309,9 @@ export function assistantService(deps: AssistantDeps) {
           continue;
         }
         const heardWords = heardFor(parsed.data, said, body);
-        if (spansOf(parsed.data).some((words) => !spanInTranscript(words, heardWords))) {
+        // D99: a target's number is the user's own, never one the router came up with.
+        const unheardNumber = parsed.data.kind === "set_target" && !numberInTranscript(parsed.data.value, said);
+        if (unheardNumber || spansOf(parsed.data).some((words) => !spanInTranscript(words, heardWords))) {
           dropped.push({ kind: parsed.data.kind, reason: "span_not_heard" });
           continue;
         }

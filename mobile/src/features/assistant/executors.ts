@@ -23,10 +23,17 @@ import {
 } from "@/features/gym/store";
 import { deleteRoutine, getRoutine, saveRoutine, type RoutineExercise } from "@/features/gym/routines";
 import { applyVoiceSets } from "@/features/gym/voice";
+import { easeFor } from "@/features/gap/eases";
 import { briefFor, deleteBrief, saveBrief } from "@/features/life/briefs";
 import { rememberAlias } from "@/features/life/memory";
+import { standingFrom } from "@/features/life/standing";
 import { deleteMeal, getMeal, lastPortions, mealsForDay, mealTotals, saveMeal, type Meal, type MealItem } from "@/features/meals/store";
+import { effectiveTargets, listCheckins } from "@/features/progress/checkins";
+import { listPhases } from "@/features/progress/phases";
 import { deleteWeight, listWeights, logWeight, restoreWeight } from "@/features/progress/weights";
+import { targetsFromProfile } from "@/features/targets/targetInput";
+import { easedTargets } from "@/features/targets/targets";
+import { readCachedProfile } from "@/features/users/api";
 import { glassesOn, logGlass, undoGlass } from "@/features/water/store";
 import {
   ASSISTANT_SCREENS,
@@ -38,12 +45,16 @@ import {
   tierFor,
   type AssistantAction,
   type AssistantScreen,
+  type TargetMetric,
   type Tier,
   type TurnContext,
 } from "@shared/domain/assistant";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
+import { classifyDay } from "@shared/domain/dayType";
+import { validateDayFacts } from "@shared/domain/life";
+import { chosenLimits, defaultCapacity, eventAllowance } from "@shared/domain/week";
 import { addDays } from "@shared/domain/progress";
-import { portion, UNIT_LABEL, type MealType } from "@shared/domain/food";
+import { localDate, portion, UNIT_LABEL, type MealType } from "@shared/domain/food";
 import { matchScore, MIN_MATCH_SCORE, normalize } from "@shared/domain/foodMatch";
 import { cleanMusclewikiUrl } from "@shared/domain/gym";
 import { clockText } from "@shared/domain/memory";
@@ -93,6 +104,7 @@ const KIND_ICON: Record<AssistantAction["kind"], IconName> = {
   stop_activity: "stop",
   log_weight: "monitor_weight",
   set_day: "calendar_month",
+  set_target: "calendar_month",
   plan_meal: "restaurant",
   remind_me: "notifications",
   ask: "auto_awesome",
@@ -153,6 +165,11 @@ export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, us
         matches: checked.resolved.matches.slice(0, 3).map((m) => ({ ...m, url: m.url ? cleanMusclewikiUrl(m.url) : null })),
       };
     if (userId && (item.action.kind === "delete_entry" || item.action.kind === "edit_meal")) return withTarget(checked, userId, ctx.today);
+    // D99: a number outside what the planner allows for that day is refused now, with the range, not after OK.
+    if (userId && item.action.kind === "set_target" && checked.state === "pending") {
+      const off = targetOutOfRange(userId, item.action);
+      if (off) return { ...checked, state: "refused", receipt: off, note: undefined };
+    }
     return checked;
   });
 }
@@ -503,6 +520,78 @@ function setDay(item: StoredItem, ctx: RunContext): StoredItem {
   return done(item, `Re-planned ${day} as ${a.dayType.replace("_", " ")} day.`, { kind: "brief", date: a.date, previous });
 }
 
+// ── set_target (D99): one day's number, the rest of the week moves around it ───────────────────
+
+const TARGET_KEY = { protein: "proteinG", kcal: "kcal", steps: "steps" } as const satisfies Record<TargetMetric, string>;
+const TARGET_WORD: Record<TargetMetric, string> = { protein: "protein", kcal: "calories", steps: "steps" };
+const TARGET_UNIT: Record<TargetMetric, string> = { protein: " g", kcal: " kcal", steps: "" };
+const targetText = (metric: TargetMetric, n: number) => `${n.toLocaleString("en-IN")}${TARGET_UNIT[metric]}`;
+const dayName = (date: string, today: string) => (date === today ? "today" : date === addDays(today, 1) ? "tomorrow" : date);
+
+/**
+ * The range the planner allows for that day's number (week.ts `chosenLimits`, the same as Plan a day's own numbers),
+ * from the same base targets the planner reads (useTargets). null: no profile on this phone yet.
+ */
+function targetRange(userId: string, date: string, metric: TargetMetric): [number, number] | null | "no_goal" {
+  const profile = readCachedProfile(userId);
+  if (!profile) return null;
+  const plan = targetsFromProfile(profile);
+  if (!plan) return null;
+  const today = localDate(new Date());
+  const effective = effectiveTargets(plan, profile, listPhases(userId), listCheckins(userId), today).targets;
+  const base = easedTargets(effective, easeFor(userId, today), profile.weightKg ?? 0);
+  const brief = briefFor(userId, date);
+  const dayType = brief ? classifyDay(brief.facts, standingFrom(profile)) : "normal";
+  const limits = chosenLimits(
+    {
+      date,
+      baseKcal: base.kcal,
+      baseProteinG: base.proteinG,
+      baseSteps: base.steps,
+      dayType,
+      capacity: defaultCapacity(dayType, base.proteinG),
+      actual: null,
+      ...(dayType === "feast" ? { allowanceKcal: eventAllowance(base.kcal) } : {}),
+      maintenanceKcal: Math.round(base.tdee),
+    },
+    base.floorKcal,
+    profile.goal,
+  );
+  if (metric === "steps") return limits.steps ?? "no_goal";
+  return metric === "kcal" ? limits.kcal : limits.protein;
+}
+
+/** Why this number can't be that day's target (with the range it can take), or null when it can. */
+function targetOutOfRange(userId: string, a: Extract<AssistantAction, { kind: "set_target" }>): string | null {
+  const range = targetRange(userId, a.date, a.metric);
+  if (!range) return "Finish setting up your plan in Zorka first.";
+  const day = dayName(a.date, localDate(new Date()));
+  if (range === "no_goal") return `There's no step goal ${day === "today" || day === "tomorrow" ? day : `on ${day}`}, so there's nothing to set.`;
+  const [lo, hi] = range;
+  if (a.value >= lo && a.value <= hi) return null;
+  return `I can't set ${day}'s ${TARGET_WORD[a.metric]} to ${targetText(a.metric, a.value)}. It can go from ${targetText(a.metric, lo)} to ${targetText(a.metric, hi)}.`;
+}
+
+function setTarget(item: StoredItem, ctx: RunContext): StoredItem {
+  const a = item.action;
+  if (a.kind !== "set_target") return item;
+  // Checked again: an earlier action of the turn may have changed the day.
+  const off = targetOutOfRange(ctx.userId, a);
+  if (off) return failed(item, off);
+  const previous = briefFor(ctx.userId, a.date);
+  // Keep what the user already told Zorka about the day and any other number they picked; only this one changes.
+  const facts = previous?.facts ?? factsForDayType("normal");
+  const next = validateDayFacts({ ...facts, targets: { ...facts.targets, [TARGET_KEY[a.metric]]: a.value } });
+  saveBrief(ctx.userId, a.date, previous?.rawText ?? ctx.heard, next, "confirmed");
+  requestReplan(ctx.userId);
+  const day = dayName(a.date, ctx.today);
+  return done(
+    item,
+    `Set ${day}'s ${TARGET_WORD[a.metric]} to ${targetText(a.metric, a.value)}. The days left this week pick up the difference.`,
+    { kind: "brief", date: a.date, previous },
+  );
+}
+
 async function correct(item: StoredItem, ctx: RunContext): Promise<StoredItem> {
   const a = item.action;
   if (a.kind !== "correct" || !ctx.previous) return failed(item, "There's nothing to correct.");
@@ -661,6 +750,8 @@ export async function runItem(item: StoredItem, ctx: RunContext): Promise<Stored
       }
       case "set_day":
         return setDay(item, ctx);
+      case "set_target":
+        return setTarget(item, ctx);
       case "remind_me": {
         const date = a.date ?? ctx.today;
         const set = await scheduleReminder(a.what, date, a.minute, ctx.userId);

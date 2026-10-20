@@ -27,7 +27,8 @@ function buttons(turn: StoredTurn, item: StoredItem, today: string): OverlayButt
   const out: OverlayButton[] = [];
   if (item.state === "pending") {
     out.push({ id: "ok", label: "OK", primary: true });
-    if (item.action.kind === "log_meal" || item.action.kind === "set_day" || item.action.kind === "log_weight")
+    const k = item.action.kind;
+    if (k === "log_meal" || k === "set_day" || k === "set_target" || k === "log_weight")
       out.push({ id: "change", label: "Change" });
     out.push({ id: "not_now", label: "Not now" });
   }
