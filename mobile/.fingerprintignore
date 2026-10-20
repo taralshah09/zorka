@@ -1,0 +1,10 @@
+# Files written into node_modules by the IDE (Java/Gradle import) and local
+# Gradle builds. EAS installs a clean node_modules, so these must not change
+# the fingerprint runtime version.
+node_modules/**/.project
+node_modules/**/.classpath
+node_modules/**/.settings/**
+node_modules/**/.gradle/**
+node_modules/**/android/build/**
+node_modules/**/*-gradle-plugin/bin/**
+node_modules/**/*-gradle-plugin/build/**
