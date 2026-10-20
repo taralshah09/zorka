@@ -49,6 +49,22 @@ export function WeekStrip({ week, today }: { week: WeekPlan; today: string }) {
           );
         })}
       </View>
+      <View style={styles.legend}>
+        {(Object.keys(LEGEND) as DotKind[]).map((k) => (
+          <View key={k} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: fill[k] }]} />
+            <Text variant="caption" color="textTertiary">
+              {LEGEND[k]}
+            </Text>
+          </View>
+        ))}
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { borderColor: colors.textPrimary, borderWidth: 2 }]} />
+          <Text variant="caption" color="textTertiary">
+            Workout
+          </Text>
+        </View>
+      </View>
       {event ? (
         <Text variant="caption" color="textSecondary">
           {weekdayShort(event.date)} pre-banked: other days are a little lighter.
@@ -81,4 +97,7 @@ const styles = StyleSheet.create({
   day: { alignItems: "center", gap: 6, minWidth: 32, paddingVertical: 4 },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   detail: { gap: 4, marginTop: 8 },
+  legend: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 4, marginTop: 4 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
 });

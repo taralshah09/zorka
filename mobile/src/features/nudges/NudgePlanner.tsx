@@ -203,7 +203,7 @@ export function NudgePlanner() {
   const briefPromptMinute = profile.data?.briefPromptMinute ?? null;
   const reminders = (plan: DayPlan | null): LifeNudgeInput["todayReminders"][number][] =>
     (plan?.items ?? []).flatMap((i): LifeNudgeInput["todayReminders"][number][] =>
-      i.kind === "prep" ? [{ kind: "prep" as const, at: i.at, dayOffset: i.dayOffset, text: i.text }] : i.kind === "water" ? [{ kind: "water" as const, at: i.at, dayOffset: 0 as const, text: i.text, code: i.code }] : [],
+      i.kind === "prep" ? [{ kind: "prep" as const, at: i.at, dayOffset: i.dayOffset, text: i.text }] : [],
     );
   const todayReminders = reminders(todayPlan.plan);
   const tomorrowReminders = reminders(tomorrowPlan.plan);

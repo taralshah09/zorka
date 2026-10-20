@@ -4,7 +4,7 @@
 //
 // Constants are the ones accepted at the P36 gate (docs/DECISIONS.md D61). Changing any of them is a product decision.
 // LA3 (docs/LIFE_PLAN.md "nudges.ts") adds the day: a nudge that falls inside a block moves to the free minute before it
-// (or is dropped), day-type rules turn kinds off, and `planLifeNudges` adds the brief prompt, prep and water refills.
+// (or is dropped), day-type rules turn kinds off, and `planLifeNudges` adds the brief prompt and prep.
 import { DAY_RULES, type DayType } from "./dayType.js";
 import type { Block } from "./life.js";
 
@@ -242,9 +242,9 @@ function fitDay(list: PlannedNudge[], facts: NudgeFacts, settings: NudgeSettings
   return out;
 }
 
-// ── LA2/LA3 · Life nudges: the evening brief prompt, prep, water refills ─────────────────────────────────────────
+// ── LA2/LA3 · Life nudges: the evening brief prompt and prep ─────────────────────────────────────────
 
-export type LifeNudgeKind = "brief_prompt" | "prep" | "water_refill";
+export type LifeNudgeKind = "brief_prompt" | "prep";
 export type LifeNudge = { kind: LifeNudgeKind; dayOffset: 0 | 1; minute: number; text: string };
 /** At most this many life nudges a day, on top of the coach nudges. */
 export const MAX_LIFE_NUDGES_PER_DAY = 3;
@@ -258,14 +258,14 @@ export type LifeNudgeInput = {
   briefPromptMinute: number | null;
   /** Tomorrow already has a confirmed brief: no prompt. */
   tomorrowBriefed: boolean;
-  /** Reminders from the plans (planDay items): today's prep and water, and tomorrow's evening-before prep. */
-  todayReminders: ReadonlyArray<{ kind: "prep" | "water"; at: number; dayOffset: -1 | 0; text: string; code?: string }>;
-  tomorrowReminders: ReadonlyArray<{ kind: "prep" | "water"; at: number; dayOffset: -1 | 0; text: string; code?: string }>;
+  /** Reminders from the plans (planDay prep items): today's prep, and tomorrow's evening-before prep. */
+  todayReminders: ReadonlyArray<{ kind: "prep"; at: number; dayOffset: -1 | 0; text: string }>;
+  tomorrowReminders: ReadonlyArray<{ kind: "prep"; at: number; dayOffset: -1 | 0; text: string }>;
   settings: Pick<NudgeSettings, "enabled" | "quietStart" | "quietEnd">;
 };
 
 /**
- * Today's life nudges. The brief prompt has its own switch (briefPromptMinute, D73); prep and refills follow the coach
+ * Today's life nudges. The brief prompt has its own switch (briefPromptMinute, D73); prep follows the coach
  * nudge switch (PA: off by default). Quiet hours apply to all of them; MAX_LIFE_NUDGES_PER_DAY caps them, prep first.
  */
 export function planLifeNudges(input: LifeNudgeInput): LifeNudge[] {
@@ -275,15 +275,13 @@ export function planLifeNudges(input: LifeNudgeInput): LifeNudge[] {
     for (const r of input.tomorrowReminders)
       if (r.kind === "prep" && r.dayOffset === -1 && ok(r.at)) out.push({ kind: "prep", dayOffset: 0, minute: r.at, text: r.text });
     for (const r of input.todayReminders) {
-      if (r.dayOffset !== 0 || !ok(r.at)) continue;
-      if (r.kind === "prep") out.push({ kind: "prep", dayOffset: 0, minute: r.at, text: r.text });
-      else if (r.code === "refill") out.push({ kind: "water_refill", dayOffset: 0, minute: r.at, text: r.text });
+      if (r.dayOffset === 0 && ok(r.at)) out.push({ kind: "prep", dayOffset: 0, minute: r.at, text: r.text });
     }
   }
   const prompt = input.briefPromptMinute;
   if (prompt != null && !input.tomorrowBriefed && ok(prompt))
     out.push({ kind: "brief_prompt", dayOffset: 0, minute: prompt, text: "How's tomorrow looking?" });
-  const rank: Record<LifeNudgeKind, number> = { prep: 0, brief_prompt: 1, water_refill: 2 };
+  const rank: Record<LifeNudgeKind, number> = { prep: 0, brief_prompt: 1 };
   return out
     .sort((a, b) => rank[a.kind] - rank[b.kind] || a.minute - b.minute)
     .slice(0, MAX_LIFE_NUDGES_PER_DAY)

@@ -1,7 +1,8 @@
-// S10 Today Home, as a personal assistant. The coach has already read the day (targets, meals, steps, streak, time of
-// day; situation.ts decides the one situation that matters), so Home leads with a brief: the coach's line and the one
-// action that follows. Below it, only what needs the user ("Needs you": the weekly check-in, voice notes waiting), one
-// glance card with kcal, protein, steps and water, and today's meals. The full dashboards and past days live on /day.
+// S10 Today Home, as a personal assistant. Read top to bottom it answers three questions: where do I stand (the hero:
+// kcal left, protein, steps, water, and the day type when it isn't a usual day), what should I do now (the brief: the
+// coach's line and the one action, or the usual meal ready to log), and what's the rest of my day (one timeline of
+// logged meals and what's still planned). "Needs you" only shows what waits on the user (check-in, captures, a draft,
+// a returning user's routine check). The week strip closes it. The full dashboards and past days live on /day.
 // States: loading skeleton, error (offline with no cached profile), not set up yet. P36: a notification tap that
 // cold-started the app is routed here. P39: a streak milestone or all goals hit opens the celebration (S47) once.
 // Welcome back (S48) after 5 days away is the brief's own situation; its action dismisses it. No bell (brand §8).
@@ -38,14 +39,15 @@ import { checkinCopy } from "@/features/progress/copy";
 import { useProgress } from "@/features/progress/hooks";
 import { AppHeader } from "@/features/shell/AppHeader";
 import { formatDayLong, greeting } from "@/features/targets/format";
-import { BriefCard, GlanceCard, NeedsYouRow, TodayMeals } from "@/features/today/Brief";
+import { BriefCard, NeedsYouRow, TodayHero } from "@/features/today/Brief";
+import { DayTimeline } from "@/features/today/DayTimeline";
 import { NudgePromptCard } from "@/features/today/FlowBCards";
 import { consumedFrom } from "@/features/today/TodayCards";
 import { useActiveUser } from "@/features/users/activeUser";
 import { logGlass, useGlasses } from "@/features/water/store";
 import { runMemoryJob } from "@/features/life/memory";
 import { dueForDailyReplan } from "@/features/life/aiPlanner";
-import { PlanCard } from "@/features/life/PlanCard";
+import { DAY_TYPE_LABEL } from "@/features/life/copy";
 import { useDayPlan } from "@/features/life/planner";
 import { useStoredPlan } from "@/features/life/plans";
 import { WeekStrip } from "@/features/life/WeekStrip";
@@ -135,7 +137,10 @@ export default function Today() {
   useTodayReactions(userId, today, dg, targets?.steps ?? null, situation);
 
   const voice = voiceNotes[0];
-  const needsYou = !!pending || !!voice;
+  const draftWaiting = !!draft && !draft.resumeChosen;
+  const routineCheck = welcome.show && welcome.restart.kind === "refresh";
+  const needsYou = !!pending || !!voice || draftWaiting || routineCheck;
+  const plan = dayPlan.plan;
 
   return (
     <Screen withDock header={<AppHeader eyebrow="Today" />}>
@@ -173,6 +178,21 @@ export default function Today() {
         />
       ) : (
         <>
+          <TodayHero
+            targets={{ kcal: (dayTargets ?? targets).kcal + credit.kcal, proteinG: (dayTargets ?? targets).proteinG, steps: plan ? plan.targets.steps : targets.steps }}
+            consumed={consumed}
+            glasses={glasses}
+            waterGoal={waterGoal}
+            onAddGlass={() => {
+              if (!userId) return;
+              logGlass(userId, today);
+              toast({ kind: "info", message: `Glass logged · ${glasses + 1} of ${waterGoal}` });
+            }}
+            dayLabel={plan && plan.dayType !== "normal" ? DAY_TYPE_LABEL[plan.dayType] : null}
+            kcalRange={plan?.targets.kcalRange}
+            coverage={dg && meals.length ? coverageText(dg.coverage, meals.length) : null}
+          />
+
           {action && situation && facts ? (
             <BriefCard
               coach={coach}
@@ -201,45 +221,21 @@ export default function Today() {
                   params: { about: coach ? coachLine(coach, situation, facts) : action.title },
                 })
               }
-            />
-          ) : null}
-          {dayPlan.plan ? (
-            <PlanCard
-              plan={dayPlan.plan}
-              nowMinute={minuteOfDay(now)}
-              accepted={!!dayPlan.stored?.acceptedAt}
-              onAccept={dayPlan.accept}
-              replanning={dayPlan.replanning}
-              eatenProteinG={consumed.proteinG}
-              onReplan={
-                online
-                  ? () =>
-                      void dayPlan.replan().then((ok) =>
-                        toast(ok ? { kind: "success", message: "Re-planned by AI." } : { kind: "info", message: "AI couldn't re-plan right now. Keeping the current plan." }),
-                      )
-                  : undefined
+              extra={
+                priority === "prepared" && prepared ? (
+                  <View style={styles.choices}>
+                    <Button label="Change portion" size="sm" variant="secondary" onPress={() => {
+                      if (!userId) return;
+                      draftActions.startFromMeal({ id: "", userId, mealType, source: "repeat", loggedAt: logTime().toISOString(), localDate: today, oilLevel: null, photoUri: null, items: prepared.items, synced: false } as Meal, (id) => getFood(userId, id));
+                      draftActions.makeNew();
+                      router.push("/log/confirm");
+                    }} />
+                    <Button label="Not now" size="sm" variant="ghost" onPress={() => setDismissedSuggestions((list) => [...list, suggestionKey])} />
+                  </View>
+                ) : undefined
               }
             />
           ) : null}
-          {priority === "prepared" && prepared ? <Card>
-            <Text variant="caption">{today} · {MEAL_LABEL[mealType]} · Saved by you</Text>
-            <Button label="Change portion" variant="secondary" onPress={() => {
-              if (!userId) return;
-              draftActions.startFromMeal({ id: "", userId, mealType, source: "repeat", loggedAt: logTime().toISOString(), localDate: today, oilLevel: null, photoUri: null, items: prepared.items, synced: false } as Meal, (id) => getFood(userId, id));
-              draftActions.makeNew();
-              router.push("/log/confirm");
-            }} />
-            <Button label="Not now" variant="ghost" onPress={() => setDismissedSuggestions((list) => [...list, suggestionKey])} />
-          </Card> : null}
-          {draft && !draft.resumeChosen ? <NeedsYouRow icon="restaurant" title={`${MEAL_LABEL[draft.mealType]} draft saved`} subtitle={`${localDate(new Date(draft.loggedAt))} · continue whenever you're ready`} onPress={() => { draftActions.chooseResume(); router.push("/log/confirm"); }} /> : null}
-          {dg ? <Text variant="caption" color="textSecondary">{coverageText(dg.coverage, meals.length)}</Text> : null}
-          {welcome.show && welcome.restart.kind === "refresh" ? <Card>
-            <Text variant="title">Does your old routine still fit?</Text>
-            <Text variant="body">Your earlier records are still here. Nothing to backfill.</Text>
-            <Button label="Keep it · start with today" variant="secondary" onPress={welcome.dismiss} />
-            <Button label="Review routine" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/train/prepare"); }} />
-            <Button label="Review goal" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/settings"); }} />
-          </Card> : null}
 
           {needsYou ? (
             <View style={styles.section}>
@@ -277,24 +273,46 @@ export default function Today() {
                   }
                 />
               ) : null}
+              {draftWaiting && draft ? (
+                <NeedsYouRow
+                  icon="restaurant"
+                  title={`${MEAL_LABEL[draft.mealType]} draft saved`}
+                  subtitle={`${localDate(new Date(draft.loggedAt))} · continue whenever you're ready`}
+                  onPress={() => { draftActions.chooseResume(); router.push("/log/confirm"); }}
+                />
+              ) : null}
+              {routineCheck ? (
+                <Card>
+                  <Text variant="title">Does your old routine still fit?</Text>
+                  <Text variant="body" color="textSecondary">Your earlier records are still here. Nothing to backfill.</Text>
+                  <Button label="Keep it · start with today" variant="secondary" onPress={welcome.dismiss} />
+                  <View style={styles.choices}>
+                    <Button label="Review routine" size="sm" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/train/prepare"); }} />
+                    <Button label="Review goal" size="sm" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/settings"); }} />
+                  </View>
+                </Card>
+              ) : null}
             </View>
           ) : null}
 
-          <GlanceCard
-            targets={{ ...(dayTargets ?? targets), kcal: (dayTargets ?? targets).kcal + credit.kcal }}
-            consumed={consumed}
-            glasses={glasses}
-            waterGoal={waterGoal}
-            onAddGlass={() => {
-              if (!userId) return;
-              logGlass(userId, today);
-              toast({ kind: "info", message: `Glass logged · ${glasses + 1} of ${waterGoal}` });
-            }}
+          <DayTimeline
+            meals={meals}
+            now={now}
+            nowMinute={minuteOfDay(now)}
+            plan={plan}
+            eatenProteinG={consumed.proteinG}
+            replanning={dayPlan.replanning}
+            onReplan={
+              plan && online
+                ? () =>
+                    void dayPlan.replan().then((ok) =>
+                      toast(ok ? { kind: "success", message: "Re-planned by AI." } : { kind: "info", message: "AI couldn't re-plan right now. Keeping the current plan." }),
+                    )
+                : undefined
+            }
           />
 
-          {dayPlan.plan ? <WeekStrip week={dayPlan.plan.week} today={today} /> : null}
-
-          <TodayMeals meals={meals} now={now} />
+          {plan ? <WeekStrip week={plan.week} today={today} /> : null}
 
           {userId ? <NudgePromptCard userId={userId} /> : null}
         </>
@@ -307,4 +325,5 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   flex: { flex: 1 },
   section: { gap: 8 },
+  choices: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
 });

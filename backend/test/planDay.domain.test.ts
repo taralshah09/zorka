@@ -108,8 +108,8 @@ describe("planDay · scenario 1 (expo Wed 13:00–19:00, briefed Tue)", () => {
     expect(meals.find((m) => m.kind === "meal" && m.slot === "lunch")).toMatchObject({ access: "packed" });
   });
 
-  it("a refill reminder as the expo ends, not during it", () => {
-    expect(plan.items.filter((i) => i.kind === "water").map((w) => w.at)).toEqual([at(19)]);
+  it("no timed water reminders: the water goal stays on the tracker", () => {
+    expect(plan.items.some((i) => (i.kind as string) === "water")).toBe(false);
   });
 });
 
@@ -163,7 +163,7 @@ describe("planDay · other days", () => {
     expect(plan.dayType).toBe("sick");
     expect(plan.targets).toMatchObject({ kcal: 2300, steps: null, waterGlasses: 10 });
     expect(plan.items.some((i) => i.kind === "workout" || i.kind === "walk")).toBe(false);
-    expect(plan.items.filter((i) => i.kind === "water").length).toBeGreaterThan(0);
+    expect(plan.items.some((i) => (i.kind as string) === "water")).toBe(false);
   });
 
   it("a usual day with time to train gets a workout by 21:30", () => {

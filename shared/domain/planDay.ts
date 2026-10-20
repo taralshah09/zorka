@@ -1,6 +1,6 @@
 // LA3 · Plan the day (docs/LIFE_PLAN.md "planDay.ts", D72, D79). Feasibility first, then optimise inside it: classify the
-// day, find its free windows, let the weekly ledger set today's share, then place meals, a workout, a walk, water and
-// prep inside free time. Runs on the phone, offline once the brief is parsed; every number comes from code.
+// day, find its free windows, let the weekly ledger set today's share, then place meals, a workout, a walk and prep
+// inside free time. Runs on the phone, offline once the brief is parsed; every number comes from code.
 // Pure domain logic shared by mobile and backend (D24); "today" is passed in.
 //
 // Constants are proposals at the LA3 gate. Changing any of them is a product decision.
@@ -44,13 +44,11 @@ import {
 } from "./week.js";
 
 export type Slot = MealType;
-export type WaterCode = "carry_bottle" | "refill" | "top_up" | "sip_more";
 
 export type PlanItem =
   | { kind: "meal"; slot: Slot; at: number; title: string; access: MealAccess; options: RankedOption[]; usual: boolean }
   | { kind: "workout"; at: number; routineId: string; name: string; minutes: number }
   | { kind: "walk"; at: number; minutes: number }
-  | { kind: "water"; at: number; code: WaterCode; text: string }
   /** dayOffset -1 = the evening before (shown on the previous day and sent as that night's prep nudge). */
   | { kind: "prep"; at: number; dayOffset: -1 | 0; text: string };
 
@@ -121,8 +119,6 @@ export const PREP_EVENING_MINUTE = 21 * 60 + 30;
 export const PREP_BEFORE_LEAVING = 30;
 /** Leaving for an event or trip this long before it starts. */
 export const LEAVE_BEFORE_MINUTES = 15;
-/** An away block this long gets a refill reminder as it ends. */
-export const REFILL_BLOCK_MINUTES = 3 * 60;
 /** What to pack for an away or travel day, first usable wins (light, cheap, survives a bag). */
 export const PACK_ORDER: readonly string[] = ["chana_30", "peanuts_30", "eggs_2", "sattu_40", "whey_1"];
 /** Sick days raise the water goal by this many glasses (DAY_RULES.sick water "raised"). */
@@ -299,7 +295,7 @@ export function planDay(input: PlanDayInput): DayPlan {
     items.push({ kind: "meal", slot, at, title: learned?.text ?? SLOT_LABEL[slot], access, options, usual: !!learned });
   }
 
-  // 4. Water tactics and prep for away and travel days.
+  // 4. Prep for away and travel days. No timed water items: the water goal lives on the tracker.
   const out = facts.blocks.filter((b) => b.kind === "event" || b.kind === "travel");
   if (rule.water === "carry_bottle" && out.length) {
     const first = out[0]!;
@@ -311,15 +307,6 @@ export function planDay(input: PlanDayInput): DayPlan {
     items.push({ kind: "prep", at: PREP_EVENING_MINUTE, dayOffset: -1, text: pack });
     const before = cal.remind(leave - PREP_BEFORE_LEAVING);
     if (before != null && before >= bounds.from) items.push({ kind: "prep", at: before, dayOffset: 0, text: `Leaving soon: ${pack.charAt(0).toLowerCase()}${pack.slice(1)}` });
-    // Away days get no nudges during the block (DAY_RULES "prep_and_morning"), so the refill comes as it ends.
-    for (const b of out)
-      if (b.to - b.from >= REFILL_BLOCK_MINUTES && b.to <= LATE_MOVE_MINUTE && cal.remind(b.to) === b.to)
-        items.push({ kind: "water", at: b.to, code: "refill", text: `Refill your bottle and drink a glass${b.label ? ` after ${b.label}` : ""}` });
-  } else if (rule.water === "raised") {
-    for (let at = bounds.from + 60; at <= Math.min(bounds.to, LATE_MOVE_MINUTE); at += 180)
-      items.push({ kind: "water", at, code: "sip_more", text: `Sip water. Aim for ${targets.waterGlasses} glasses today` });
-  } else if (rule.water === "top_up_gaps") {
-    for (const w of windows) if (w.to - w.from >= 30 && w.from <= LATE_MOVE_MINUTE && w.from > bounds.from) items.push({ kind: "water", at: w.from, code: "top_up", text: "Top up your water" });
   }
 
   const sorted = items

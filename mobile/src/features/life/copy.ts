@@ -87,7 +87,6 @@ export function itemTitle(item: PlanItem): string {
       return `${item.name} · ${item.minutes} min`;
     case "walk":
       return `Walk · ${item.minutes} min`;
-    case "water":
     case "prep":
       return item.text;
   }

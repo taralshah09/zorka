@@ -1,16 +1,18 @@
-// LA2/LA3 · Brief a day (D73): say or type what's coming up for any of the next 7 days → the parsed day as editable chips
-// (blocks, whereabouts, meal access, flags) → the one optional question → pick the day's numbers (Plan A keeps the week
-// even, Plan B catches up faster, the usual numbers, or your own) with how they're counted and "Start fresh" → the plan
-// and the "this week" strip → Accept.
+// LA2/LA3 · Plan a day (D73), in three numbered steps: 1 say or type what's coming up for any of the next 7 days →
+// 2 check the parsed day (busy times, where you'll be, where you'll eat, flags) → 3 pick the day's numbers (keep the week
+// even, catch up faster, the usual numbers, or your own; "How this is counted" and "Start fresh" fold under them) →
+// the plan (targets, one or two reasons, the timed items) and the "this week" strip → Save.
 // Parsing needs the network; when it fails the chips start empty so the day can be set by hand, never by a guess.
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
 import { useNetwork } from "@/core/network/network";
-import { Button, Card, Chip, Header, IconButton, ListItem, NumberStepper, Screen, Text, TextField, useToast } from "@/core/ui";
+import { Icon } from "@/core/icons/Icon";
+import { useTheme } from "@/core/theme";
+import { Badge, Button, Card, Chip, Header, IconButton, NumberStepper, PressableScale, Screen, Text, TextField, useToast } from "@/core/ui";
 import { parseBriefText, parseBriefVoice } from "@/features/life/api";
 import { briefFor, saveBrief } from "@/features/life/briefs";
 import { clearAiWeek } from "@/features/life/aiPlanner";
@@ -25,7 +27,6 @@ import { useProfile } from "@/features/users/api";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate, MEAL_TYPES } from "@shared/domain/food";
 import { BLOCK_KINDS, DAY_FLAGS, MEAL_ACCESS, validateDayFacts, WHEREABOUTS, type Block, type BlockKind, type DayFacts } from "@shared/domain/life";
-import { planDay } from "@shared/domain/planDay";
 import { addDays } from "@shared/domain/progress";
 import { chosenLimits, weekDates, type DayOption } from "@shared/domain/week";
 
@@ -51,6 +52,7 @@ export default function BriefDay() {
   const profile = useProfile(userId);
   const online = useNetwork((s) => s.online);
   const toast = useToast();
+  const { colors, radius } = useTheme();
   const today = localDate(new Date());
   const days = useMemo(() => Array.from({ length: 8 }, (_, i) => addDays(today, i)), [today]);
   const initial = params.date && days.includes(params.date) ? params.date : addDays(today, 1);
@@ -140,23 +142,18 @@ export default function BriefDay() {
   const input = preview.input;
   const options = plan?.options ?? null;
 
-  // The choices, and each one's meals (the usual meals and suggestions planned for that day's numbers).
+  // The choices. The meals for the picked one are in the plan below, so each choice is just its numbers.
   const choices = useMemo(() => {
-    if (!options || !input || !f) return [];
-    const list: { key: Pick; label: string; value: DayOption }[] = [{ key: "even", label: "Plan A · keep the week even", value: options.even }];
-    if (options.faster) list.push({ key: "faster", label: "Plan B · catch up faster", value: options.faster });
+    if (!options) return [];
+    const list: { key: Pick; label: string; hint: string; value: DayOption }[] = [{ key: "even", label: "Keep the week even", hint: "Recommended", value: options.even }];
+    if (options.faster) list.push({ key: "faster", label: "Catch up faster", hint: "More today, less later", value: options.faster });
     if (!list.some((c) => c.value.kcal === options.usual.kcal && c.value.proteinG === options.usual.proteinG && c.value.steps === options.usual.steps))
-      list.push({ key: "usual", label: "My usual numbers", value: options.usual });
-    return list.map((c) => {
-      const p = planDay({ ...input, facts: { ...f, targets: c.key === "even" ? undefined : asTargets(c.value) } });
-      const meals = p.items.flatMap((i) =>
-        i.kind === "meal" ? [`${itemTitle(i)}${i.options[0] ? ` → ${i.options[0].name} (${Math.round(i.options[0].macros.proteinG)} g)` : ""}`] : [],
-      );
-      return { ...c, meals, stepUp: stepUpLine(p) };
-    });
-  }, [options, input, f]);
+      list.push({ key: "usual", label: "My usual numbers", hint: "Ignore the rest of the week", value: options.usual });
+    return list;
+  }, [options]);
   const picked: Pick = !f?.targets ? "even" : (choices.find((c) => c.key !== "even" && sameAs(f.targets, c.value))?.key ?? "custom");
   const [ownOpen, setOwnOpen] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
   const row = input?.ledger.find((r) => r.date === date);
   const limits = row && plan ? chosenLimits({ ...row, dayType: plan.dayType }, input!.base.floorKcal, input!.base.goal) : null;
   const own = f?.targets ?? (options ? asTargets(options.even) : null);
@@ -172,16 +169,28 @@ export default function BriefDay() {
     toast({ kind: "success", message: "Fresh start: earlier gaps this week are let go." });
   };
 
+  const dayWord = date === today ? "today" : date === addDays(today, 1) ? "tomorrow" : weekdayShort(date);
+  const planContext = (() => {
+    if (!plan) return [];
+    const wd = plan.week.days.find((d) => d.date === date);
+    const moved = wd ? adjustLines(wd, today) : [];
+    return [...moved, ...whyText(plan.why.filter((w) => !(moved.length && ADJUST_CODES.includes(w))))].slice(0, 2);
+  })();
+  const tip = plan ? stepUpLine(plan) : null;
+
   return (
     <Screen header={<Header title="Plan a day" onBack={() => router.back()} />}>
-      <View style={styles.chips}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateRow} style={styles.bleed}>
         {days.map((d) => (
           <Chip key={d} label={d === today ? "Today" : d === addDays(today, 1) ? "Tomorrow" : `${weekdayShort(d)} ${d.slice(8)}`} selected={d === date} onPress={() => pickDate(d)} />
         ))}
-      </View>
+      </ScrollView>
 
       <Card>
-        <Text variant="title">{`How's ${date === today ? "today" : date === addDays(today, 1) ? "tomorrow" : weekdayShort(date)} looking?`}</Text>
+        <Text variant="eyebrow" color="textSecondary">
+          1 · Describe it
+        </Text>
+        <Text variant="headline-sm">{`How's ${dayWord} looking?`}</Text>
         <TextField
           label="Your day"
           value={text}
@@ -190,11 +199,17 @@ export default function BriefDay() {
           multiline
           accessibilityLabel="Describe the day"
         />
-        <View style={styles.actions}>
-          <Button label={busy ? "Reading…" : "Read my day"} loading={busy} disabled={!online || !text.trim() || busy} onPress={() => void parseText()} />
+        <View style={styles.readRow}>
+          <View style={styles.flex}>
+            <Button label={busy ? "Reading…" : "Read my day"} loading={busy} disabled={!online || !text.trim() || busy} onPress={() => void parseText()} fullWidth />
+          </View>
           <IconButton icon={recording ? "stop" : "mic"} accessibilityLabel={recording ? "Stop recording" : "Say it"} onPress={() => void toggleVoice()} disabled={!online || busy} />
-          {!f ? <Button label="Set by hand" variant="ghost" onPress={() => setFacts(EMPTY)} /> : null}
         </View>
+        {!f ? (
+          <Text variant="label" color="primaryText" accessibilityRole="button" onPress={() => setFacts(EMPTY)} style={styles.center}>
+            Or set the day by hand
+          </Text>
+        ) : null}
         {!online ? (
           <Text variant="caption" color="textSecondary">
             Offline: set the day by hand. Zorka still plans it.
@@ -213,71 +228,98 @@ export default function BriefDay() {
       {f ? (
         <Card>
           <Text variant="eyebrow" color="textSecondary">
-            The day
+            2 · Check the day
           </Text>
-          {f.blocks.map((b: Block, i) => (
-            <ListItem
-              key={`${b.from}-${i}`}
-              title={`${b.label ?? BLOCK_LABEL[b.kind]} · ${minuteLabel(b.from % 1440)}–${minuteLabel(b.to % 1440)}`}
-              subtitle={`${BLOCK_LABEL[b.kind]}${b.canEat ? " · food there" : ""}`}
-              trailing={<IconButton icon="close" accessibilityLabel="Remove" onPress={() => set({ blocks: f.blocks.filter((_, j) => j !== i) })} />}
-            />
-          ))}
-          {adding ? (
-            <View style={styles.add}>
-              <View style={styles.chips}>
-                {BLOCK_KINDS.filter((k) => k !== "sleep").map((k) => (
-                  <Chip key={k} label={BLOCK_LABEL[k]} selected={adding.kind === k} onPress={() => setAdding({ ...adding, kind: k })} />
-                ))}
-              </View>
-              <NumberStepper label="From" value={adding.from} min={0} max={1410} step={30} clock format={minuteLabel} onChange={(from) => setAdding({ ...adding, from })} />
-              <NumberStepper label="To" value={adding.to} min={30} max={1439} step={30} clock format={minuteLabel} onChange={(to) => setAdding({ ...adding, to })} />
-              <Button
-                label="Add"
-                variant="secondary"
-                onPress={() => {
-                  set({ blocks: [...f.blocks, { kind: adding.kind, from: adding.from, to: adding.to }] });
-                  setAdding(null);
-                }}
-              />
-            </View>
-          ) : (
-            <Button label="Add a busy time" variant="ghost" icon="add" onPress={() => setAdding({ kind: "work", from: 9 * 60, to: 18 * 60 })} />
-          )}
 
-          <Text variant="label">Where</Text>
-          <View style={styles.chips}>
-            {WHEREABOUTS.map((w) => (
-              <Chip key={w} label={WHEREABOUTS_LABEL[w]} selected={f.whereabouts === w} onPress={() => set({ whereabouts: w })} />
+          <View style={styles.section}>
+            <Text variant="title">Busy times</Text>
+            {!f.blocks.length && !adding ? (
+              <Text variant="caption" color="textSecondary">
+                Nothing blocked. The plan uses your usual day.
+              </Text>
+            ) : null}
+            {f.blocks.map((b: Block, i) => (
+              <View key={`${b.from}-${i}`} style={[styles.block, { backgroundColor: colors.surfaceHigh, borderRadius: radius.md }]}>
+                <View style={styles.flex}>
+                  <Text variant="label" numberOfLines={1}>
+                    {b.label ?? BLOCK_LABEL[b.kind]}
+                  </Text>
+                  <Text variant="caption" color="textSecondary">
+                    {`${minuteLabel(b.from % 1440)}–${minuteLabel(b.to % 1440)} · ${BLOCK_LABEL[b.kind]}${b.canEat ? " · food there" : ""}`}
+                  </Text>
+                </View>
+                <IconButton icon="close" accessibilityLabel={`Remove ${b.label ?? BLOCK_LABEL[b.kind]}`} onPress={() => set({ blocks: f.blocks.filter((_, j) => j !== i) })} />
+              </View>
+            ))}
+            {adding ? (
+              <View style={[styles.adder, { borderColor: colors.outline, borderRadius: radius.md }]}>
+                <View style={styles.chips}>
+                  {BLOCK_KINDS.filter((k) => k !== "sleep").map((k) => (
+                    <Chip key={k} label={BLOCK_LABEL[k]} selected={adding.kind === k} onPress={() => setAdding({ ...adding, kind: k })} />
+                  ))}
+                </View>
+                <NumberStepper label="From" value={adding.from} min={0} max={1410} step={30} clock format={minuteLabel} onChange={(from) => setAdding({ ...adding, from })} />
+                <NumberStepper label="To" value={adding.to} min={30} max={1439} step={30} clock format={minuteLabel} onChange={(to) => setAdding({ ...adding, to })} />
+                <View style={styles.readRow}>
+                  <Button label="Cancel" variant="ghost" size="sm" onPress={() => setAdding(null)} />
+                  <Button
+                    label="Add"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => {
+                      set({ blocks: [...f.blocks, { kind: adding.kind, from: adding.from, to: adding.to }] });
+                      setAdding(null);
+                    }}
+                  />
+                </View>
+              </View>
+            ) : (
+              <Button label="Add a busy time" variant="ghost" size="sm" icon="add" onPress={() => setAdding({ kind: "work", from: 9 * 60, to: 18 * 60 })} />
+            )}
+          </View>
+
+          <View style={[styles.section, styles.divider, { borderTopColor: colors.outline }]}>
+            <Text variant="title">{"Where you'll be"}</Text>
+            <View style={styles.chips}>
+              {WHEREABOUTS.map((w) => (
+                <Chip key={w} label={WHEREABOUTS_LABEL[w]} selected={f.whereabouts === w} onPress={() => set({ whereabouts: w })} />
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.section, styles.divider, { borderTopColor: colors.outline }]}>
+            <Text variant="title">{"Where you'll eat"}</Text>
+            {MEAL_TYPES.map((slot) => (
+              <View key={slot} style={styles.mealRow}>
+                <Text variant="label" color="textSecondary" style={styles.mealLabel}>
+                  {MEAL_LABEL[slot]}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.flex} contentContainerStyle={styles.chipLine}>
+                  {MEAL_ACCESS.filter((a) => a !== "unknown").map((a) => (
+                    <Chip
+                      key={a}
+                      label={ACCESS_LABEL[a]}
+                      selected={f.mealAccess[slot] === a}
+                      onPress={() => set({ mealAccess: { ...f.mealAccess, [slot]: f.mealAccess[slot] === a ? undefined : a } })}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
             ))}
           </View>
 
-          {MEAL_TYPES.map((slot) => (
-            <View key={slot} style={styles.slot}>
-              <Text variant="label">{MEAL_LABEL[slot]}</Text>
-              <View style={styles.chips}>
-                {MEAL_ACCESS.filter((a) => a !== "unknown").map((a) => (
-                  <Chip
-                    key={a}
-                    label={ACCESS_LABEL[a]}
-                    selected={f.mealAccess[slot] === a}
-                    onPress={() => set({ mealAccess: { ...f.mealAccess, [slot]: f.mealAccess[slot] === a ? undefined : a } })}
-                  />
-                ))}
-              </View>
+          <View style={[styles.section, styles.divider, { borderTopColor: colors.outline }]}>
+            <Text variant="title">Anything else</Text>
+            <View style={styles.chips}>
+              {DAY_FLAGS.map((fl) => (
+                <Chip
+                  key={fl}
+                  label={FLAG_LABEL[fl]}
+                  selected={f.flags.includes(fl)}
+                  onPress={() => set({ flags: f.flags.includes(fl) ? f.flags.filter((x) => x !== fl) : [...f.flags, fl] })}
+                />
+              ))}
             </View>
-          ))}
-
-          <Text variant="label">Anything else</Text>
-          <View style={styles.chips}>
-            {DAY_FLAGS.map((fl) => (
-              <Chip
-                key={fl}
-                label={FLAG_LABEL[fl]}
-                selected={f.flags.includes(fl)}
-                onPress={() => set({ flags: f.flags.includes(fl) ? f.flags.filter((x) => x !== fl) : [...f.flags, fl] })}
-              />
-            ))}
           </View>
         </Card>
       ) : null}
@@ -285,34 +327,45 @@ export default function BriefDay() {
       {f && plan && options ? (
         <Card>
           <Text variant="eyebrow" color="textSecondary">
-            {`${date === today ? "Today's" : date === addDays(today, 1) ? "Tomorrow's" : `${weekdayShort(date)}'s`} numbers`}
+            {`3 · Pick ${dayWord}'s numbers`}
           </Text>
           <Text variant="caption" color="textSecondary">
-            {`Usually ${optionLine(options.usual, options.usual)}.`}
+            {`Usually ${optionLine(options.usual, options.usual)}`}
           </Text>
-          {choices.map((c) => (
-            <View key={c.key} style={styles.choice}>
-              <ListItem
-                title={c.label}
-                subtitle={optionLine(c.value, options.usual)}
-                trailing={<Chip kind="choice" label={picked === c.key ? "Picked" : "Pick"} selected={picked === c.key} onPress={() => set({ targets: c.key === "even" ? undefined : asTargets(c.value) })} />}
-                onPress={() => set({ targets: c.key === "even" ? undefined : asTargets(c.value) })}
-              />
-              {c.meals.map((m) => (
-                <Text key={m} variant="caption" color="textSecondary">
-                  {m}
-                </Text>
-              ))}
-              {c.stepUp ? (
-                <Text variant="caption" color="textSecondary">
-                  {c.stepUp}
-                </Text>
-              ) : null}
-            </View>
-          ))}
-          <Button label={picked === "custom" ? "My own numbers (picked)" : "Set my own numbers"} variant="ghost" onPress={() => setOwnOpen((o) => !o)} />
+          <View style={styles.options}>
+            {choices.map((c) => {
+              const on = picked === c.key;
+              return (
+                <PressableScale
+                  key={c.key}
+                  onPress={() => set({ targets: c.key === "even" ? undefined : asTargets(c.value) })}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on, checked: on }}
+                  accessibilityLabel={`${c.label}. ${optionLine(c.value, options.usual)}`}
+                  style={[
+                    styles.option,
+                    { borderRadius: radius.md, borderColor: on ? colors.primary : colors.outline, backgroundColor: on ? colors.surfaceHigh : "transparent" },
+                  ]}
+                >
+                  <View style={styles.optionHead}>
+                    <Text variant="label" style={styles.flex}>
+                      {c.label}
+                    </Text>
+                    <Icon name={on ? "check_circle" : "add_circle"} size={20} color={on ? colors.primaryText : colors.textTertiary} />
+                  </View>
+                  <Text variant="caption" color="textTertiary">
+                    {c.hint}
+                  </Text>
+                  <Text variant="body" color="textSecondary" tabular>
+                    {optionLine(c.value, options.usual)}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
+          <Button label={picked === "custom" ? "My own numbers (picked)" : "Set my own numbers"} variant="ghost" size="sm" icon="tune" onPress={() => setOwnOpen((o) => !o)} />
           {ownOpen && own && limits ? (
-            <View style={styles.add}>
+            <View style={styles.adder}>
               <NumberStepper label="Protein" unit="g" value={own.proteinG ?? options.even.proteinG} min={limits.protein[0]} max={limits.protein[1]} step={5} onChange={(proteinG) => setOwn({ proteinG })} />
               <NumberStepper label="Calories" unit="kcal" value={own.kcal ?? options.even.kcal} min={limits.kcal[0]} max={limits.kcal[1]} step={50} onChange={(kcal) => setOwn({ kcal })} />
               {limits.steps && options.even.steps != null ? (
@@ -323,36 +376,43 @@ export default function BriefDay() {
               </Text>
             </View>
           ) : null}
-        </Card>
-      ) : null}
 
-      {f && plan && breakdown.length ? (
-        <Card>
-          <Text variant="eyebrow" color="textSecondary">
-            How this is counted
-          </Text>
-          {breakdown.map((b) => (
-            <View key={b.metric} style={styles.slot}>
-              <Text variant="label">{b.title}</Text>
-              {b.lines.map((l) => (
-                <Text key={l} variant="caption" color="textSecondary">
-                  {l}
+          {breakdown.length ? (
+            <View style={[styles.section, styles.divider, { borderTopColor: colors.outline }]}>
+              <PressableScale onPress={() => setHowOpen((o) => !o)} accessibilityRole="button" accessibilityState={{ expanded: howOpen }} style={styles.optionHead}>
+                <Text variant="label" color="textSecondary" style={styles.flex}>
+                  How this is counted
                 </Text>
-              ))}
+                <Icon name="expand_more" size={20} color={colors.textSecondary} />
+              </PressableScale>
+              {howOpen ? (
+                <>
+                  {breakdown.map((b) => (
+                    <View key={b.metric} style={styles.slot}>
+                      <Text variant="label">{b.title}</Text>
+                      {b.lines.map((l) => (
+                        <Text key={l} variant="caption" color="textSecondary">
+                          {l}
+                        </Text>
+                      ))}
+                    </View>
+                  ))}
+                  <Text variant="caption" color="textSecondary">
+                    {"Nothing carries into next week: what doesn't fit by Sunday is let go."}
+                  </Text>
+                </>
+              ) : null}
+              {active.freshFrom ? (
+                <View style={styles.readRow}>
+                  <Text variant="caption" color="textSecondary" style={styles.flex}>
+                    {`Started fresh from ${active.freshFrom === today ? "today" : weekdayShort(active.freshFrom)}: earlier gaps this week are let go.`}
+                  </Text>
+                  <Button label="Undo" variant="ghost" size="sm" onPress={() => userId && clearFreshStart(userId)} />
+                </View>
+              ) : owes ? (
+                <Button label="Start fresh: back to my usual numbers" variant="secondary" size="sm" onPress={fresh} />
+              ) : null}
             </View>
-          ))}
-          <Text variant="caption" color="textSecondary">
-            {"Nothing carries into next week: what doesn't fit by Sunday is let go."}
-          </Text>
-          {active.freshFrom ? (
-            <View style={styles.actions}>
-              <Text variant="caption" color="textSecondary">
-                {`Started fresh from ${active.freshFrom === today ? "today" : weekdayShort(active.freshFrom)}: earlier gaps this week are let go.`}
-              </Text>
-              <Button label="Undo" variant="ghost" onPress={() => userId && clearFreshStart(userId)} />
-            </View>
-          ) : owes ? (
-            <Button label="Start fresh: back to my usual numbers" variant="secondary" onPress={fresh} />
           ) : null}
         </Card>
       ) : null}
@@ -360,39 +420,74 @@ export default function BriefDay() {
       {f && plan ? (
         <>
           <Card>
-            <Text variant="eyebrow" color="textSecondary">
-              {`${DAY_TYPE_LABEL[plan.dayType]} · the plan`}
-            </Text>
-            <Text variant="title">
-              {`${plan.targets.kcalRange ? `${plan.targets.kcalRange[0]}–${plan.targets.kcalRange[1]}` : plan.targets.kcal} kcal · ${plan.targets.proteinG} g protein${plan.targets.steps != null ? ` · ${plan.targets.steps.toLocaleString("en-IN")} steps` : ""}`}
-            </Text>
-            {(() => {
-              const wd = plan.week.days.find((d) => d.date === date);
-              const moved = wd ? adjustLines(wd, today) : [];
-              return [
-                ...moved.map((m) => (
-                  <Text key={m} variant="body">
-                    {m}
-                  </Text>
-                )),
-                ...whyText(plan.why.filter((w) => !(moved.length && ADJUST_CODES.includes(w)))).map((w) => (
-                  <Text key={w} variant="caption" color="textSecondary">
-                    {w}
-                  </Text>
-                )),
-              ];
-            })()}
-            {stepUpLine(plan) ? (
-              <Text variant="caption" color="textSecondary">
-                {stepUpLine(plan)}
+            <View style={styles.optionHead}>
+              <Text variant="eyebrow" color="textSecondary" style={styles.flex}>
+                The plan
               </Text>
-            ) : null}
-            {plan.items.map((item, i) => (
-              <ListItem key={`${item.kind}-${item.at}-${i}`} title={itemTitle(item)} subtitle={itemTime(item)} />
+              {plan.dayType !== "normal" ? <Badge label={DAY_TYPE_LABEL[plan.dayType]} tone="lilac" /> : null}
+            </View>
+            <View style={styles.stats}>
+              <View style={styles.flex}>
+                <Text variant="headline-sm" tabular numberOfLines={1} adjustsFontSizeToFit>
+                  {plan.targets.kcalRange ? `${plan.targets.kcalRange[0]}–${plan.targets.kcalRange[1]}` : plan.targets.kcal.toLocaleString("en-IN")}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  kcal
+                </Text>
+              </View>
+              <View style={styles.flex}>
+                <Text variant="headline-sm" tabular>{`${plan.targets.proteinG} g`}</Text>
+                <Text variant="caption" color="textSecondary">
+                  protein
+                </Text>
+              </View>
+              <View style={styles.flex}>
+                <Text variant="headline-sm" tabular>
+                  {plan.targets.steps != null ? plan.targets.steps.toLocaleString("en-IN") : "—"}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  steps
+                </Text>
+              </View>
+            </View>
+            {planContext.map((t) => (
+              <Text key={t} variant="caption" color="textSecondary">
+                {t}
+              </Text>
             ))}
+            {tip ? (
+              <View style={[styles.tip, { backgroundColor: colors.surfaceHigh, borderRadius: radius.md }]}>
+                <Icon name="info" size={16} color={colors.textSecondary} />
+                <Text variant="caption" color="textSecondary" style={styles.flex}>
+                  {tip}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.items}>
+              {plan.items.map((item, i) => (
+                <View key={`${item.kind}-${item.at}-${i}`} style={styles.item}>
+                  <Text variant="label" color="textTertiary" tabular style={styles.time}>
+                    {item.kind === "prep" && item.dayOffset === -1 ? "Eve" : minuteLabel(item.at)}
+                  </Text>
+                  <View style={styles.flex}>
+                    <Text variant="label">{itemTitle(item)}</Text>
+                    {item.kind === "prep" && item.dayOffset === -1 ? (
+                      <Text variant="caption" color="textSecondary">
+                        {itemTime(item)}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+              {!plan.items.length ? (
+                <Text variant="body" color="textSecondary">
+                  Nothing timed. Eat and move as usual.
+                </Text>
+              ) : null}
+            </View>
           </Card>
           <WeekStrip week={plan.week} today={today} />
-          <Button label="Accept" onPress={accept} />
+          <Button label={`Save ${dayWord}'s plan`} icon="check_circle" onPress={accept} fullWidth />
         </>
       ) : null}
     </Screen>
@@ -400,9 +495,26 @@ export default function BriefDay() {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  center: { textAlign: "center", paddingVertical: 4 },
+  bleed: { flexGrow: 0 },
+  dateRow: { gap: 8, paddingVertical: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  add: { gap: 8 },
-  slot: { gap: 6 },
-  choice: { gap: 2 },
+  chipLine: { gap: 8, paddingRight: 8 },
+  readRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  section: { gap: 8, marginTop: 8 },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, marginTop: 12 },
+  block: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingVertical: 4 },
+  adder: { gap: 8, padding: 12, borderWidth: 1 },
+  mealRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  mealLabel: { width: 72 },
+  slot: { gap: 4 },
+  options: { gap: 8, marginTop: 8 },
+  option: { borderWidth: 1.5, padding: 12, gap: 2 },
+  optionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stats: { flexDirection: "row", gap: 12, marginVertical: 8 },
+  tip: { flexDirection: "row", gap: 8, padding: 10, alignItems: "flex-start" },
+  items: { marginTop: 4 },
+  item: { flexDirection: "row", gap: 12, paddingVertical: 8, alignItems: "flex-start" },
+  time: { width: 44 },
 });

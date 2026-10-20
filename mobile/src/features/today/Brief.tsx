@@ -1,6 +1,6 @@
-// Home as a personal assistant: the coach has already read the day, so Home leads with one brief (what matters
-// now and the one thing to tap), then a single glance at the numbers, then only the items that need the user.
-// The full dashboards (macro split, steps rings, water glass, goal calendar, past days) live on /day.
+// Home as a personal assistant: a hero with where the day stands (kcal left, protein, steps, water), then one brief
+// (what matters now and the one thing to tap), then only the items that need the user. The day's timeline is
+// DayTimeline.tsx; the full dashboards (macro split, steps rings, water glass, goal calendar, past days) live on /day.
 import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -8,16 +8,11 @@ import { StyleSheet, View } from "react-native";
 import type { CoachId } from "@/core/api/types";
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Avatar, Button, Card, PressableScale, Text } from "@/core/ui";
+import { Avatar, Button, Card, NumberUnit, PressableScale, ProgressBar, Text } from "@/core/ui";
 import { PERSONAS } from "@/features/coach/personas";
-import { formatPortion, MEAL_LABEL } from "@/features/food/format";
 import type { NextAction } from "@/features/gap/nextAction";
-import { mealTotals, type Meal } from "@/features/meals/store";
 import { formatInt } from "@/features/targets/format";
-import { mealTypeForTime } from "@shared/domain/food";
-import { editMeal } from "@/features/log/nav";
 import type { Targets } from "@shared/domain/targets";
-import { AddToMealButton } from "./AddToMeal";
 import type { Consumed } from "./TodayCards";
 
 /** The brief: the coach's read of the day in their voice, and the one action that follows from it. */
@@ -29,6 +24,7 @@ export function BriefCard({
   onNotePress,
   onAction,
   onAsk,
+  extra,
 }: {
   coach: CoachId | null;
   /** The coach's line; without a coach the action's own title is the line. */
@@ -41,6 +37,8 @@ export function BriefCard({
   onAction: () => void;
   /** UX N2 · Opens Coach with this brief as the topic. Only with a coach. */
   onAsk?: () => void;
+  /** Secondary choices under the CTA (the usual meal's "Change portion" / "Not now"). */
+  extra?: ReactNode;
 }) {
   const { colors } = useTheme();
   const persona = coach ? PERSONAS[coach] : null;
@@ -89,7 +87,8 @@ export function BriefCard({
       ) : null}
       <View style={styles.briefCta}>
         {action.cta ? <Button label={action.cta} icon={action.icon} onPress={onAction} fullWidth /> : null}
-        {action.cta && persona && onAsk ? (
+        {extra}
+        {action.cta && persona && onAsk && !extra ? (
           <Button label={`Ask ${persona.name} about this`} icon="forum" variant="ghost" size="sm" onPress={onAsk} />
         ) : null}
       </View>
@@ -97,103 +96,97 @@ export function BriefCard({
   );
 }
 
-function Stat({
-  label,
-  value,
-  sub,
-  color,
-  onPress,
-  a11y,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  color: string;
-  onPress: () => void;
-  a11y: string;
-}) {
+function HeroStat({ label, value, onPress, a11y }: { label: string; value: string; onPress: () => void; a11y: string }) {
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={a11y} style={styles.stat}>
-      <View style={[styles.statDot, { backgroundColor: color }]} />
-      <Text variant="headline-sm" tabular numberOfLines={1} adjustsFontSizeToFit>
+      <Text variant="headline-sm" color="ink" tabular numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </Text>
-      <Text variant="caption" color="textSecondary" numberOfLines={1}>
+      <Text variant="caption" color="ink" numberOfLines={1} style={styles.statLabel}>
         {label}
-      </Text>
-      <Text variant="unit" color="textTertiary" numberOfLines={1}>
-        {sub}
       </Text>
     </PressableScale>
   );
 }
 
-/** One card with the four numbers that matter today. Tapping water logs a glass; the footer opens the full day. */
-export function GlanceCard({
+/**
+ * The hero: kcal left today (big), how much is eaten, and protein, steps and water underneath. A non-usual day says
+ * so in a pill (targets were adjusted for it); an away day's range is the line under the number. Tapping water logs a
+ * glass; the footer opens the full day.
+ */
+export function TodayHero({
   targets,
   consumed,
   glasses,
   waterGoal,
   onAddGlass,
+  dayLabel,
+  kcalRange,
+  coverage,
 }: {
-  targets: Targets;
+  targets: Pick<Targets, "kcal" | "proteinG"> & { steps: number | null };
   consumed: Consumed;
   glasses: number;
   waterGoal: number;
   onAddGlass: () => void;
+  /** "Busy day", "Sick day"…; null on a usual day. */
+  dayLabel: string | null;
+  kcalRange?: [number, number];
+  /** How complete today's records are ("2 meals recorded. These totals may be incomplete."). */
+  coverage: string | null;
 }) {
-  const { colors } = useTheme();
+  const { colors, radius } = useTheme();
   const kcalLeft = targets.kcal - consumed.kcal;
   const proteinLeft = Math.max(0, targets.proteinG - consumed.proteinG);
+  const sub = kcalRange
+    ? `Anywhere in ${formatInt(kcalRange[0])}–${formatInt(kcalRange[1])} kcal is fine today`
+    : `${formatInt(consumed.kcal)} eaten of ${formatInt(targets.kcal)} kcal`;
   return (
-    <Card>
+    <Card variant="highlighted" glow accessibilityLabel={`${formatInt(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? "left" : "over"} today. ${sub}`}>
+      <View style={styles.heroTop}>
+        <Text variant="eyebrow" color="ink" style={styles.flex}>
+          {kcalLeft >= 0 ? "Left today" : "Over today"}
+        </Text>
+        {dayLabel ? (
+          <View style={[styles.pill, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
+            <Text variant="label" style={{ color: colors.primary }}>
+              {dayLabel}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <PressableScale onPress={() => router.push("/gap")} accessibilityRole="button" accessibilityLabel="Open ways to close the gap">
+        <NumberUnit value={formatInt(Math.abs(kcalLeft))} unit="kcal" variant="display-xl" color="ink" unitColor="ink" />
+      </PressableScale>
+      <Text variant="body" color="ink">
+        {sub}
+      </Text>
+      <View style={styles.heroBar}>
+        <ProgressBar progress={targets.kcal > 0 ? consumed.kcal / targets.kcal : 0} color={colors.ink} track="rgba(0,0,0,0.12)" accessibilityLabel="Calories eaten" />
+      </View>
       <View style={styles.stats}>
-        <Stat
-          label={kcalLeft >= 0 ? "kcal left" : "kcal over"}
-          value={formatInt(Math.abs(kcalLeft))}
-          sub={`of ${formatInt(targets.kcal)}`}
-          color={colors.dataKcal}
-          onPress={() => router.push("/gap")}
-          a11y={`${formatInt(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? "left" : "over"}. Open ways to close the gap`}
-        />
-        <Stat
-          label="g protein left"
-          value={formatInt(proteinLeft)}
-          sub={`of ${formatInt(targets.proteinG)} g`}
-          color={colors.dataProtein}
-          onPress={() => router.push("/gap")}
-          a11y={`${formatInt(proteinLeft)} grams protein left`}
-        />
-        <Stat
-          label="steps"
+        <HeroStat label="protein left" value={`${formatInt(proteinLeft)} g`} onPress={() => router.push("/gap")} a11y={`${formatInt(proteinLeft)} grams protein left of ${formatInt(targets.proteinG)}`} />
+        <HeroStat
+          label={targets.steps != null ? `of ${formatInt(targets.steps)} steps` : "steps"}
           value={consumed.steps === null ? "—" : formatInt(consumed.steps)}
-          sub={`of ${formatInt(targets.steps)}`}
-          color={colors.dataActivity}
           onPress={() => router.push("/activity/steps")}
           a11y={consumed.steps === null ? "Steps not connected. Open steps" : `${formatInt(consumed.steps)} steps`}
         />
-        <Stat
-          label="water"
-          value={`${glasses}/${waterGoal}`}
-          sub="tap to add"
-          color={colors.secondary}
-          onPress={onAddGlass}
-          a11y={`Water: ${glasses} of ${waterGoal} glasses. Add a glass`}
-        />
+        <HeroStat label="water · tap +1" value={`${glasses}/${waterGoal}`} onPress={onAddGlass} a11y={`Water: ${glasses} of ${waterGoal} glasses. Add a glass`} />
       </View>
       <PressableScale
         onPress={() => router.push("/day")}
         accessibilityRole="button"
         accessibilityLabel="See your full day"
-        style={[styles.footer, { borderTopColor: colors.outline }]}
+        style={[styles.footer, { borderTopColor: "rgba(0,0,0,0.15)" }]}
       >
-        <Text variant="label" color="textSecondary" style={styles.flex}>
-          Macros, meals, steps and past days
+        <Text variant="caption" color="ink" style={styles.flex} numberOfLines={2}>
+          {coverage ?? "Macros, meals, steps and past days"}
         </Text>
-        <Text variant="label" color="primaryText">
+        <Text variant="label" color="ink">
           Full day
         </Text>
-        <Icon name="chevron_right" size={16} color={colors.primaryText} />
+        <Icon name="chevron_right" size={16} color={colors.ink} />
       </PressableScale>
     </Card>
   );
@@ -238,74 +231,18 @@ export function NeedsYouRow({
   );
 }
 
-/** Today's meals in one card: what's logged (each with "+" to add to it), then a single row for the meal that's due. */
-export function TodayMeals({ meals, now }: { meals: readonly Meal[]; now: Date }) {
-  const { colors } = useTheme();
-  const logged = new Set(meals.map((m) => m.mealType));
-  const due = mealTypeForTime(now);
-  // The meal due now if it isn't logged yet, else the next unlogged one later in the day.
-  const next = !meals.length && !logged.has(due) ? due : null;
-  return (
-    <Card>
-      <Text variant="headline-sm" accessibilityRole="header" style={styles.mealsHead}>
-        Meals today
-      </Text>
-      {meals.length === 0 ? (
-        <Text variant="body" color="textSecondary">
-          Nothing logged yet.
-        </Text>
-      ) : (
-        meals.map((m) => {
-          const t = mealTotals(m);
-          return (
-            <PressableScale
-              key={m.id}
-              onPress={() => router.push({ pathname: "/log/meal/[id]", params: { id: m.id } })}
-              accessibilityRole="button"
-              accessibilityLabel={`${MEAL_LABEL[m.mealType]}, ${formatInt(t.kcal)} kcal`}
-              style={styles.mealRow}
-            >
-              <Text variant="label" style={styles.mealType}>
-                {MEAL_LABEL[m.mealType]}
-              </Text>
-              <Text variant="caption" color="textSecondary" numberOfLines={1} style={styles.flex}>
-                {m.items.map((i) => `${formatPortion(i.quantity, i.unit)} ${i.name}`).join(", ")}
-              </Text>
-              <Text variant="label" color="primaryText" tabular>
-                {`${formatInt(t.kcal)} kcal`}
-              </Text>
-              <AddToMealButton meal={m} />
-              <Button label="Edit" size="sm" variant="ghost" onPress={() => editMeal(m.userId, m)} />
-            </PressableScale>
-          );
-        })
-      )}
-      {next ? (
-        <PressableScale
-          onPress={() => router.push({ pathname: "/quick-log", params: { mealType: next } })}
-          accessibilityRole="button"
-          accessibilityLabel={`Log ${MEAL_LABEL[next].toLowerCase()}`}
-          style={[styles.mealRow, styles.mealNext, { borderTopColor: colors.outline }]}
-        >
-          <Icon name="add" size={16} color={colors.primaryText} />
-          <Text variant="label" color="primaryText" style={styles.flex}>
-            {`Log ${MEAL_LABEL[next].toLowerCase()}`}
-          </Text>
-        </PressableScale>
-      ) : null}
-    </Card>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   briefHead: { flexDirection: "row", alignItems: "center", gap: 12 },
   briefIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   briefLine: { marginTop: 12, marginBottom: 4 },
   briefCta: { marginTop: 16, gap: 4, alignItems: "stretch" },
-  stats: { flexDirection: "row", gap: 8 },
+  heroTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  pill: { paddingHorizontal: 10, paddingVertical: 4 },
+  heroBar: { marginTop: 12 },
+  stats: { flexDirection: "row", gap: 8, marginTop: 16 },
   stat: { flex: 1, gap: 2 },
-  statDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 4 },
+  statLabel: { opacity: 0.75 },
   footer: {
     flexDirection: "row",
     alignItems: "center",
@@ -316,8 +253,4 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   rowIcon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  mealsHead: { marginBottom: 8 },
-  mealRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
-  mealType: { width: 76 },
-  mealNext: { marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
 });

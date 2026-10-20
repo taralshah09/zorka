@@ -1,5 +1,5 @@
-// LA2/LA3 · Nudges that respect the day (docs/LIFE_PLAN.md "nudges.ts"): blocks, day types, the brief prompt, prep and
-// water refills. The P36 rules without blocks or a day type are unchanged (gap.domain.test.ts).
+// LA2/LA3 · Nudges that respect the day (docs/LIFE_PLAN.md "nudges.ts"): blocks, day types, the brief prompt and prep.
+// The P36 rules without blocks or a day type are unchanged (gap.domain.test.ts).
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_NUDGE_SETTINGS, MAX_LIFE_NUDGES_PER_DAY, planLifeNudges, planNudges, type NudgeFacts } from "../../shared/domain/nudges.js";
@@ -78,7 +78,7 @@ describe("planLifeNudges", () => {
     expect(planLifeNudges({ ...base, now: at(21, 5) })).toEqual([]);
   });
 
-  it("the brief prompt has its own switch; prep and refills follow the nudge switch", () => {
+  it("the brief prompt has its own switch; prep follows the nudge switch", () => {
     const prep = { kind: "prep" as const, at: at(21, 30), dayOffset: -1 as const, text: "Pack chana and a 1 L bottle" };
     const off = { ...base, settings: { ...base.settings, enabled: false }, tomorrowReminders: [prep] };
     expect(planLifeNudges(off).map((n) => n.kind)).toEqual(["brief_prompt"]);
@@ -88,17 +88,16 @@ describe("planLifeNudges", () => {
     ]);
   });
 
-  it("today's prep and refill reminders; quiet hours; at most 3 a day", () => {
+  it("today's prep reminders come first; quiet hours; at most 3 a day", () => {
     const todayReminders = [
       { kind: "prep" as const, at: at(18, 30), dayOffset: 0 as const, text: "Leaving soon" },
-      { kind: "water" as const, at: at(19), dayOffset: 0 as const, text: "Refill", code: "refill" },
-      { kind: "water" as const, at: at(20), dayOffset: 0 as const, text: "Top up", code: "top_up" },
+      { kind: "prep" as const, at: at(19), dayOffset: 0 as const, text: "Pack the bottle" },
       { kind: "prep" as const, at: at(22, 30), dayOffset: 0 as const, text: "Too late" },
     ];
     const tomorrowReminders = [{ kind: "prep" as const, at: at(21, 30), dayOffset: -1 as const, text: "Pack" }];
     const out = planLifeNudges({ ...base, todayReminders, tomorrowReminders });
     expect(out).toHaveLength(MAX_LIFE_NUDGES_PER_DAY);
-    expect(out.map((n) => n.kind)).toEqual(["prep", "brief_prompt", "prep"]);
+    expect(out.map((n) => [n.kind, n.minute])).toEqual([["prep", at(18, 30)], ["prep", at(19)], ["prep", at(21, 30)]]);
     expect(out.some((n) => n.minute >= at(22))).toBe(false);
   });
 });
