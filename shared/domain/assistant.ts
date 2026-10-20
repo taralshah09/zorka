@@ -30,7 +30,7 @@ export const ASSISTANT_SCREENS = [
 export type AssistantScreen = (typeof ASSISTANT_SCREENS)[number];
 
 /** What a question can be about. The facts for each come from code (assistantFacts.ts), never from the AI. */
-export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why"] as const;
+export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why", "meals"] as const;
 export type AskTopic = (typeof ASK_TOPICS)[number];
 
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ["walk", "run", "ride"];
@@ -50,6 +50,12 @@ export const QUESTION_MAX = 160;
 export const OPTION_MAX = 40;
 export const MAX_OPTIONS = 4;
 export const NOTE_MAX = 120;
+/** A routine's name (the routine editor's limit). */
+export const ROUTINE_NAME_MAX = 60;
+/** A routine exercise said without sets or reps ("bench, flys"): the routine editor's defaults. */
+export const ROUTINE_DEFAULT_SETS = 3;
+export const ROUTINE_DEFAULT_REPS = 10;
+export const ROUTINE_MAX_SETS = 10;
 export const WEIGHT_MIN_KG = 25;
 export const WEIGHT_MAX_KG = 300;
 /** A weigh-in this far from the last one is shown for approval rather than saved straight away. */
@@ -58,8 +64,10 @@ export const WEIGHT_JUMP_KG = 2;
 export const WATER_USUAL_MAX_GLASSES = 4;
 
 /** Saved records a voice delete may target, one at a time. Bulk deletes stay in the UI (Guardrails 4). */
-export const DELETE_TARGETS = ["meal", "water", "weight", "workout"] as const;
+export const DELETE_TARGETS = ["meal", "water", "weight", "workout", "reminder", "planned_meal"] as const;
 export type DeleteTarget = (typeof DELETE_TARGETS)[number];
+/** Targets that live ahead of today (a reminder, a planned meal), not records already eaten or done. */
+const AHEAD_TARGETS: ReadonlySet<DeleteTarget> = new Set(["reminder", "planned_meal"]);
 /** replace: the meal is now these foods · add: these foods join it · remove: the named food leaves it. */
 export const EDIT_MODES = ["replace", "add", "remove"] as const;
 export type EditMode = (typeof EDIT_MODES)[number];
@@ -74,17 +82,27 @@ export type AssistantAction =
   | { kind: "set_day"; dayType: DayType; date: string; note?: string }
   | { kind: "plan_meal"; span: string; mealType: MealType; date?: string }
   | { kind: "remind_me"; what: string; minute: number; date?: string }
-  | { kind: "ask"; topic: AskTopic; date?: string }
+  /** `mealType`: which meal "what should I have for dinner" or "what did I eat for lunch" is about. */
+  | { kind: "ask"; topic: AskTopic; date?: string; mealType?: MealType }
+  /** How to do an exercise, or exercises for a muscle: links to MuscleWiki pages from the exercise list (D38). */
+  | { kind: "exercise_ref"; span: string }
+  /** Saves a routine: `span` is the exercises with their sets and reps as said. Always approved first. */
+  | { kind: "create_routine"; name: string; span: string }
   /** Fixes action `index` of the previous turn with new words ("no, dal not dahl"). */
   | { kind: "correct"; index: number; span: string }
   | { kind: "undo" }
   /**
    * Deletes one saved record of today or yesterday: a meal (by type, else the latest), the last `glasses` of water,
-   * the day's weigh-in, or the day's latest workout. Always approved first; the phone names the record it found.
+   * the day's weigh-in, or the day's latest workout. Or one thing ahead (today to a week out): a reminder (`span`: its
+   * words, else the next one) or a planned meal (by type, else the next). Always approved first; the phone names the
+   * record it found.
    */
-  | { kind: "delete_entry"; target: DeleteTarget; mealType?: MealType; date?: string; glasses?: number }
-  /** Changes one saved meal of today or yesterday: its foods replaced, added to, or one removed. Approved first. */
-  | { kind: "edit_meal"; mode: EditMode; span: string; mealType?: MealType; date?: string; confidence: Confidence }
+  | { kind: "delete_entry"; target: DeleteTarget; mealType?: MealType; date?: string; glasses?: number; span?: string }
+  /**
+   * Changes one saved meal of today or yesterday: its foods replaced, added to, or one removed. Approved first.
+   * replace + `from`: only the foods matching `from` are swapped for `span` ("dal, not rajma").
+   */
+  | { kind: "edit_meal"; mode: EditMode; span: string; from?: string; mealType?: MealType; date?: string; confidence: Confidence }
   | { kind: "open"; screen: AssistantScreen }
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "out_of_scope" };
@@ -101,6 +119,8 @@ export const ACTION_KINDS: readonly ActionKind[] = [
   "plan_meal",
   "remind_me",
   "ask",
+  "exercise_ref",
+  "create_routine",
   "correct",
   "undo",
   "delete_entry",
@@ -270,9 +290,24 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
     }
     case "ask": {
       if (!oneOf(ASK_TOPICS, a.topic)) return fail("bad_value");
+      if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
       const bad = checkDate(date, ctx.today, -DATE_FUTURE_DAYS);
       if (bad) return fail(bad);
-      return { ok: true, action: { kind: "ask", topic: a.topic, date } };
+      // Only food questions are about one meal.
+      const mealType = a.topic === "what_to_eat" || a.topic === "meals" ? (a.mealType as MealType | undefined) : undefined;
+      return { ok: true, action: { kind: "ask", topic: a.topic, date, mealType } };
+    }
+    case "exercise_ref": {
+      const span = cleanText(a.span, OPTION_MAX * 2);
+      if (isReason(span)) return fail(span);
+      return { ok: true, action: { kind: "exercise_ref", span } };
+    }
+    case "create_routine": {
+      const name = cleanText(a.name, ROUTINE_NAME_MAX);
+      if (isReason(name)) return fail(name);
+      const span = cleanText(a.span, SPAN_MAX);
+      if (isReason(span)) return fail(span);
+      return { ok: true, action: { kind: "create_routine", name, span } };
     }
     case "correct": {
       const index = a.index;
@@ -287,7 +322,8 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
     case "delete_entry": {
       if (!oneOf(DELETE_TARGETS, a.target)) return fail("bad_value");
       if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
-      const bad = checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
+      const ahead = AHEAD_TARGETS.has(a.target);
+      const bad = ahead ? checkDate(date, ctx.today, 0) : checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
       if (bad) return fail(bad);
       let glasses: number | undefined;
       if (a.target === "water") {
@@ -295,19 +331,33 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
         glasses = a.glasses === undefined ? 1 : Math.round(a.glasses);
         if (glasses < 1 || glasses > WATER_LOG_MAX_GLASSES) return fail("bad_value");
       }
-      const mealType = a.target === "meal" ? (a.mealType as MealType | undefined) : undefined;
-      return { ok: true, action: { kind: "delete_entry", target: a.target, mealType, date, glasses } };
+      let span: string | undefined;
+      if (a.target === "reminder" && a.span !== undefined) {
+        const clean = cleanText(a.span, NOTE_MAX);
+        if (clean === "too_long" || clean === "bad_value") return fail(clean);
+        span = clean === "empty" ? undefined : clean;
+      }
+      const mealType = a.target === "meal" || a.target === "planned_meal" ? (a.mealType as MealType | undefined) : undefined;
+      return { ok: true, action: { kind: "delete_entry", target: a.target, mealType, date, glasses, span } };
     }
     case "edit_meal": {
       if (!oneOf(EDIT_MODES, a.mode)) return fail("bad_value");
       const span = cleanText(a.span, SPAN_MAX);
       if (isReason(span)) return fail(span);
+      let from: string | undefined;
+      if (a.from !== undefined) {
+        // Only a replace swaps out named foods; add and remove already name theirs in `span`.
+        if (a.mode !== "replace") return fail("bad_value");
+        const clean = cleanText(a.from, SPAN_MAX);
+        if (isReason(clean)) return fail(clean);
+        from = clean;
+      }
       if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
       const bad = checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
       if (bad) return fail(bad);
       return {
         ok: true,
-        action: { kind: "edit_meal", mode: a.mode, span, mealType: a.mealType as MealType | undefined, date, confidence: confidenceOf(a.confidence) },
+        action: { kind: "edit_meal", mode: a.mode, span, from, mealType: a.mealType as MealType | undefined, date, confidence: confidenceOf(a.confidence) },
       };
     }
     case "open":
@@ -341,8 +391,11 @@ export function tierFor(action: AssistantAction, ctx: TurnContext): Tier {
     case "clarify":
       return "ask";
     case "ask":
+    case "exercise_ref":
       return "answer";
     case "set_day":
+    // A routine is shown, exercise by exercise, before it's saved.
+    case "create_routine":
     // D92: anything that changes or deletes a saved record is shown before it happens.
     case "delete_entry":
     case "edit_meal":
@@ -666,8 +719,22 @@ export function localAskTopic(text: string): AskTopic | null {
   if (/\b(what s|whats|show|see) (my |the |today s |todays )?plan\b|\bplan (for )?today\b|\baaj ka plan\b/.test(t)) return "plan";
   if (/\bweek\b/.test(t) && /\b(how|my|this)\b/.test(t)) return "week";
   if (/\b(weight|trend)\b/.test(t) && /\b(how|what|trend|going)\b/.test(t)) return "trend";
-  if (/\bwhat (should|can) i eat\b|\bkya khau?n?\b|\bkya khana\b/.test(t)) return "what_to_eat";
+  if (/\bwhat did i (eat|have)\b|\bwhat have i (eaten|had)\b|\bwhat i (ate|had)\b|\bkya khaya\b/.test(t)) return "meals";
+  if (
+    /\bwhat (should|can|do) i (eat|have)\b|\bwhat to eat\b|\bsuggest\b.*\b(eat|meal|food|snack|dinner|lunch|breakfast)\b|\bkya khau?n?\b|\bkya khana\b/.test(t)
+  )
+    return "what_to_eat";
   if (/\b(how s|hows|how is|how am i doing)\b|\btoday s (numbers|progress)\b|\baaj kaisa\b|\bkitna (bacha|baaki)\b|\bhow much (is )?left\b/.test(t))
     return "today";
   return null;
+}
+
+/** The meal an offline food question names ("what should I have for dinner"), or none. */
+export function localMealType(text: string): MealType | undefined {
+  const t = normalize(text);
+  if (/\b(breakfast|nashta|nashte)\b/.test(t)) return "breakfast";
+  if (/\b(lunch|dopahar)\b/.test(t)) return "lunch";
+  if (/\b(snack|snacks)\b/.test(t)) return "snack";
+  if (/\b(dinner|raat)\b/.test(t)) return "dinner";
+  return undefined;
 }

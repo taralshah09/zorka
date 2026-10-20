@@ -41,6 +41,13 @@ export function removePlannedMeal(userId: string, date: string, id: string) {
   write(userId, date, plannedMeals(userId, date).filter((p) => p.id !== id));
 }
 
+/** Undo for a dropped plan: it comes back as it was, unless that slot has been planned again since. */
+export function restorePlannedMeal(userId: string, date: string, meal: PlannedMeal) {
+  const list = plannedMeals(userId, date);
+  if (list.some((p) => p.mealType === meal.mealType)) return;
+  write(userId, date, [...list, meal]);
+}
+
 export function usePlannedMeals(userId: string | null, date: string): PlannedMeal[] {
   const v = useVersion((s) => s.v);
   return useMemo(() => {

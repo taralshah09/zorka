@@ -1,8 +1,8 @@
 // S22 · Train hub (P19, routines P21). Layout from the S22 export (D11), reshaped by UX T3/T5 into one decision and
-// one list: title + this-week pill, the lime hero (resume what's open, else the routine that's up next, else an empty
-// workout), My routines (tap starts, pencil edits), Record (Run · Walk · Ride), Recent (3, merged gym + GPS, "See
-// all"), and the exercise library. While a workout is running, the hero and that routine's card show pause, not play,
-// so the Train tab says "this is running" when you come back to it.
+// one list: title + this-week pill, the lime hero (today's workout once something's logged, else an open GPS
+// activity, else the routine that's up next, else "log today's workout"), My routines (tap adds it to today, pencil
+// edits), Strength analytics, Record (Run · Walk · Ride), Recent (3, merged gym + GPS, "See all"), and the exercise
+// library. One workout per day: a routine already in today's workout shows a check.
 import { router } from "expo-router";
 import { ScrollView, StyleSheet, View } from "react-native";
 
@@ -13,10 +13,10 @@ import { Badge, Button, Card, EmptyState, ListItem, PressableScale, Screen, Text
 import { AppHeader } from "@/features/shell/AppHeader";
 import { activeActivity, useActivityClock } from "@/features/activity/store";
 import { getExercise, useExercises } from "@/features/gym/catalog";
-import { formatElapsed, formatVolume, relativeDay, weekDays } from "@/features/gym/format";
+import { formatVolume, relativeDay, weekDays } from "@/features/gym/format";
 import { RecentCard, useRecentTraining } from "@/features/gym/recent";
 import { nextRoutine, startRoutine, useRoutines, type Routine } from "@/features/gym/routines";
-import { startWorkout, useActiveWorkout, useWorkoutsBetween, workoutStats } from "@/features/gym/store";
+import { useActiveWorkout, useWorkoutsBetween, workoutStats } from "@/features/gym/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { CATEGORY_LABEL } from "@shared/domain/gym";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
@@ -62,33 +62,30 @@ export default function Train() {
   const upNext = routines.find((r) => r.id === preferencesFor(userId).routineId) ?? nextRoutine(routines, lastDone);
   const resting = restChosen(userId, localDate(now));
 
-  const openEmpty = () => {
+  // One workout per day: everything goes into today's, made on first use.
+  const openToday = () => {
     if (!userId) return;
-    if (!active) startWorkout(userId);
-    router.push("/train/workout");
+    if (active?.exercises.length) router.push("/train/workout");
+    else router.push({ pathname: "/train/exercises", params: { mode: "workout" } });
   };
 
   const start = (r: Routine) => {
     if (!userId) return;
-    if (active) {
-      // The running routine just opens; another one has to wait for it.
-      if (active.routineId !== r.id) toast({ kind: "info", message: "Finish or discard the open workout first" });
-      router.push("/train/workout");
-      return;
-    }
     startRoutine(userId, r, (id) => getExercise(userId, id));
+    toast({ kind: "info", message: `${r.name} added to today's workout` });
     router.push("/train/workout");
   };
 
-  const hero: Hero = active
+  const todaySets = active ? workoutStats(active).sets : 0;
+  const hero: Hero = active?.exercises.length
     ? {
-        eyebrow: "In progress",
-        title: "Resume workout",
-        body: `${active.name} · ${formatElapsed(active.startedAt, now.getTime())} · ${workoutStats(active).sets} sets done`,
-        pill: "Running",
-        fab: "pause",
-        label: `Resume ${active.name}`,
-        onPress: openEmpty,
+        eyebrow: "Today",
+        title: "Today's workout",
+        body: `${active.name} · ${todaySets} ${todaySets === 1 ? "set" : "sets"} logged · log more any time today`,
+        pill: "Saved as you go",
+        fab: "add",
+        label: `Open ${active.name}`,
+        onPress: openToday,
       }
     : openActivity
       ? {
@@ -113,13 +110,13 @@ export default function Train() {
             onPress: () => router.push({ pathname: "/train/prepare", params: { routineId: upNext.id } }),
           }
         : {
-            eyebrow: "Workout",
-            title: "Choose a starter session",
-            body: "See a prepared set list for your equipment, or start an empty workout.",
-            pill: "Rest timer ready",
+            eyebrow: "Today",
+            title: "Log today's workout",
+            body: "Pick your exercises and log sets whenever you do them. It all goes into one workout for the day.",
+            pill: "Saved as you go",
             fab: "add",
-            label: "Choose a starter session",
-            onPress: () => router.push("/train/prepare"),
+            label: "Log today's workout",
+            onPress: openToday,
           };
 
   return (
@@ -165,14 +162,15 @@ export default function Train() {
           </View>
         </View>
       </Card>
-      {!active && !openActivity ? <Card>
+      {!active?.exercises.length && !openActivity ? <Card>
         <Text variant="body">{resting ? "Rest chosen for today. No workout has been recorded." : "Rest is an available choice."}</Text>
         <Button label={resting ? "Change rest choice" : "Rest today"} variant="ghost" onPress={() => userId && chooseRest(userId, localDate(now), !resting)} />
         {upNext ? <Button label="See shorter session" variant="secondary" onPress={() => router.push({ pathname: "/train/prepare", params: { routineId: upNext.id } })} /> : null}
       </Card> : null}
-      {!active && !openActivity && upNext ? (
-        <Button label="Start empty workout" icon="add" variant="ghost" onPress={openEmpty} />
+      {!active?.exercises.length && !openActivity && upNext ? (
+        <Button label="Add exercises to today" icon="add" variant="ghost" onPress={openToday} />
       ) : null}
+      <Button label="Strength analytics" icon="show_chart" variant="ghost" onPress={() => router.push("/train/analytics")} />
 
       <View style={styles.sectionHead}>
         <View style={styles.sectionTitle}>
@@ -197,7 +195,7 @@ export default function Train() {
               routine={r}
               lastDone={lastDone.get(r.id)}
               tint={i % 2 ? "orchid" : "lilac"}
-              running={active?.routineId === r.id ? formatElapsed(active.startedAt, now.getTime()) : null}
+              running={active?.routineId === r.id && active.exercises.length ? "In today's workout" : null}
               onStart={() => start(r)}
             />
           ))}
@@ -295,7 +293,7 @@ function RoutineCard({
   routine: Routine;
   lastDone: string | undefined;
   tint: "lilac" | "orchid";
-  /** Elapsed time while this routine's workout is open; null otherwise. */
+  /** Set when this routine is already in today's workout; null otherwise. */
   running: string | null;
   onStart: () => void;
 }) {
@@ -310,8 +308,8 @@ function RoutineCard({
       accessibilityRole="button"
       accessibilityLabel={
         running
-          ? `${routine.name} is running, ${running}. Open it`
-          : `Start ${routine.name}, ${routine.exercises.length} exercises`
+          ? `${routine.name} is in today's workout. Open it`
+          : `Add ${routine.name} to today, ${routine.exercises.length} exercises`
       }
       style={[styles.routine, { backgroundColor: bg, borderRadius: radius.xl }]}
     >
@@ -341,10 +339,10 @@ function RoutineCard({
       </View>
       <View style={styles.routineFoot}>
         <Text variant="caption" color="ink">
-          {running ? `In progress · ${running}` : lastDone ? `Last: ${relativeDay(lastDone)}` : "Not done yet"}
+          {running ? running : lastDone ? `Last: ${relativeDay(lastDone)}` : "Not done yet"}
         </Text>
         <View style={[styles.play, { backgroundColor: colors.ink, borderRadius: radius.full }]}>
-          <Icon name={running ? "pause" : "play_arrow"} size={24} color={bg} filled />
+          <Icon name={running ? "check" : "add"} size={24} color={bg} filled />
         </View>
       </View>
     </PressableScale>

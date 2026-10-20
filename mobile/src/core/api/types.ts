@@ -337,7 +337,11 @@ export type AssistantResolution =
   | { kind: "meal"; items: AssistantParsedItem[]; mealType: MealType }
   | { kind: "workout"; sets: GymParsedSet[]; usual: boolean }
   | { kind: "day"; facts: DayFacts; dayType: DayType; question: string | null }
-  | { kind: "answer"; topic: AskTopic; date: string; known: boolean; lines: string[]; numbers: number[]; card: AnswerCard | null };
+  | { kind: "answer"; topic: AskTopic; date: string; known: boolean; lines: string[]; numbers: number[]; card: AnswerCard | null }
+  /** exercise_ref: exercises from the user's list with their MuscleWiki page (url null: a custom one without a link). */
+  | { kind: "exercises"; query: string; category: ExerciseCategory | null; matches: { id: string; name: string; category: ExerciseCategory; url: string | null }[] }
+  /** create_routine: matched exercises with their targets, and the words that matched none. */
+  | { kind: "routine"; name: string; exercises: { exercise: Exercise; targetSets: number; targetReps: number | null }[]; unmatched: string[] };
 
 export type AssistantTurnItem = {
   action: AssistantAction;

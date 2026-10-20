@@ -336,6 +336,82 @@ describe("POST /assistant/turn", () => {
     expect((res.body as AssistantTurnResult).items[0]).toMatchObject({ tier: "approve", line: "Take rice out of lunch? Tap OK." });
   });
 
+  it("lets a correction restate the whole entry: the corrected action's words count as heard", async () => {
+    const res = await turn(
+      { router: { actions: [{ kind: "correct", index: 0, span: "2 roti and dal" }] } },
+      body({ text: "no, dal not dahl", turn: { previous: { actions: [{ kind: "log_meal", span: "2 roti and dahl" }] } } }),
+    );
+    expect((res.body as AssistantTurnResult).items[0]).toMatchObject({ action: { kind: "correct", span: "2 roti and dal" } });
+    expect((res.body as AssistantTurnResult).dropped).toEqual([]);
+  });
+
+  it("drops a swap whose `from` food was never said", async () => {
+    const res = await turn(
+      { router: { actions: [{ kind: "edit_meal", mode: "replace", span: "dal", from: "paneer", mealType: "lunch" }] } },
+      body({ text: "lunch was dal" }),
+    );
+    expect((res.body as AssistantTurnResult).dropped).toEqual([{ kind: "edit_meal", reason: "span_not_heard" }]);
+  });
+
+  it("finds an exercise's MuscleWiki page, or exercises for a muscle, from the exercise list", async () => {
+    const one = await turn({ router: { actions: [{ kind: "exercise_ref", span: "bench press" }] } }, body({ text: "how do I do bench press" }));
+    const item = (one.body as AssistantTurnResult).items[0]!;
+    expect(item.tier).toBe("answer");
+    expect(item.resolved?.kind).toBe("exercises");
+    if (item.resolved?.kind !== "exercises") return;
+    expect(item.resolved.matches).toHaveLength(1);
+    expect(item.resolved.matches[0]!.url).toMatch(/^https:\/\/musclewiki\.com\/exercise\/[a-z0-9-]+$/);
+    expect(item.line).toMatch(/on MuscleWiki/);
+
+    const legs = await turn({ router: { actions: [{ kind: "exercise_ref", span: "quads" }] } }, body({ text: "exercises for quads" }));
+    const list = (legs.body as AssistantTurnResult).items[0]!;
+    expect(list.resolved?.kind === "exercises" && list.resolved.category).toBe("legs");
+    expect(list.resolved?.kind === "exercises" && list.resolved.matches.length).toBe(3);
+    expect(list.resolved?.kind === "exercises" && list.resolved.matches.every((m) => m.category === "legs" && m.url)).toBe(true);
+
+    const none = await turn({ router: { actions: [{ kind: "exercise_ref", span: "zxqv" }] } }, body({ text: "how do I do a zxqv" }));
+    expect((none.body as AssistantTurnResult).items[0]).toMatchObject({ resolved: { kind: "exercises", matches: [] } });
+  });
+
+  it("builds a routine from spoken exercises, with targets, for approval", async () => {
+    const span = "bench 3 sets of 8, rows and planks";
+    const res = await turn(
+      {
+        router: { actions: [{ kind: "create_routine", name: "Push day", span }] },
+        gym: {
+          [span]: [
+            { exercise: "bench press", weight: null, unit: null, reps: 8, seconds: null, meters: null, sets: 3, confidence: 0.95 },
+            { exercise: "barbell row", weight: null, unit: null, reps: null, seconds: null, meters: null, sets: 1, confidence: 0.9 },
+            { exercise: "plank", weight: null, unit: null, reps: null, seconds: null, meters: null, sets: 1, confidence: 0.9 },
+            { exercise: "qqqq", weight: null, unit: null, reps: null, seconds: null, meters: null, sets: 1, confidence: 0.9 },
+          ],
+        },
+      },
+      body({ text: `make a push day routine: ${span}` }),
+    );
+    const item = (res.body as AssistantTurnResult).items[0]!;
+    expect(item.tier).toBe("approve");
+    expect(item.resolved?.kind).toBe("routine");
+    if (item.resolved?.kind !== "routine") return;
+    expect(item.resolved.exercises.map((e) => [e.targetSets, e.targetReps])).toEqual([
+      [3, 8],
+      [3, 10],
+      [3, null],
+    ]);
+    expect(item.resolved.unmatched).toEqual(["qqqq"]);
+    expect(item.line).toMatch(/^Save "Push day": .+\? Tap OK\. I couldn't find "qqqq"\.$/);
+  });
+
+  it("answers what to eat for a named meal from that meal's ideas", async () => {
+    const facts = { ...FACTS, eatFor: "lunch", eatBySlot: { dinner: [{ name: "Moong dal chilla", kcal: 280, proteinG: 18 }] } };
+    const res = await turn(
+      { router: { actions: [{ kind: "ask", topic: "what_to_eat", mealType: "dinner" }] } },
+      { ...body({ text: "what should I have for dinner" }), facts },
+    );
+    const item = (res.body as AssistantTurnResult).items[0]!;
+    expect(item.resolved?.kind === "answer" && item.resolved.lines[1]).toBe("Good fits for dinner: Moong dal chilla (280 kcal, 18 g protein).");
+  });
+
   it("validates the body and the user", async () => {
     const { app } = testApp({ ai: fakeAi([GROQ], scripted({})) });
     const both = await request(app).post(`/v1/users/${RIYA}/assistant/turn`).send(body({ text: "x", extra: { audioBase64: AUDIO, mimeType: "audio/mp4" } }));

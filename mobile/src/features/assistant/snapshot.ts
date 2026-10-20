@@ -7,6 +7,7 @@ import { cachedSteps } from "@/features/activity/health";
 import { dayCredit } from "@/features/activity/store";
 import { dayContext } from "@/features/coach/chat";
 import { recentFoods } from "@/features/food/catalog";
+import { eatOptionsFor } from "@/features/gap/eat";
 import type { DayGap } from "@/features/gap/gap";
 import { recentWorkouts } from "@/features/gym/store";
 import { lifeContext } from "@/features/life/context";
@@ -27,10 +28,11 @@ import { readCachedProfile } from "@/features/users/api";
 import { glassesOn } from "@/features/water/store";
 import type { AssistantFactsInput } from "@shared/domain/assistantFacts";
 import { freshness } from "@shared/domain/evidence";
-import { localDate, sumMacros } from "@shared/domain/food";
+import { localDate, MEAL_TYPES, mealTypeForTime, sumMacros, type MealType } from "@shared/domain/food";
+import { SLOT_MINUTE } from "@shared/domain/planDay";
 import { computeGap, minuteOfDay } from "@shared/domain/gap";
 import { activeFacts } from "@shared/domain/memory";
-import { trendSeries, weeklyTrendChange } from "@shared/domain/progress";
+import { addDays, trendSeries, weeklyTrendChange } from "@shared/domain/progress";
 import { computeStreak } from "@shared/domain/streak";
 import { clampWaterGoal } from "@shared/domain/water";
 import { weekDates } from "@shared/domain/week";
@@ -101,9 +103,33 @@ export function buildSnapshot(userId: string, nowMs = Date.now()): TurnSnapshot 
   const intake = new Map(completeIntake(userId, week[0]!, today).map((d) => [d.date, d]));
   const trained = new Set((plan?.week.days ?? []).filter((d) => d.date < today && d.train).map((d) => d.date));
   const todayRow = plan?.week.days.find((d) => d.date === today);
-  // Food ideas: the next planned meal's ranked options (the planner already fitted them to what's left).
-  const nextMeal = plan?.items.find((i) => i.kind === "meal" && i.at >= minuteOfDay(now) - 30);
-  const eat = nextMeal?.kind === "meal" ? nextMeal.options : [];
+  // Food ideas for each meal still to come: the plan's ranked options for that slot (the planner already fitted them
+  // to what's left), else the food ideas screen's own ranking for the gap. The next one answers "what should I eat?".
+  const loggedSlots = new Set(meals.map((m) => m.mealType));
+  const minute = minuteOfDay(now);
+  const nextMeal = plan?.items.find((i) => i.kind === "meal" && i.at >= minute - 30 && !loggedSlots.has(i.slot));
+  const later = MEAL_TYPES.filter((m) => !loggedSlots.has(m) && SLOT_MINUTE[m] >= minute - 90);
+  const eatFor: MealType = nextMeal?.kind === "meal" ? nextMeal.slot : (later[0] ?? mealTypeForTime(now));
+  const slots = [...new Set([eatFor, ...later])];
+  const ranked = eatOptionsFor({ userId, today, gap, diet: profile.diet ?? "non_veg", mealTypes: slots });
+  const idea = (o: { name: string; macros: { kcal: number; proteinG: number } }) => ({
+    name: clip(o.name, 80),
+    kcal: Math.round(o.macros.kcal),
+    proteinG: Math.round(o.macros.proteinG),
+  });
+  const eatBySlot: Partial<Record<MealType, ReturnType<typeof idea>[]>> = {};
+  for (const slot of slots) {
+    const planned = plan?.items.find((i) => i.kind === "meal" && i.slot === slot);
+    const options = planned?.kind === "meal" && planned.options.length ? planned.options : (ranked[slot] ?? []);
+    eatBySlot[slot] = options.slice(0, 5).map(idea);
+  }
+  const yesterday = addDays(today, -1);
+  const mealFacts = [...mealsForDay(userId, yesterday).map((m) => ({ m, date: yesterday })), ...meals.map((m) => ({ m, date: today }))]
+    .slice(-16)
+    .map(({ m, date }) => {
+      const t = mealTotals(m);
+      return { date, mealType: m.mealType, text: clip(m.items.map((i) => i.name.toLowerCase()).join(", "), 160), kcal: Math.round(t.kcal), proteinG: Math.round(t.proteinG) };
+    });
 
   const factsInput: AssistantFactsInput = {
     today,
@@ -151,7 +177,10 @@ export function buildSnapshot(userId: string, nowMs = Date.now()): TurnSnapshot 
           why: [...(todayRow ? adjustLines(todayRow, today) : []), ...whyText(plan.why)].slice(0, 4).map((w) => clip(w, 160)),
         }
       : null,
-    eat: eat.slice(0, 5).map((o) => ({ name: clip(o.name, 80), kcal: Math.round(o.macros.kcal), proteinG: Math.round(o.macros.proteinG) })),
+    eat: eatBySlot[eatFor] ?? [],
+    eatFor,
+    eatBySlot,
+    meals: mealFacts,
   };
 
   return {

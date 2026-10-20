@@ -5,6 +5,7 @@
 // `lines` as they are (template phrasing, D98).
 import type { AskTopic } from "./assistant.js";
 import type { DayType } from "./dayType.js";
+import type { MealType } from "./food.js";
 
 /** A day counts as on target when calories land within this share of the target… */
 export const ON_TARGET_KCAL_SHARE = 0.1;
@@ -43,8 +44,18 @@ export type AssistantFactsInput = {
   week?: { days: WeekFactDay[]; sessionsDone: number; sessionsTarget: number } | null;
   trend?: { trendKg: number | null; weeklyChangeKg: number | null; weighIns: number } | null;
   plan?: { dayType: DayType; kcal: number; proteinG: number; steps: number | null; items: string[]; why: string[] } | null;
-  eat?: { name: string; kcal: number; proteinG: number }[] | null;
+  /** Food ideas for the next meal: the plan's ranked options, else the food ideas screen's ranking for what's left. */
+  eat?: EatIdea[] | null;
+  /** Which meal `eat` is for. Missing from an older app. */
+  eatFor?: MealType | null;
+  /** Ideas for each meal still to come today ("what should I have for dinner"). */
+  eatBySlot?: Partial<Record<MealType, EatIdea[]>> | null;
+  /** Meals logged today and yesterday, oldest first ("what did I have for lunch?"). */
+  meals?: LoggedMealFact[] | null;
 };
+
+export type EatIdea = { name: string; kcal: number; proteinG: number };
+export type LoggedMealFact = { date: string; mealType: MealType; text: string; kcal: number; proteinG: number };
 
 export type AnswerCard =
   | { kind: "today_rings"; kcal: [number, number]; proteinG: [number, number]; steps: [number, number] | null }
@@ -221,27 +232,68 @@ function planAnswer(input: AssistantFactsInput, why: boolean): AnswerFacts {
   };
 }
 
-function eatAnswer(input: AssistantFactsInput): AnswerFacts {
-  const options = (input.eat ?? []).slice(0, 3);
+const MEAL_NAME: Record<MealType, string> = { breakfast: "breakfast", lunch: "lunch", snack: "a snack", dinner: "dinner" };
+const MEAL_TITLE: Record<MealType, string> = { breakfast: "Breakfast", lunch: "Lunch", snack: "Snack", dinner: "Dinner" };
+
+/** "What should I eat (for dinner)?": what's left today, then up to three ideas that fit it, with their numbers. */
+function eatAnswer(input: AssistantFactsInput, mealType?: MealType): AnswerFacts {
   const t = input.day;
   const proteinLeft = Math.max(0, r(t.targetProteinG - t.eatenProteinG));
   const kcalLeft = r(t.targetKcal - t.eatenKcal);
-  if (!options.length) return unknown("what_to_eat", input.today, "I don't have food ideas for right now. Try the food ideas screen.");
+  const slot = mealType ?? input.eatFor ?? null;
+  const options = ((mealType ? input.eatBySlot?.[mealType] : null) ?? (mealType && mealType !== input.eatFor ? [] : input.eat) ?? []).slice(0, 3);
+  const forWords = slot ? ` for ${MEAL_NAME[slot]}` : "";
+  if (kcalLeft <= 0) {
+    // At or over the day's calories: no ideas to eat more, and no "make it up" either.
+    const lines = [`You've had ${fmt(t.eatenKcal)} of ${fmt(t.targetKcal)} kcal today, so you're at your target.`];
+    const numbers = [t.eatenKcal, t.targetKcal];
+    if (proteinLeft > 0) {
+      lines.push(`If you're hungry, keep it light and high in protein: ${fmt(proteinLeft)} g protein is still to go.`);
+      numbers.push(proteinLeft);
+    }
+    return { topic: "what_to_eat", date: input.today, known: true, lines, numbers: numbers.map(r), card: null };
+  }
+  const left = `You have ${fmt(kcalLeft)} kcal and ${fmt(proteinLeft)} g protein left.`;
+  if (!options.length)
+    return { ...unknown("what_to_eat", input.today, `${left} I don't have ideas${forWords} yet; the food ideas screen can search more.`), numbers: [kcalLeft, proteinLeft] };
   return {
     topic: "what_to_eat",
     date: input.today,
     known: true,
-    lines: [
-      `You have ${fmt(Math.max(0, kcalLeft))} kcal and ${fmt(proteinLeft)} g protein left.`,
-      `Good fits: ${options.map((o) => `${o.name} (${fmt(o.proteinG)} g protein)`).join(", ")}.`,
-    ],
-    numbers: [Math.max(0, kcalLeft), proteinLeft, ...options.flatMap((o) => [r(o.kcal), r(o.proteinG)])],
+    lines: [left, `Good fits${forWords}: ${options.map((o) => `${o.name} (${fmt(o.kcal)} kcal, ${fmt(o.proteinG)} g protein)`).join(", ")}.`],
+    numbers: [kcalLeft, proteinLeft, ...options.flatMap((o) => [r(o.kcal), r(o.proteinG)])],
     card: null,
   };
 }
 
-/** The facts for one question. `date` defaults to today; only `today` reads another day ("and yesterday?"). */
-export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: string): AnswerFacts {
+/** "What did I have for lunch / today / yesterday?": the logged meals in words, from the phone's own records. */
+function mealsAnswer(input: AssistantFactsInput, date: string, mealType?: MealType): AnswerFacts {
+  const day = date === input.today ? "today" : weekdayName(date);
+  const meals = (input.meals ?? []).filter((m) => m.date === date && (!mealType || m.mealType === mealType));
+  if (!input.meals) return unknown("meals", date, "I can't see your meals from here. Open the day view.");
+  if (!meals.length) return unknown("meals", date, `You haven't logged ${mealType ? MEAL_NAME[mealType] : "any meals"} ${day}.`);
+  const numbers: number[] = [];
+  const parts = meals.map((m) => {
+    numbers.push(r(m.kcal), r(m.proteinG));
+    // Food names are the user's own records; a number in one ("7 Up") is a fact too.
+    for (const n of m.text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []) numbers.push(Number(n.replace(/,/g, "")));
+    return `${MEAL_TITLE[m.mealType]}: ${m.text} (${fmt(m.kcal)} kcal)`;
+  });
+  const lines = [`${parts.slice(0, 4).join("; ")}.`];
+  if (meals.length > 1) {
+    const kcal = meals.reduce((s, m) => s + m.kcal, 0);
+    const protein = meals.reduce((s, m) => s + m.proteinG, 0);
+    lines.push(`That's ${fmt(kcal)} kcal and ${fmt(protein)} g protein ${day}.`);
+    numbers.push(r(kcal), r(protein));
+  }
+  return { topic: "meals", date, known: true, lines, numbers, card: null };
+}
+
+/**
+ * The facts for one question. `date` defaults to today; `today` and `meals` read another day ("and yesterday?").
+ * `mealType` narrows a food question to one meal.
+ */
+export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: string, mealType?: MealType): AnswerFacts {
   switch (topic) {
     case "today":
       return todayAnswer(input, date ?? input.today);
@@ -256,7 +308,9 @@ export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: 
     case "why":
       return planAnswer(input, true);
     case "what_to_eat":
-      return eatAnswer(input);
+      return eatAnswer(input, mealType);
+    case "meals":
+      return mealsAnswer(input, date ?? input.today, mealType);
   }
 }
 
@@ -264,4 +318,4 @@ export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: 
 export const answerText = (a: AnswerFacts): string => a.lines.slice(0, 3).join(" ");
 
 /** D98 · Topics the phone can answer offline from local data. Others wait for the server. */
-export const OFFLINE_TOPICS: readonly AskTopic[] = ["today", "streak", "plan", "why", "week", "trend"];
+export const OFFLINE_TOPICS: readonly AskTopic[] = ["today", "streak", "plan", "why", "week", "trend", "what_to_eat", "meals"];

@@ -14,6 +14,9 @@ Catalogue (JSON objects, "kind" first):
 - {"kind":"log_water","glasses":N} Water only. One glass = 250 ml, so "a litre" = 4, "half a litre" = 2.
 - {"kind":"log_workout","span":"<their words>","date"?} Gym sets or a session they did ("3 sets bench 40 kg",
   "did chest day", "did my usual").
+- {"kind":"create_routine","name":"<routine name>","span":"<their exercise words>"} Make or save a workout ROUTINE
+  (a plan to reuse, not sets they did): "make a push day routine: bench 3x10, incline press, flys". name = the name
+  they gave ("Push day"), else a short one from the muscles ("Legs"); span copies the exercises with any sets/reps.
 - {"kind":"start_activity","activity":"walk|run|ride"} / {"kind":"stop_activity"} Start or stop GPS recording now.
 - {"kind":"log_weight","kg":N,"date"?} A body weight they stated (pounds → kg).
 - {"kind":"set_day","dayType":"normal|busy|away|travel|late_work|feast|exam|sick|rest","date":"YYYY-MM-DD","note":"<their words>"}
@@ -21,18 +24,29 @@ Catalogue (JSON objects, "kind" first):
   "Make today lighter" or a calorie number they ask for → the day type that fits ("sick" if unwell, else "rest").
 - {"kind":"plan_meal","span":"<food words>","mealType":"...","date"?} Food they WILL eat later ("I'll have paneer for dinner").
 - {"kind":"remind_me","what":"<short>","time":"HH:MM","date"?} A reminder at a clock time (24-hour).
-- {"kind":"ask","topic":"today|week|trend|streak|what_to_eat|plan|why","date"?} A question about their own progress.
-  today = how today is going (with "date" for another day, "and yesterday?"); week = this week; trend = weight trend;
-  what_to_eat = food ideas now; plan = today's plan; why = why the plan or a number changed.
-- {"kind":"correct","index":N,"span":"<the right words>"} Fixing the PREVIOUS turn's meal or workout ("no, I said dal
-  not dahl", "make it two rotis"). index = position of that action in PREVIOUS (0 first).
+- {"kind":"ask","topic":"today|week|trend|streak|what_to_eat|plan|why|meals","date"?,"mealType"?} A question about
+  their own progress. today = how today is going (with "date" for another day, "and yesterday?"); week = this week;
+  trend = weight trend; what_to_eat = what to eat next, food ideas, "suggest something" (mealType when they name the
+  meal: "what should I have for dinner"); plan = today's plan; why = why the plan or a number changed; meals = what
+  they already ate ("what did I have for lunch", "what did I eat yesterday": mealType and date when said).
+- {"kind":"exercise_ref","span":"<exercise or muscle words>"} How to do an exercise, its form, a demo or reference, or
+  exercises for a muscle ("how do I do a romanian deadlift", "show me bench press form", "exercises for quads").
+  span copies the exercise or muscle words.
+- {"kind":"correct","index":N,"span":"<the whole entry, fixed>"} Fixing the PREVIOUS turn's meal or workout ("no, I
+  said dal not dahl", "make it two rotis"). index = position of that action in PREVIOUS (0 first). span is that
+  action's PREVIOUS span with the fix applied, keeping what they didn't change ("2 roti and dahl" + "no, dal not
+  dahl" → "2 roti and dal").
 - {"kind":"undo"} Take back the previous turn.
-- {"kind":"delete_entry","target":"meal|water|weight|workout","mealType"?,"date"?,"glasses"?} Delete ONE thing already
-  saved today or yesterday (see LOGGED): a meal ("delete my lunch"; mealType when they name it), the last glasses of
-  water ("remove that water", glasses = how many), the weigh-in, or the workout.
-- {"kind":"edit_meal","mode":"replace|add|remove","span":"<their food words>","mealType"?,"date"?} Change ONE saved
-  meal (see LOGGED): replace = "my breakfast was actually 2 idli" (span = the new foods), add = "add a chai to lunch"
-  (span = what to add), remove = "take the rice out of lunch" (span = the food to remove).
+- {"kind":"delete_entry","target":"meal|water|weight|workout|reminder|planned_meal","mealType"?,"date"?,"glasses"?,"span"?}
+  Delete ONE thing (see LOGGED): a meal saved today or yesterday ("delete my lunch"; mealType when they name it), the
+  last glasses of water ("remove that water", glasses = how many), the weigh-in, the workout, a reminder ("cancel my
+  reminder", span = its words if they say them: "cancel the snacks reminder" → "snacks"), or a planned meal ("I won't
+  have the paneer for dinner", "drop tomorrow's lunch plan": mealType, date).
+- {"kind":"edit_meal","mode":"replace|add|remove","span":"<their food words>","from"?,"mealType"?,"date"?} Change ONE
+  saved meal (see LOGGED): replace = the whole meal was something else, "my breakfast was actually 2 idli" (span = the
+  new foods); replace with "from" = ONE food in it changes and the rest stays: another food, "it was dal not rajma in
+  lunch" (span "dal", from "rajma"), or another amount, "lunch had 2 rotis not 3" (span "2 rotis", from "rotis");
+  add = "add a chai to lunch" (span = what to add); remove = "take the rice out of lunch" (span = the food to remove).
 - {"kind":"open","screen":"gap|move|quick_log|log_weight|progress|checkin|steps|record_walk|day|share_day|plan_tomorrow|menu_scan"}
   Only when they ask to SEE a screen.
 - {"kind":"clarify","question":"<short>","options":["..."]} Only when they clearly want to log something but the key part
@@ -76,6 +90,20 @@ SAID: lunch mein rice nahi tha, hata do
 {"actions":[{"kind":"edit_meal","mode":"remove","span":"rice","mealType":"lunch"}]}
 SAID: actually breakfast was 2 idli and sambar
 {"actions":[{"kind":"edit_meal","mode":"replace","span":"2 idli and sambar","mealType":"breakfast"}]}
+SAID: lunch mein rajma nahi dal tha
+{"actions":[{"kind":"edit_meal","mode":"replace","span":"dal","from":"rajma","mealType":"lunch"}]}
+SAID: what should I eat next
+{"actions":[{"kind":"ask","topic":"what_to_eat"}]}
+SAID: suggest something for dinner
+{"actions":[{"kind":"ask","topic":"what_to_eat","mealType":"dinner"}]}
+SAID: what did I have for lunch yesterday
+{"actions":[{"kind":"ask","topic":"meals","mealType":"lunch","date":"<YESTERDAY>"}]}
+SAID: how do I do bulgarian split squats
+{"actions":[{"kind":"exercise_ref","span":"bulgarian split squats"}]}
+SAID: create a routine called pull day with lat pulldown 3 sets of 12, seated row and bicep curls
+{"actions":[{"kind":"create_routine","name":"Pull day","span":"lat pulldown 3 sets of 12, seated row and bicep curls"}]}
+SAID: cancel my reminder
+{"actions":[{"kind":"delete_entry","target":"reminder"}]}
 SAID: delete everything I logged today
 {"actions":[{"kind":"out_of_scope"}]}
 SAID: what's the capital of Peru
@@ -108,4 +136,6 @@ export function routerUser(body: AssistantTurnBody, said: string): string {
   return lines.filter(Boolean).join("\n");
 }
 
-export const ROUTER_SYSTEM_FOR = (today: string) => ROUTER_SYSTEM.replaceAll("<TODAY>", today);
+const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+
+export const ROUTER_SYSTEM_FOR = (today: string) => ROUTER_SYSTEM.replaceAll("<TODAY>", today).replaceAll("<YESTERDAY>", dayBefore(today));

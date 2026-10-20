@@ -1,5 +1,5 @@
 // Floating dock (TabBar) — brand §7.1 and §8. Icon-only pill, 68 high, 16 above the nav inset.
-// The tabs, with the (+) after `fabAfter` of them (AB7: Today · Train · Progress · (+); the Assistant Bar sits above). Active tab = 52 px dock-active-bg circle with an ink FILL-1
+// The tabs, with the (+) after `fabAfter` of them (Today · Train · (+) · Progress · Zorka; the bubble floats over every app). Active tab = 52 px dock-active-bg circle with an ink FILL-1
 // icon. (+) = 56 px dock-fab-bg circle. Every tab has an accessibility label. No haptics on nav (§9).
 import type { BottomTabBarProps } from "expo-router/tabs";
 import { Pressable, StyleSheet, View } from "react-native";

@@ -5,6 +5,7 @@
 // card as JSON (overlayView.ts). Writes are local-first; a push is tried after each one.
 import NetInfo from "@react-native-community/netinfo";
 import { File } from "expo-file-system";
+import { Linking } from "react-native";
 
 import { getDb } from "@/core/storage/db";
 import { flush } from "@/core/sync/engine";
@@ -14,7 +15,7 @@ import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
 import { ZorkaOverlay } from "../../../modules/zorka-overlay";
 import { goTo } from "./navigate";
-import { patchFor, sayFor, overlayView, type OverlayView } from "./overlayView";
+import { linkFor, patchFor, sayFor, overlayView, type OverlayView } from "./overlayView";
 import { buildSnapshot } from "./snapshot";
 import { answerAsk, approve, dismiss, getTurn, undo } from "./thread";
 import { flushQueue, phoneContext, queuedTurns, runTurn, type TurnOutcome } from "./turn";
@@ -72,6 +73,12 @@ async function runAction(userId: string, data: Extract<OverlayTaskData, { op: "a
   if (!found || !item) return render(message("That one's gone. Open Zorka to see your thread.", "idle", "zorka://coach"));
   const said = sayFor(item, data.action);
   if (said) return runWords(userId, { text: said }, online);
+  const link = linkFor(item, data.action);
+  if (link) {
+    // The browser, not Zorka: a MuscleWiki page opens over whatever app the bubble is on. The card stays as it was.
+    await Linking.openURL(link).catch(() => render(message("I couldn't open the browser. Try again from Zorka.", "shake")));
+    return render(overlayView(data.messageId, found.turn, today));
+  }
   const patch = patchFor(item, data.action);
   if (patch) await answerAsk(data.messageId, data.index, patch, phoneContext(userId, today));
   else if (data.action === "ok") await approve(data.messageId, data.index);

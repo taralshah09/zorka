@@ -13,9 +13,7 @@ import { activeActivity } from "@/features/activity/store";
 import { nutritionOf } from "@/features/food/catalog";
 import { getExercise } from "@/features/gym/catalog";
 import {
-  activeWorkout,
   deleteWorkout,
-  finishWorkout,
   getWorkout,
   removeExercise,
   removeSet,
@@ -23,6 +21,7 @@ import {
   startWorkout,
   workoutsBetween,
 } from "@/features/gym/store";
+import { deleteRoutine, getRoutine, saveRoutine, type RoutineExercise } from "@/features/gym/routines";
 import { applyVoiceSets } from "@/features/gym/voice";
 import { briefFor, deleteBrief, saveBrief } from "@/features/life/briefs";
 import { rememberAlias } from "@/features/life/memory";
@@ -34,6 +33,7 @@ import {
   deviatesFromUsual,
   factsForDayType,
   planTurn,
+  ROUTINE_MAX_SETS,
   stricterTier,
   tierFor,
   type AssistantAction,
@@ -42,13 +42,15 @@ import {
   type TurnContext,
 } from "@shared/domain/assistant";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
+import { addDays } from "@shared/domain/progress";
 import { portion, UNIT_LABEL, type MealType } from "@shared/domain/food";
 import { matchScore, MIN_MATCH_SCORE, normalize } from "@shared/domain/foodMatch";
+import { cleanMusclewikiUrl } from "@shared/domain/gym";
 import { clockText } from "@shared/domain/memory";
 import { SLOT_MINUTE } from "@shared/domain/planDay";
 import { goTo } from "./navigate";
-import { planMeal, removePlannedMeal } from "./plannedMeals";
-import { cancelReminder, scheduleReminder } from "./reminders";
+import { plannedMeals, planMeal, removePlannedMeal, restorePlannedMeal } from "./plannedMeals";
+import { cancelReminder, scheduleReminder, upcomingReminders } from "./reminders";
 import { requestReplan } from "./replan";
 import type { ItemState, StoredItem, StoredTurn, UndoToken } from "./types";
 
@@ -94,6 +96,8 @@ const KIND_ICON: Record<AssistantAction["kind"], IconName> = {
   plan_meal: "restaurant",
   remind_me: "notifications",
   ask: "auto_awesome",
+  exercise_ref: "fitness_center",
+  create_routine: "fitness_center",
   correct: "edit",
   undo: "undo",
   delete_entry: "delete",
@@ -142,6 +146,12 @@ export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, us
     }
     const state: ItemState = tier === "ask" ? "asking" : tier === "answer" ? "answered" : tier === "refuse" ? "refused" : "pending";
     const checked: StoredItem = { ...item, tier, state, receipt: item.line, undo: null };
+    // Only musclewiki.com pages are ever opened from a turn (D38), whatever the server sent.
+    if (checked.resolved?.kind === "exercises")
+      checked.resolved = {
+        ...checked.resolved,
+        matches: checked.resolved.matches.slice(0, 3).map((m) => ({ ...m, url: m.url ? cleanMusclewikiUrl(m.url) : null })),
+      };
     if (userId && (item.action.kind === "delete_entry" || item.action.kind === "edit_meal")) return withTarget(checked, userId, ctx.today);
     return checked;
   });
@@ -160,8 +170,45 @@ function targetMeal(userId: string, date: string, mealType: MealType | undefined
 }
 
 /** The saved items a "remove the rice" means. */
-const matching = (meal: Meal, words: string) =>
-  meal.items.filter((i) => normalize(i.name).includes(normalize(words)) || matchScore(words, { name: i.name, aliases: [] }) >= MIN_MATCH_SCORE);
+const matching = (items: readonly MealItem[], words: string) =>
+  items.filter((i) => normalize(i.name).includes(normalize(words)) || matchScore(words, { name: i.name, aliases: [] }) >= MIN_MATCH_SCORE);
+
+/**
+ * A saved meal's items after an edit_meal replace. With `from`, only the foods it names make way and the new ones take
+ * their place, the rest stays ("dal, not rajma"; "2 rotis, not 3" is from "roti"). Without it the new foods are the
+ * whole meal ("it was 2 idli"). null: `from` names nothing in the meal.
+ */
+export function mergedItems(saved: readonly MealItem[], next: readonly MealItem[], from?: string): MealItem[] | null {
+  if (!from) return [...next];
+  const gone = new Set(matching(saved, from).map((i) => i.id));
+  if (!gone.size) return null;
+  const at = saved.findIndex((i) => gone.has(i.id));
+  const kept = saved.filter((i) => !gone.has(i.id));
+  return [...kept.slice(0, at), ...next, ...kept.slice(at)];
+}
+
+const itemsText = (items: readonly MealItem[]) =>
+  `${items.map((i) => `${i.name.toLowerCase()}, ${qty(i.quantity)} ${UNIT_LABEL[i.unit][i.quantity === 1 ? "one" : "many"]}`).join("; ")} (${r(items.reduce((s, i) => s + i.kcal, 0))} kcal)`;
+
+/** The planned meal a "drop the dinner plan" means: that type, else the soonest, from `date` on (or that day only). */
+function targetPlanned(userId: string, today: string, date: string | undefined, mealType: MealType | undefined) {
+  const days = date ? [date] : [today, addDays(today, 1)];
+  for (const d of days) {
+    const found = plannedMeals(userId, d)
+      .filter((p) => !mealType || p.mealType === mealType)
+      .sort((a, b) => SLOT_MINUTE[a.mealType] - SLOT_MINUTE[b.mealType])[0];
+    if (found) return { date: d, meal: found };
+  }
+  return null;
+}
+
+/** The reminder a "cancel my reminder" means: one whose words match, else the next one (on `date`, when said). */
+function targetReminder(userId: string, date: string | undefined, words: string | undefined) {
+  const list = upcomingReminders(userId).filter((x) => !date || x.date === date);
+  if (!words) return list[0] ?? null;
+  const w = normalize(words);
+  return list.find((x) => normalize(x.what).includes(w) || matchScore(words, { name: x.what, aliases: [] }) >= MIN_MATCH_SCORE) ?? null;
+}
 
 /**
  * Finds the saved record now, names it in the receipt ("Delete lunch: poha (324 kcal)?") and keeps its id, so OK
@@ -170,6 +217,18 @@ const matching = (meal: Meal, words: string) =>
 function withTarget(item: StoredItem, userId: string, today: string): StoredItem {
   const a = item.action;
   if (item.state === "refused") return item;
+  if (a.kind === "delete_entry" && a.target === "reminder") {
+    const rem = targetReminder(userId, a.date, a.span);
+    if (!rem) return failed(item, a.span ? `I can't find a reminder about "${a.span}".` : "You don't have any reminders set.");
+    const day = rem.date === today ? "today" : rem.date === addDays(today, 1) ? "tomorrow" : rem.date;
+    return { ...item, targetId: rem.id, receipt: `Cancel "${rem.what}" at ${clockText(rem.minute)} ${day}?` };
+  }
+  if (a.kind === "delete_entry" && a.target === "planned_meal") {
+    const found = targetPlanned(userId, today, a.date, a.mealType);
+    if (!found) return failed(item, `There's no ${a.mealType ? `${a.mealType} ` : ""}plan to drop.`);
+    const day = found.date === today ? "today" : found.date === addDays(today, 1) ? "tomorrow" : found.date;
+    return { ...item, targetId: found.meal.id, receipt: `Drop ${found.meal.text} from ${MEAL_TITLE[found.meal.mealType].toLowerCase()} ${day}?` };
+  }
   if (a.kind === "delete_entry") {
     const date = a.date ?? today;
     const when = dayWord(date, today);
@@ -200,24 +259,25 @@ function withTarget(item: StoredItem, userId: string, today: string): StoredItem
     if (!meal) return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when} to change.`);
     const name = MEAL_TITLE[meal.mealType].toLowerCase();
     if (a.mode === "remove") {
-      const gone = matching(meal, a.span);
+      const gone = matching(meal.items, a.span);
       if (!gone.length) return failed(item, `Your ${name} doesn't have ${a.span}: ${mealText(meal)}.`);
       return { ...item, targetId: meal.id, receipt: `Take ${gone.map((i) => i.name.toLowerCase()).join(", ")} out of ${name} (${when})?` };
     }
     const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : "";
     if (!words) return failed(item, `I couldn't find "${a.span}".`);
-    return {
-      ...item,
-      targetId: meal.id,
-      receipt: a.mode === "add" ? `Add ${words} to ${name} (${when})?` : `Change ${name} (${when}) from ${mealText(meal)} to ${words}?`,
-    };
+    if (a.mode === "add") return { ...item, targetId: meal.id, receipt: `Add ${words} to ${name} (${when})?` };
+    const next = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
+    const merged = mergedItems(meal.items, next, a.from);
+    if (!merged) return failed(item, `Your ${name} doesn't have ${a.from}: ${mealText(meal)}.`);
+    return { ...item, targetId: meal.id, receipt: `Change ${name} (${when}) from ${mealText(meal)} to ${itemsText(merged)}?` };
   }
   return item;
 }
 
 /** What's saved today and yesterday, for the router (turn.logged): which meal "delete my lunch" means. */
 export function loggedForServer(userId: string, today: string, yesterday: string) {
-  const out: { date: string; kind: "meal" | "water" | "weight" | "workout"; mealType?: MealType; text: string }[] = [];
+  type Logged = { date: string; kind: "meal" | "water" | "weight" | "workout" | "reminder" | "planned_meal"; mealType?: MealType; text: string };
+  const out: Logged[] = [];
   for (const date of [today, yesterday]) {
     for (const m of mealsForDay(userId, date)) out.push({ date, kind: "meal", mealType: m.mealType, text: m.items.map((i) => i.name).join(", ").slice(0, 160) });
     const glasses = glassesOn(userId, date);
@@ -226,7 +286,12 @@ export function loggedForServer(userId: string, today: string, yesterday: string
     if (w) out.push({ date, kind: "weight", text: `${w.kg} kg` });
     for (const wk of workoutsBetween(userId, date, date)) out.push({ date, kind: "workout", text: wk.name.slice(0, 160) });
   }
-  return out.slice(-16);
+  // What's ahead, so "cancel my reminder" and "drop the dinner plan" name the right one.
+  const ahead: Logged[] = [];
+  for (const date of [today, addDays(today, 1)])
+    for (const p of plannedMeals(userId, date)) ahead.push({ date, kind: "planned_meal", mealType: p.mealType, text: p.text.slice(0, 160) });
+  for (const x of upcomingReminders(userId).slice(0, 4)) ahead.push({ date: x.date, kind: "reminder", text: `${clockText(x.minute)} ${x.what}`.slice(0, 160) });
+  return [...out.slice(-(24 - ahead.length)), ...ahead];
 }
 
 export const usualPortions = (userId: string): Usual => lastPortions(userId);
@@ -363,31 +428,63 @@ function logWorkout(item: StoredItem, ctx: RunContext): StoredItem {
   // Approved (or sure) sets are logged as done; the user has seen them.
   const sets = item.resolved.sets.map((s) => ({ ...s, uncertain: false }));
   const lookup = (id: string) => getExercise(ctx.userId, id);
-  const open = activeWorkout(ctx.userId);
-  if (open) {
-    const before = new Set(open.exercises.flatMap((e) => [e.id, ...e.sets.map((s) => s.id)]));
-    const { added, unmatched } = applyVoiceSets(ctx.userId, open.id, sets, lookup);
-    if (!added.length) return failed(item, `I couldn't match ${unmatched.join(", ") || "those sets"}.`);
-    const after = getWorkout(open.id)!;
-    const exerciseIds = after.exercises.filter((e) => !before.has(e.id)).map((e) => e.id);
-    const setIds = after.exercises.flatMap((e) => e.sets.filter((s) => !before.has(s.id)).map((s) => s.id));
-    return done(item, `Added ${added.map((a) => a.exerciseName).join(", ")} to ${after.name}.`, {
-      kind: "sets",
-      workoutId: open.id,
-      setIds,
-      exerciseIds,
-    });
-  }
-  const w = startWorkout(ctx.userId, { name: "Logged with Zorka" });
-  const { added, unmatched } = applyVoiceSets(ctx.userId, w.id, sets, lookup);
-  const finished = added.length ? finishWorkout(w.id) : null;
-  if (!finished) {
-    const left = getWorkout(w.id);
-    if (left && left.status === "active") deleteWorkout(left);
+  // One workout per day: the sets join the workout of the day they were done ("yesterday"), whenever that is.
+  const date = item.action.kind === "log_workout" ? item.action.date : undefined;
+  const day = startWorkout(ctx.userId, { at: date && date !== ctx.today ? noonOf(date) : new Date() });
+  const before = new Map(day.exercises.flatMap((e) => e.sets.map((s) => [s.id, s.done] as const)));
+  const exercisesBefore = new Set(day.exercises.map((e) => e.id));
+  const { added, unmatched } = applyVoiceSets(ctx.userId, day.id, sets, lookup);
+  if (!added.length) {
+    const left = getWorkout(day.id);
+    if (left && !left.exercises.length) deleteWorkout(left);
     return failed(item, `I couldn't match ${unmatched.join(", ") || "those sets"}.`);
   }
+  const after = getWorkout(day.id)!;
+  // Undo takes back exactly what this turn ticked: new rows, and empty rows it filled in.
+  const exerciseIds = after.exercises.filter((e) => !exercisesBefore.has(e.id)).map((e) => e.id);
+  const setIds = after.exercises.flatMap((e) => e.sets.filter((s) => s.done && before.get(s.id) !== true).map((s) => s.id));
   reactMascot("happy");
-  return done(item, `Logged ${added.map((a) => a.exerciseName).join(", ")}.`, { kind: "workout", workoutId: finished.id });
+  return done(item, `Added ${added.map((a) => a.exerciseName).join(", ")} to ${date && date !== ctx.today ? `${dayWord(date, ctx.today)}'s` : "today's"} workout.`, {
+    kind: "sets",
+    workoutId: day.id,
+    setIds,
+    exerciseIds,
+  });
+}
+
+/**
+ * create_routine on OK: saved like one built in the routine editor (synced, on the Train tab). Each exercise is this
+ * phone's own copy when it has one (a custom exercise's latest name and type), else the server's match.
+ */
+function createRoutine(item: StoredItem, ctx: RunContext): StoredItem {
+  const a = item.action;
+  if (a.kind !== "create_routine" || item.resolved?.kind !== "routine" || !item.resolved.exercises.length)
+    return failed(item, "There were no exercises to save.");
+  const exercises: RoutineExercise[] = item.resolved.exercises.map(({ exercise, targetSets, targetReps }) => {
+    const e = getExercise(ctx.userId, exercise.id) ?? exercise;
+    const counted = e.type === "weight_reps" || e.type === "reps";
+    return {
+      id: randomUUID(),
+      exerciseId: e.id,
+      name: e.name,
+      type: e.type,
+      category: e.category,
+      targetSets: Math.max(1, Math.min(ROUTINE_MAX_SETS, Math.round(targetSets))),
+      targetReps: counted && targetReps !== null ? Math.max(1, Math.round(targetReps)) : null,
+    };
+  });
+  const saved = saveRoutine(ctx.userId, { name: a.name, exercises });
+  reactMascot("happy");
+  return done(item, `Saved "${saved.name}" with ${exercises.length} exercise${exercises.length === 1 ? "" : "s"}. It's on the Train tab.`, {
+    kind: "routine",
+    routineId: saved.id,
+  });
+}
+
+/** Noon of a local date: safely inside that day whatever the time zone. */
+function noonOf(date: string): Date {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y!, m! - 1, d!, 12, 0);
 }
 
 function setDay(item: StoredItem, ctx: RunContext): StoredItem {
@@ -416,6 +513,7 @@ async function correct(item: StoredItem, ctx: RunContext): Promise<StoredItem> {
     const meal = getMeal(target.mealId);
     const items = item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x);
     if (!meal || !items.length) return failed(item, `I couldn't find "${a.span}".`);
+    // The router restates the whole entry with the fix in it ("2 roti and dal"), so it's the meal as a whole.
     saveMeal({ ...meal, items });
     // D97: "dahl" → Dal tadka is remembered for next time.
     const before = target.action.kind === "log_meal" ? target.action.span : null;
@@ -453,9 +551,23 @@ async function undoPrevious(item: StoredItem, ctx: RunContext): Promise<StoredIt
   return done(item, `Undid: ${undone.join("; ")}.`, null);
 }
 
-function deleteEntry(item: StoredItem, ctx: RunContext): StoredItem {
+async function deleteEntry(item: StoredItem, ctx: RunContext): Promise<StoredItem> {
   const a = item.action;
   if (a.kind !== "delete_entry") return item;
+  if (a.target === "reminder") {
+    const rem = upcomingReminders(ctx.userId).find((x) => x.id === item.targetId);
+    if (!rem) return failed(item, "That reminder already went off or was cancelled.");
+    await cancelReminder(rem.id, ctx.userId);
+    return done(item, `Cancelled "${rem.what}" at ${clockText(rem.minute)}.`, { kind: "reminder_restore", reminder: rem });
+  }
+  if (a.target === "planned_meal") {
+    const found = [ctx.today, addDays(ctx.today, 1), ...(a.date ? [a.date] : [])]
+      .map((d) => ({ date: d, meal: plannedMeals(ctx.userId, d).find((p) => p.id === item.targetId) }))
+      .find((x) => x.meal);
+    if (!found?.meal) return failed(item, "That plan is already gone.");
+    removePlannedMeal(ctx.userId, found.date, found.meal.id);
+    return done(item, `Dropped ${found.meal.text} from ${MEAL_WORD[found.meal.mealType]}.`, { kind: "planned_restore", date: found.date, meal: found.meal });
+  }
   const date = a.date ?? ctx.today;
   const when = dayWord(date, ctx.today);
   if (a.target === "meal") {
@@ -489,7 +601,7 @@ function editMeal(item: StoredItem, ctx: RunContext): StoredItem {
   if (!meal) return failed(item, "That meal is gone.");
   const name = MEAL_TITLE[meal.mealType].toLowerCase();
   if (a.mode === "remove") {
-    const gone = new Set(matching(meal, a.span).map((i) => i.id));
+    const gone = new Set(matching(meal.items, a.span).map((i) => i.id));
     if (!gone.size) return failed(item, `Your ${name} doesn't have ${a.span}.`);
     const left = meal.items.filter((i) => !gone.has(i.id));
     // Nothing left: the meal goes (Undo brings it back whole).
@@ -502,9 +614,12 @@ function editMeal(item: StoredItem, ctx: RunContext): StoredItem {
   }
   const added = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
   if (!added.length) return failed(item, `I couldn't find "${a.span}".`);
-  saveMeal({ ...meal, items: a.mode === "add" ? [...meal.items, ...added] : added });
+  const items = a.mode === "add" ? [...meal.items, ...added] : mergedItems(meal.items, added, a.from);
+  if (!items) return failed(item, `Your ${name} doesn't have ${a.from}.`);
+  saveMeal({ ...meal, items });
   const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : a.span;
-  return done(item, a.mode === "add" ? `Added ${words} to ${name}.` : `Changed ${name} to ${words}.`, { kind: "meal_edit", previous: meal });
+  if (a.mode === "add") return done(item, `Added ${words} to ${name}.`, { kind: "meal_edit", previous: meal });
+  return done(item, a.from ? `Swapped ${a.from} for ${words} in ${name}.` : `Changed ${name} to ${itemsText(items)}.`, { kind: "meal_edit", previous: meal });
 }
 
 /** Runs one action (tier do, or approved). Never throws: a failure becomes a failed receipt. */
@@ -548,7 +663,7 @@ export async function runItem(item: StoredItem, ctx: RunContext): Promise<Stored
         return setDay(item, ctx);
       case "remind_me": {
         const date = a.date ?? ctx.today;
-        const set = await scheduleReminder(a.what, date, a.minute);
+        const set = await scheduleReminder(a.what, date, a.minute, ctx.userId);
         if ("error" in set) return failed(item, set.error);
         return done(item, `I'll remind you to ${a.what} at ${clockText(a.minute)}.`, { kind: "reminder", id: set.id });
       }
@@ -564,7 +679,10 @@ export async function runItem(item: StoredItem, ctx: RunContext): Promise<Stored
         goTo(SCREEN_HREF[a.screen]);
         return done(item, item.line, null);
       case "ask":
+      case "exercise_ref":
         return { ...item, state: "answered" };
+      case "create_routine":
+        return createRoutine(item, ctx);
       case "clarify":
         return { ...item, state: "asking" };
       case "out_of_scope":
@@ -611,6 +729,9 @@ export async function undoToken(userId: string, token: UndoToken): Promise<void>
         for (const s of we.sets) if (token.setIds.includes(s.id)) removeSet(userId, we, s.id);
       const after = getWorkout(token.workoutId);
       for (const we of after?.exercises ?? []) if (token.exerciseIds.includes(we.id) && !we.sets.length) removeExercise(we);
+      // The day had nothing else: the workout goes too, here and on the server.
+      const left = getWorkout(token.workoutId);
+      if (left && !left.exercises.length) deleteWorkout(left);
       return;
     }
     case "brief": {
@@ -626,8 +747,22 @@ export async function undoToken(userId: string, token: UndoToken): Promise<void>
       removePlannedMeal(userId, token.date, token.id);
       return;
     case "reminder":
-      await cancelReminder(token.id);
+      await cancelReminder(token.id, userId);
       return;
+    case "reminder_restore": {
+      // Set again under a new id; one whose time has passed in the meantime just stays gone.
+      const { what, date, minute } = token.reminder;
+      await scheduleReminder(what, date, minute, userId);
+      return;
+    }
+    case "planned_restore":
+      restorePlannedMeal(userId, token.date, token.meal);
+      return;
+    case "routine": {
+      const r = getRoutine(token.routineId);
+      if (r) deleteRoutine(r);
+      return;
+    }
     case "meal_restore":
       saveMeal(token.meal);
       return;

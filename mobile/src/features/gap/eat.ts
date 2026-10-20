@@ -172,6 +172,51 @@ function detailFor(o: RankedOption, action: EatAction): string | null {
   return o.timesLogged > 1 ? `Logged ${o.timesLogged}× this month` : null;
 }
 
+function rankFor(userId: string, history: History, gap: Gap, diet: DietPref, mealType: MealType, nearby: readonly NearbyOption[]): EatOption[] {
+  if (gap.remaining.kcal <= 0) return [];
+  const r = gap.remaining;
+  const focus =
+    gap.focus ??
+    (gap.budget.proteinG > 0 && r.proteinG / gap.budget.proteinG > r.kcal / Math.max(1, gap.budget.kcal)
+      ? "protein"
+      : "kcal");
+  const ctx: RankContext = {
+    remaining: r,
+    budgetKcal: gap.budget.kcal,
+    focus,
+    diet,
+    mealType,
+    cuisineShare: history.cuisineShare,
+  };
+  const actions = new Map(history.actions);
+  const candidates = [
+    ...history.usual,
+    ...homeCandidates(localFoods(userId), history, ctx, actions),
+    ...nearbyCandidates(nearby, actions),
+  ];
+  return rankEatOptions(candidates, ctx).map((o) => {
+    const action = actions.get(o.id)!;
+    return { ...o, action, detail: detailFor(o, action) };
+  });
+}
+
+/**
+ * The same ranking without React, for the assistant's "what should I eat (for dinner)?" (the bubble runs headless).
+ * One history read serves every meal asked for.
+ */
+export function eatOptionsFor(input: {
+  userId: string;
+  today: string;
+  gap: Gap;
+  diet: DietPref;
+  mealTypes: readonly MealType[];
+}): Partial<Record<MealType, EatOption[]>> {
+  const history = readHistory(input.userId, input.today, input.diet);
+  const out: Partial<Record<MealType, EatOption[]>> = {};
+  for (const m of input.mealTypes) out[m] = rankFor(input.userId, history, input.gap, input.diet, m, []);
+  return out;
+}
+
 /** 3–5 ranked options for the gap (D56). Empty while over or when nothing fits. */
 export function useEatOptions(input: {
   userId: string | null;
@@ -192,31 +237,8 @@ export function useEatOptions(input: {
     return userId ? readHistory(userId, today, profileDiet) : null;
   }, [userId, today, profileDiet, mealsV, foodsV]);
 
-  return useMemo(() => {
-    if (!userId || !gap || !history || gap.remaining.kcal <= 0) return [];
-    const r = gap.remaining;
-    const focus =
-      gap.focus ??
-      (gap.budget.proteinG > 0 && r.proteinG / gap.budget.proteinG > r.kcal / Math.max(1, gap.budget.kcal)
-        ? "protein"
-        : "kcal");
-    const ctx: RankContext = {
-      remaining: r,
-      budgetKcal: gap.budget.kcal,
-      focus,
-      diet,
-      mealType,
-      cuisineShare: history.cuisineShare,
-    };
-    const actions = new Map(history.actions);
-    const candidates = [
-      ...history.usual,
-      ...homeCandidates(localFoods(userId), history, ctx, actions),
-      ...nearbyCandidates(nearby, actions),
-    ];
-    return rankEatOptions(candidates, ctx).map((o) => {
-      const action = actions.get(o.id)!;
-      return { ...o, action, detail: detailFor(o, action) };
-    });
-  }, [userId, gap, history, diet, mealType, nearby]);
+  return useMemo(
+    () => (!userId || !gap || !history ? [] : rankFor(userId, history, gap, diet, mealType, nearby)),
+    [userId, gap, history, diet, mealType, nearby],
+  );
 }

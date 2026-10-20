@@ -18,7 +18,6 @@ import {
   useRoutineDraft,
   type RoutineExercise,
 } from "@/features/gym/routines";
-import { activeWorkout } from "@/features/gym/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { TYPE_LABEL } from "@shared/domain/gym";
 
@@ -53,12 +52,8 @@ export default function RoutineEditor() {
     return true;
   };
 
+  // The routine's exercises join today's workout, whatever's already logged today.
   const start = () => {
-    if (activeWorkout(userId)) {
-      toast({ kind: "info", message: "Finish or discard the open workout first" });
-      router.replace("/train/workout");
-      return;
-    }
     if (draft.dirty && !save()) return;
     const r = getRoutine(useRoutineDraft.getState().id ?? "");
     if (!r) return;

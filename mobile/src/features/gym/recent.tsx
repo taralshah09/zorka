@@ -9,7 +9,7 @@ import { Badge, Card, Text } from "@/core/ui";
 import { recentActivities, routePoints, useActivityVersion } from "@/features/activity/store";
 import { ACTIVITY_LABEL, clockLabel, routeStats, type Activity, type ActivityKind } from "@shared/domain/activity";
 import { ExerciseTile } from "./components";
-import { formatDuration, formatVolume, relativeDay } from "./format";
+import { formatVolume, relativeDay } from "./format";
 import { useRecentWorkouts, workoutStats, type Workout } from "./store";
 
 export type RecentItem =
@@ -51,7 +51,7 @@ function SessionCard({ workout }: { workout: Workout }) {
             {workout.name}
           </Text>
           <Text variant="caption" color="textSecondary">
-            {`${relativeDay(workout.startedAt)} · ${formatDuration(stats.durationS)} · ${formatVolume(stats.volumeKg)}`}
+            {`${relativeDay(workout.startedAt)} · ${stats.sets} ${stats.sets === 1 ? "set" : "sets"} · ${formatVolume(stats.volumeKg)}`}
           </Text>
         </View>
         {stats.prs.length ? (

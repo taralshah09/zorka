@@ -60,6 +60,7 @@
     "test:pa": "node scripts/test-pa.cjs",
     "test:life": "node scripts/test-life.cjs",
     "test:assistant": "node scripts/test-assistant.cjs",
+    "test:gym": "node scripts/test-gym.cjs",
     "check:activity-config": "node scripts/check-activity-config.cjs",
     "lint": "expo lint",
     "format": "prettier --write src scripts",

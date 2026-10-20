@@ -4,6 +4,8 @@ import type { AssistantTurnItem, AssistantTurnResult } from "@/core/api/types";
 import type { Brief } from "@/features/life/briefs";
 import type { Meal } from "@/features/meals/store";
 import type { WeightLog } from "@/features/progress/weights";
+import type { PlannedMeal } from "./plannedMeals";
+import type { Reminder } from "./reminders";
 
 /** How to take one action back. Plain data, so Undo still works from the thread after the app restarts. */
 export type UndoToken =
@@ -22,7 +24,11 @@ export type UndoToken =
   | { kind: "meal_restore"; meal: Meal }
   | { kind: "water_add"; day: string; glasses: number }
   | { kind: "weight_restore"; weight: WeightLog }
-  | { kind: "workout_restore"; workoutId: string };
+  | { kind: "workout_restore"; workoutId: string }
+  | { kind: "reminder_restore"; reminder: Reminder }
+  /** create_routine: the routine it saved. */
+  | { kind: "routine"; routineId: string }
+  | { kind: "planned_restore"; date: string; meal: PlannedMeal };
 
 /**
  * done: it ran (Undo available) · pending: waits for OK · asking: waits for a choice · answered: a question answered ·

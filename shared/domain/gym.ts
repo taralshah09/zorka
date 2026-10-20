@@ -36,6 +36,77 @@ export const MUSCLEWIKI_BROWSE_URL = `${MUSCLEWIKI_ORIGIN}/exercises`;
 
 export const musclewikiUrl = (slug: string) => `${MUSCLEWIKI_ORIGIN}/exercise/${slug}`;
 
+/** Words for each category, for "exercises for my quads" (the assistant's exercise_ref). "Arms" is two categories. */
+const CATEGORY_WORDS: Record<ExerciseCategory, readonly string[]> = {
+  chest: ["chest", "pecs", "pec", "pectorals"],
+  back: ["back", "lats", "lat", "traps", "upper back", "lower back"],
+  shoulders: ["shoulders", "shoulder", "delts", "delt", "deltoids"],
+  biceps: ["biceps", "bicep"],
+  triceps: ["triceps", "tricep"],
+  legs: ["legs", "leg", "quads", "quad", "hamstrings", "hamstring", "glutes", "glute", "calves", "calf", "thighs", "thigh"],
+  abs: ["abs", "ab", "core", "stomach", "belly", "obliques"],
+  cardio: ["cardio"],
+};
+
+// ── Strength over time (Train analytics) ─────────────────────────────────────────────────────────
+
+/** The ranges the strength chart and its comparison read: 3, 6 and 12 months back. */
+export const TREND_MONTHS = [3, 6, 12] as const;
+export type TrendMonths = (typeof TREND_MONTHS)[number];
+/** A "then" value is a session within this many days of the date it stands for (no session then: no comparison). */
+export const TREND_MATCH_DAYS = 31;
+
+/** `date` (YYYY-MM-DD) moved back `months` calendar months, clamped to the month's last day (31 May − 3 → 28/29 Feb). */
+export function monthsBefore(date: string, months: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const first = new Date(Date.UTC(y!, m! - 1 - months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d!, last));
+  return first.toISOString().slice(0, 10);
+}
+
+const dayNo = (date: string) => Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+
+export type TrendPoint = { date: string; value: number };
+export type TrendComparison = { months: TrendMonths; then: TrendPoint | null; now: TrendPoint | null; change: number | null };
+
+/**
+ * Now vs `months` ago for one exercise: "now" is the latest session; "then" is the session closest to that many
+ * months before today, within TREND_MATCH_DAYS either side (and older than "now"). `points` in any order.
+ */
+export function compareMonthsAgo(points: readonly TrendPoint[], today: string, months: TrendMonths): TrendComparison {
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  const now = sorted[sorted.length - 1] ?? null;
+  const target = dayNo(monthsBefore(today, months));
+  let then: TrendPoint | null = null;
+  for (const p of sorted) {
+    if (now && p.date >= now.date) break;
+    const off = Math.abs(dayNo(p.date) - target);
+    if (off <= TREND_MATCH_DAYS && (!then || off < Math.abs(dayNo(then.date) - target))) then = p;
+  }
+  return { months, then, now, change: then && now ? now.value - then.value : null };
+}
+
+/** Points inside the last `months` months (today included). */
+export const withinMonths = (points: readonly TrendPoint[], today: string, months: TrendMonths) => {
+  const from = monthsBefore(today, months);
+  return points.filter((p) => p.date >= from && p.date <= today);
+};
+
+/** True when every word is a muscle word ("quads", "upper back"): a muscle asked about, not one exercise. */
+export function onlyMuscleWords(text: string): boolean {
+  const words = text.toLowerCase().replace(/[^a-z]+/g, " ").trim().split(" ").filter(Boolean);
+  const all = new Set(Object.values(CATEGORY_WORDS).flatMap((list) => list.flatMap((w) => w.split(" "))));
+  return words.length > 0 && words.every((w) => all.has(w));
+}
+
+/** The exercise category some words name ("best exercises for quads" → legs), or null. */
+export function categoryFromWords(text: string): ExerciseCategory | null {
+  const t = ` ${text.toLowerCase().replace(/[^a-z]+/g, " ").trim()} `;
+  for (const c of EXERCISE_CATEGORIES) if (CATEGORY_WORDS[c].some((w) => t.includes(` ${w} `))) return c;
+  return null;
+}
+
 /** Accepts only https links on musclewiki.com (any page). Returns the cleaned URL, or null. */
 export function cleanMusclewikiUrl(input: string): string | null {
   const raw = input.trim();

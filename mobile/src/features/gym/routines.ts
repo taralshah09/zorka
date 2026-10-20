@@ -11,7 +11,7 @@ import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/eng
 import { enqueue } from "@/core/sync/outbox";
 import { onPulled } from "@/core/sync/pull";
 import type { ExerciseCategory, ExerciseType } from "@shared/domain/gym";
-import { addExercises, startWorkout, useWorkoutsVersion, type Workout } from "./store";
+import { addExercises, HAS_TICKED_SET, startWorkout, useWorkoutsVersion, type Workout } from "./store";
 
 export type RoutineExercise = {
   id: string;
@@ -169,31 +169,32 @@ onPulled("routine", {
 });
 
 /**
- * Opens a workout from a routine. Exercises missing from this phone's list (e.g. a deleted custom one) are
- * left out. Returns null when another workout is already open (the caller offers to resume it).
+ * Adds a routine's exercises to today's workout (one workout per day; made if there's none yet, and named for the
+ * routine). Exercises already in it stay as they are; ones missing from this phone's list (a deleted custom one) are
+ * left out.
  */
 export function startRoutine(
   userId: string,
   r: Routine,
   lookup: (id: string | null) => Exercise | null,
-): Workout | null {
-  const before = startWorkout(userId, { name: r.name, routineId: r.id });
-  if (before.routineId !== r.id || before.exercises.length) return null;
+): Workout {
+  const day = startWorkout(userId, { name: r.name, routineId: r.id });
   addExercises(
-    before,
+    day,
     r.exercises.flatMap((e) => {
       const exercise = lookup(e.exerciseId);
       return exercise ? [{ exercise, targetSets: e.targetSets, targetReps: e.targetReps }] : [];
     }),
   );
-  return before;
+  return day;
 }
 
 /** When each routine was last finished as a workout (S22 "Last: 2d ago"). */
 export function routinesLastDone(userId: string): Map<string, string> {
   const rows = getDb().getAllSync<{ routine_id: string; last: string }>(
     `SELECT routine_id, MAX(started_at) AS last FROM workouts
-      WHERE user_id = ? AND status = 'done' AND deleted = 0 AND routine_id IS NOT NULL GROUP BY routine_id`,
+      WHERE user_id = ? AND status = 'done' AND deleted = 0 AND routine_id IS NOT NULL AND ${HAS_TICKED_SET}
+      GROUP BY routine_id`,
     userId,
   );
   return new Map(rows.map((r) => [r.routine_id, r.last]));

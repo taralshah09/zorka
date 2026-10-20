@@ -2,6 +2,7 @@
 // (modules/zorka-overlay OverlayCard.kt): "Heard: …", Zorka's reply, and one row per action with its buttons. A button
 // id comes back to the headless task as `{ op: "action", messageId, index, action }` (overlayTask.ts).
 import type { AskPatch } from "@/core/api/types";
+import { cleanMusclewikiUrl, MUSCLEWIKI_BROWSE_URL } from "@shared/domain/gym";
 import { canUndo } from "./thread";
 import type { StoredItem, StoredTurn } from "./types";
 
@@ -19,6 +20,8 @@ const CONFIDENCE_NOTE = { high: null, medium: "Check I heard you right.", low: "
 /** An Ask option's button id carries its index; the task looks the patch up again (never trusts the id's content). */
 export const optionId = (i: number) => `option:${i}`;
 export const sayId = (i: number) => `say:${i}`;
+export const linkId = (i: number) => `link:${i}`;
+export const BROWSE_ID = "link:browse";
 
 function buttons(turn: StoredTurn, item: StoredItem, today: string): OverlayButton[] {
   const out: OverlayButton[] = [];
@@ -32,8 +35,22 @@ function buttons(turn: StoredTurn, item: StoredItem, today: string): OverlayButt
     item.ask?.options.forEach((o, i) => out.push({ id: optionId(i), label: o.label }));
     if (item.action.kind === "clarify") item.action.options.forEach((o, i) => out.push({ id: sayId(i), label: o }));
   }
+  if (item.resolved?.kind === "exercises") {
+    const linked = item.resolved.matches.map((m, i) => ({ m, i })).filter((x) => x.m.url);
+    linked.forEach(({ m, i }) => out.push({ id: linkId(i), label: linked.length === 1 ? "Open on MuscleWiki" : m.name, primary: linked.length === 1 }));
+    if (!linked.length) out.push({ id: BROWSE_ID, label: "Search MuscleWiki" });
+  }
   if (canUndo(turn, item, today)) out.push({ id: "undo", label: "Undo" });
   return out;
+}
+
+/** The page behind a link button, looked up from the stored turn and checked again (never the id's content). */
+export function linkFor(item: StoredItem, id: string): string | null {
+  if (item.resolved?.kind !== "exercises") return null;
+  if (id === BROWSE_ID) return MUSCLEWIKI_BROWSE_URL;
+  const m = /^link:(\d+)$/.exec(id);
+  const url = m ? item.resolved.matches[Number(m[1])]?.url : null;
+  return url ? cleanMusclewikiUrl(url) : null;
 }
 
 function rowText(item: StoredItem): string {

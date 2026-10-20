@@ -1,10 +1,11 @@
-// S24 · Active workout (P19–P22). No export yet: built from DESIGN.md §6.5 (D41). Top: name, live clock,
-// Finish. Exercise cards with the set table (Set · grey Previous · kg · Reps · ✓), "+ Add set", a rest timer
-// bar pinned to the bottom after each ticked set (P20), trophy PR rows + toast (P20), and "Say a set" (P22).
-// Works the same offline: everything is saved on the phone; only voice needs a connection (typed instead).
+// S24 · Today's workout (P19–P22). One workout per day: everything logged today goes here, whenever it's done, and
+// each ticked set is saved and synced as it's ticked, so there's no clock and no Finish. Top: the day's numbers and
+// Summary. Exercise cards with the set table (Set · grey Previous · kg · Reps · ✓), "+ Add set", a rest timer bar
+// after each ticked set (P20), trophy PR rows + toast (P20), and "Say a set" (P22). Works offline: only voice needs a
+// connection (typed instead).
 import { File } from "expo-file-system";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Linking, ScrollView, StyleSheet, View } from "react-native";
 
 import { ApiError, describeError } from "@/core/api/client";
@@ -30,18 +31,15 @@ import {
 } from "@/core/ui";
 import { getExercise } from "@/features/gym/catalog";
 import { ExerciseTile, RestTimerBar, SetTable } from "@/features/gym/components";
-import { formatElapsed, formatVolume, SET_COLUMNS } from "@/features/gym/format";
+import { formatVolume, SET_COLUMNS } from "@/features/gym/format";
 import { restFor, restTimer, setRestFor } from "@/features/gym/rest";
 import {
   addSet,
   completeSet,
-  discardWorkout,
-  finishCheck,
-  finishWorkout,
+  deleteWorkout,
   previousSets,
   removeExercise,
   restoreExercise,
-  startWorkout,
   useActiveWorkout,
   workoutStats,
   type Workout,
@@ -73,54 +71,33 @@ export default function ActiveWorkout() {
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const workout = useActiveWorkout(userId);
-  const [now, setNow] = useState(() => Date.now());
-  const [confirm, setConfirm] = useState<"finish" | "discard" | null>(null);
+  const [confirm, setConfirm] = useState(false);
   const [menu, setMenu] = useState(false);
   const [typed, setTyped] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   if (!userId) return null;
   if (!workout) {
     return (
-      <Screen header={<Header title="Workout" onBack={() => router.back()} />}>
+      <Screen header={<Header title="Today's workout" onBack={() => router.back()} />}>
         <EmptyState
           icon="fitness_center"
-          title="No workout open"
-          body="Start one and log your sets as you go."
-          actionLabel="Start empty workout"
-          onAction={() => startWorkout(userId)}
+          title="Nothing logged today"
+          body="Add an exercise and log your sets whenever you do them. It all goes into today's workout."
+          actionLabel="Add exercise"
+          onAction={() => router.push({ pathname: "/train/exercises", params: { mode: "workout" } })}
         />
       </Screen>
     );
   }
 
-  const stats = workoutStats(workout, now);
-  const check = finishCheck(workout);
+  const stats = workoutStats(workout);
 
   const onCompleted = (we: WorkoutExercise) => (values: SetValues, kinds: PrKind[]) => {
     restTimer.start(restFor(userId, we.exerciseId), we.name);
     if (kinds.length)
       toast({ kind: "success", message: `New PR · ${we.name} ${formatSet(we.type, values)}`, haptic: "success" });
     else haptics.tap();
-  };
-
-  const finish = () => {
-    setConfirm(null);
-    restTimer.skip();
-    const done = finishWorkout(workout.id);
-    if (done) router.replace({ pathname: "/train/summary/[id]", params: { id: done.id } });
-    else router.back();
-  };
-
-  const askFinish = () => {
-    if (check.done === 0) setConfirm("discard");
-    else if (check.unticked > 0) setConfirm("finish");
-    else finish();
   };
 
   const onVoice = async (uri: string) => {
@@ -180,7 +157,14 @@ export default function ActiveWorkout() {
           right={
             <>
               <IconButton icon="more_vert" accessibilityLabel="Workout options" onPress={() => setMenu(true)} />
-              <Button label="Finish" size="sm" onPress={askFinish} />
+              {stats.sets ? (
+                <Button
+                  label="Summary"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => router.push({ pathname: "/train/summary/[id]", params: { id: workout.id } })}
+                />
+              ) : null}
             </>
           }
         />
@@ -192,16 +176,9 @@ export default function ActiveWorkout() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.clockRow}>
-          <Icon name="timer" size={20} color={colors.primaryText} />
-          <Text
-            variant="headline-md"
-            tabular
-            accessibilityLabel={`Workout time ${formatElapsed(workout.startedAt, now)}`}
-          >
-            {formatElapsed(workout.startedAt, now)}
-          </Text>
-          <Text variant="label" color="textSecondary" tabular style={styles.flex} align="right">
-            {`${formatVolume(stats.volumeKg)} · ${stats.sets} sets${stats.prs.length ? ` · ${stats.prs.length} PR` : ""}`}
+          <Icon name="calendar_month" size={20} color={colors.primaryText} />
+          <Text variant="label" color="textSecondary" tabular style={styles.flex}>
+            {`Today · ${formatVolume(stats.volumeKg)} · ${stats.sets} sets${stats.prs.length ? ` · ${stats.prs.length} PR` : ""}`}
           </Text>
         </View>
 
@@ -248,11 +225,11 @@ export default function ActiveWorkout() {
         />
         <ListItem
           icon="delete"
-          title="Discard workout"
-          subtitle="Nothing from this session is saved"
+          title="Delete today's workout"
+          subtitle="Every set logged today is removed"
           onPress={() => {
             setMenu(false);
-            setConfirm("discard");
+            setConfirm(true);
           }}
         />
       </BottomSheet>
@@ -266,33 +243,20 @@ export default function ActiveWorkout() {
       />
 
       <Dialog
-        visible={confirm === "finish"}
-        title="Finish workout?"
-        body={`${check.unticked} unticked ${check.unticked === 1 ? "set isn't" : "sets aren't"} saved. Tick them first if you did them.`}
-        confirmLabel="Finish"
-        cancelLabel="Keep going"
-        onConfirm={finish}
-        onCancel={() => setConfirm(null)}
-      />
-      <Dialog
-        visible={confirm === "discard"}
-        title="Discard this workout?"
-        body={
-          check.done
-            ? "Every set you logged in this session is removed."
-            : "Nothing is ticked yet, so there's nothing to save."
-        }
-        confirmLabel="Discard"
-        cancelLabel="Keep going"
+        visible={confirm}
+        title="Delete today's workout?"
+        body="Every set you logged today is removed, here and from your history."
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
         destructive
         onConfirm={() => {
-          setConfirm(null);
+          setConfirm(false);
           restTimer.skip();
-          discardWorkout(workout.id);
+          deleteWorkout(workout);
           reactMascot("eyeroll");
           router.back();
         }}
-        onCancel={() => setConfirm(null)}
+        onCancel={() => setConfirm(false)}
       />
     </Screen>
   );

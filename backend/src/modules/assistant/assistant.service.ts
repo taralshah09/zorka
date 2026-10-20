@@ -34,7 +34,7 @@ import { notFound } from "../../http/errors.js";
 import type { AiClient } from "../ai/ai.client.js";
 import type { BriefsService } from "../briefs/briefs.service.js";
 import { checkReply, needsSupport, SUPPORT_REPLY } from "../coach/safety.js";
-import type { GymParseService } from "../gymParse/gymParse.service.js";
+import { routineFromSets, type GymParseService } from "../gymParse/gymParse.service.js";
 import type { ParseService } from "../mealParse/parse.service.js";
 import {
   AiPhrasing,
@@ -89,11 +89,33 @@ function toAction(a: RouterAction, confidence: Confidence): unknown {
   }
 }
 
-/** Actions whose words must have been said (D91, "Router disagreement"). */
-function spanOf(a: RouterAction): string | null {
-  return a.kind === "log_meal" || a.kind === "log_workout" || a.kind === "plan_meal" || a.kind === "correct" || a.kind === "edit_meal"
-    ? a.span
-    : null;
+/** Words each action carries that must have been said (D91, "Router disagreement"). */
+function spansOf(a: RouterAction): string[] {
+  switch (a.kind) {
+    case "log_meal":
+    case "log_workout":
+    case "plan_meal":
+    case "correct":
+    case "exercise_ref":
+    case "create_routine":
+      return [a.span];
+    case "edit_meal":
+      return a.from ? [a.span, a.from] : [a.span];
+    case "delete_entry":
+      return a.span ? [a.span] : [];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Where an action's words may come from. A `correct` restates the whole entry with the fix in it ("2 roti and dal"
+ * after "no, dal not dahl"), so the entry it corrects counts as heard too.
+ */
+function heardFor(a: RouterAction, said: string, body: AssistantTurnBody): string {
+  if (a.kind !== "correct") return said;
+  const before = body.turn.previous?.actions[a.index]?.span;
+  return before ? `${said} ${before}` : said;
 }
 
 export function assistantService(deps: AssistantDeps) {
@@ -205,8 +227,23 @@ export function assistantService(deps: AssistantDeps) {
         return { ...item, resolved: { kind: "day", facts: factsForDayType(a.dayType, base), dayType: a.dayType, question } };
       }
       case "ask": {
-        const f = answerFacts(a.topic, body.facts, a.date);
+        const f = answerFacts(a.topic, body.facts, a.date, a.mealType);
         return { ...item, resolved: { kind: "answer", topic: f.topic, date: f.date, known: f.known, lines: f.lines, numbers: f.numbers, card: f.card } };
+      }
+      case "exercise_ref": {
+        const found = await gymParse.findExercises(userId, a.span, body.vocab?.exercises ?? []);
+        return { ...item, resolved: { kind: "exercises", ...found } };
+      }
+      case "create_routine": {
+        // The gym parser reads "bench 3x10, incline press, flys" like logged sets; nothing is ticked, only targets kept.
+        const { sets } = await gymParse.parseText(userId, a.span);
+        const { exercises, unmatched } = routineFromSets(sets);
+        const out: TurnItem = { ...item, resolved: { kind: "routine", name: a.name, exercises, unmatched } };
+        if (!exercises.length) {
+          out.tier = "ask";
+          out.ask = { question: "Which exercises go in it?", options: [] };
+        }
+        return out;
       }
       default:
         return item;
@@ -268,8 +305,8 @@ export function assistantService(deps: AssistantDeps) {
           dropped.push({ kind: kindOf(raw), reason: "schema" });
           continue;
         }
-        const words = spanOf(parsed.data);
-        if (words !== null && !spanInTranscript(words, said)) {
+        const heardWords = heardFor(parsed.data, said, body);
+        if (spansOf(parsed.data).some((words) => !spanInTranscript(words, heardWords))) {
           dropped.push({ kind: parsed.data.kind, reason: "span_not_heard" });
           continue;
         }

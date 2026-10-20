@@ -1,6 +1,8 @@
-// Workouts on the phone (P19–P21). Local-first (D23): the open workout lives in SQLite (status 'active') so
-// it survives the app being closed, works with no signal, and is never synced half-done. Finishing it
-// drops unticked sets, marks it 'done' and queues one "workout" op for the server.
+// Workouts on the phone (P19–P21). Local-first (D23), one workout per day: whatever the user logs on a day (by
+// hand, a routine, voice or the bubble) goes into that day's workout, whenever it's done. There's no start or
+// finish: the day's workout is saved as 'done' from the first exercise, and every change re-queues it for the
+// server with its ticked sets only (the server stores nothing half-done). Unticked rows stay on this phone.
+// Workouts left 'active' by older versions are closed the old way (finishWorkout) or adopted as today's.
 // PRs (P20, D39) are worked out on the phone when a set is ticked, from this phone's history.
 import { randomUUID } from "expo-crypto";
 import { useMemo } from "react";
@@ -168,44 +170,117 @@ export function getWorkout(id: string): Workout | null {
   return row ? hydrate([row])[0]! : null;
 }
 
-export function activeWorkout(userId: string): Workout | null {
-  const row = getDb().getFirstSync<WorkoutRow>(
-    `SELECT * FROM workouts WHERE user_id = ? AND status = 'active' AND deleted = 0 ORDER BY started_at DESC LIMIT 1`,
+/**
+ * Workouts older versions left open ('active', with a start/finish): one from an earlier day is finished as it was
+ * (unticked rows dropped, synced); today's becomes today's workout.
+ */
+function adoptOpenWorkouts(userId: string, today: string) {
+  const db = getDb();
+  const open = db.getAllSync<{ id: string; local_date: string }>(
+    `SELECT id, local_date FROM workouts WHERE user_id = ? AND status = 'active' AND deleted = 0`,
     userId,
+  );
+  for (const w of open) {
+    if (w.local_date < today) finishWorkout(w.id);
+    else {
+      db.runSync(`UPDATE workouts SET status = 'done', ended_at = COALESCE(ended_at, started_at) WHERE id = ?`, w.id);
+      pushDay(w.id);
+    }
+  }
+}
+
+/** The workout of one day (local date), or null when nothing's been logged that day. */
+export function workoutOn(userId: string, date: string): Workout | null {
+  const row = getDb().getFirstSync<WorkoutRow>(
+    `SELECT * FROM workouts WHERE user_id = ? AND local_date = ? AND deleted = 0 ORDER BY started_at DESC LIMIT 1`,
+    userId,
+    date,
   );
   return row ? hydrate([row])[0]! : null;
 }
 
-// ── Logging ────────────────────────────────────────────────────────────────────────────────────
-
-/** "Morning workout" / "Afternoon workout" / "Evening workout" for an empty workout. */
-export function defaultWorkoutName(at: Date): string {
-  const h = at.getHours();
-  return `${h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening"} workout`;
+/** Today's workout: the one everything logged today goes into. */
+export function activeWorkout(userId: string, now = new Date()): Workout | null {
+  const today = localDate(now);
+  if (getDb().getFirstSync(`SELECT id FROM workouts WHERE user_id = ? AND status = 'active' AND deleted = 0 LIMIT 1`, userId))
+    adoptOpenWorkouts(userId, today);
+  return workoutOn(userId, today);
 }
 
-/** Opens a workout. If one is already open it's returned instead (one open workout at a time). */
+// ── Logging ────────────────────────────────────────────────────────────────────────────────────
+
+const WEEKDAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** "Tuesday workout": a day's workout is named for its day. */
+export function defaultWorkoutName(at: Date): string {
+  return `${WEEKDAY[at.getDay()]} workout`;
+}
+
+/**
+ * The workout of the day `at` falls on (default today), made on first use. A routine started on a day that already
+ * has a workout adds to it (startRoutine); the first routine of the day names it.
+ */
 export function startWorkout(
   userId: string,
   opts: { name?: string; routineId?: string | null; at?: Date } = {},
 ): Workout {
-  const open = activeWorkout(userId);
-  if (open) return open;
   const at = opts.at ?? new Date();
+  const date = localDate(at);
+  const existing = date === localDate(new Date()) ? activeWorkout(userId) : workoutOn(userId, date);
+  if (existing) {
+    if (opts.routineId && !existing.routineId) {
+      getDb().runSync(`UPDATE workouts SET routine_id = ? WHERE id = ?`, opts.routineId, existing.id);
+      if (!existing.exercises.length && opts.name?.trim()) getDb().runSync(`UPDATE workouts SET name = ? WHERE id = ?`, opts.name.trim(), existing.id);
+      bump();
+      return getWorkout(existing.id)!;
+    }
+    return existing;
+  }
   const id = randomUUID();
   getDb().runSync(
-    `INSERT INTO workouts (id, user_id, name, status, started_at, local_date, routine_id, client_updated_at)
-     VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`,
+    `INSERT INTO workouts (id, user_id, name, status, started_at, ended_at, local_date, routine_id, client_updated_at)
+     VALUES (?, ?, ?, 'done', ?, ?, ?, ?, ?)`,
     id,
     userId,
     opts.name?.trim() || defaultWorkoutName(at),
     at.toISOString(),
-    localDate(at),
+    at.toISOString(),
+    date,
     opts.routineId ?? null,
     at.toISOString(),
   );
   bump();
   return getWorkout(id)!;
+}
+
+/**
+ * Queues the day's workout for the server as it stands now: ticked, complete sets of each exercise, the latest of
+ * them as its end. Called after every change; an older queued copy that hasn't gone out yet is replaced, so a busy
+ * set table sends one op. A day with nothing ticked yet sends nothing.
+ */
+function pushDay(id: string) {
+  const db = getDb();
+  const w = getWorkout(id);
+  if (!w || w.status !== "done") return;
+  const payload = syncPayload(w);
+  if (!payload.exercises.length) return;
+  const now = new Date().toISOString();
+  const last = payload.exercises.flatMap((e) => e.sets.map((s) => s.completedAt ?? w.startedAt)).sort().pop() ?? w.startedAt;
+  const endedAt = last < w.startedAt ? w.startedAt : last;
+  db.withTransactionSync(() => {
+    db.runSync(`UPDATE workouts SET ended_at = ?, client_updated_at = ?, synced = 0 WHERE id = ?`, endedAt, now, id);
+    db.runSync(`DELETE FROM outbox WHERE entity = 'workout' AND record_id = ? AND status = 'pending' AND attempts = 0`, id);
+    enqueue({
+      op_id: randomUUID(),
+      user_id: w.userId,
+      entity: "workout",
+      action: "upsert",
+      record_id: id,
+      payload: JSON.stringify({ ...payload, endedAt }),
+      client_updated_at: now,
+    });
+  });
+  notifyLocalWrite();
 }
 
 export type AddExercise = { exercise: Exercise; targetSets?: number; targetReps?: number | null };
@@ -247,6 +322,7 @@ export function addExercises(workout: Workout, items: readonly AddExercise[]): s
     }
   });
   bump();
+  pushDay(workout.id);
   return ids;
 }
 
@@ -284,8 +360,10 @@ export function updateSet(userId: string, we: WorkoutExercise, setId: string, va
     v.distanceM,
     setId,
   );
-  if (we.sets.find((s) => s.id === setId)?.done) recomputePrs(userId, we.id);
+  const ticked = !!we.sets.find((s) => s.id === setId)?.done;
+  if (ticked) recomputePrs(userId, we.id);
   bump();
+  if (ticked) pushDay(we.workoutId);
 }
 
 /**
@@ -311,6 +389,8 @@ export function completeSet(userId: string, we: WorkoutExercise, setId: string, 
     kinds = recomputePrs(userId, we.id).get(setId) ?? [];
   });
   bump();
+  pushDay(we.workoutId);
+  completeUsefulAction(userId, "workout");
   return kinds;
 }
 
@@ -322,6 +402,7 @@ export function uncompleteSet(userId: string, we: WorkoutExercise, setId: string
     recomputePrs(userId, we.id);
   });
   bump();
+  pushDay(we.workoutId);
 }
 
 export function removeSet(userId: string, we: WorkoutExercise, setId: string): void {
@@ -331,6 +412,7 @@ export function removeSet(userId: string, we: WorkoutExercise, setId: string): v
     recomputePrs(userId, we.id);
   });
   bump();
+  pushDay(we.workoutId);
 }
 
 export function removeExercise(we: WorkoutExercise): void {
@@ -340,6 +422,7 @@ export function removeExercise(we: WorkoutExercise): void {
     db.runSync(`DELETE FROM workout_exercises WHERE id = ?`, we.id);
   });
   bump();
+  pushDay(we.workoutId);
 }
 
 function reinsertSet(workoutExerciseId: string, s: WorkoutSet) {
@@ -368,13 +451,14 @@ export function restoreSet(userId: string, we: WorkoutExercise, set: WorkoutSet)
     recomputePrs(userId, we.id);
   });
   bump();
+  pushDay(we.workoutId);
 }
 
-/** Undo for "Remove from workout" (UX F4): the exercise and all its sets come back while the workout is open. */
+/** Undo for "Remove from workout" (UX F4): the exercise and all its sets come back to its day's workout. */
 export function restoreExercise(userId: string, we: WorkoutExercise): void {
   const db = getDb();
   db.withTransactionSync(() => {
-    if (!db.getFirstSync(`SELECT id FROM workouts WHERE id = ? AND status = 'active'`, we.workoutId)) return;
+    if (!db.getFirstSync(`SELECT id FROM workouts WHERE id = ? AND deleted = 0`, we.workoutId)) return;
     db.runSync(
       `INSERT OR REPLACE INTO workout_exercises
          (id, workout_id, exercise_id, position, name, type, category, target_reps)
@@ -392,6 +476,7 @@ export function restoreExercise(userId: string, we: WorkoutExercise): void {
     recomputePrs(userId, we.id);
   });
   bump();
+  pushDay(we.workoutId);
 }
 
 /** Re-works out the PR kinds of every ticked set of one exercise in one workout (D39): each set is
@@ -413,7 +498,7 @@ function recomputePrs(userId: string, workoutExerciseId: string): Map<string, Pr
   return out;
 }
 
-/** Throws away an open workout (never synced, so nothing to tell the server). */
+/** Throws away a workout left open by an older version (never synced, so nothing to tell the server). */
 export function discardWorkout(id: string): void {
   const db = getDb();
   db.withTransactionSync(() => {
@@ -484,7 +569,11 @@ export function finishWorkout(id: string, at = new Date()): Workout | null {
   return completed;
 }
 
-/** What the server stores (backend/src/modules/workouts/workouts.schemas.ts). */
+/**
+ * What the server stores (backend/src/modules/workouts/workouts.schemas.ts): ticked, complete sets only, and only
+ * exercises with at least one of them. A finished workout has nothing else; a day's workout keeps its unticked rows
+ * on the phone.
+ */
 function syncPayload(w: Workout) {
   return {
     name: w.name,
@@ -492,18 +581,22 @@ function syncPayload(w: Workout) {
     endedAt: w.endedAt,
     localDate: w.localDate,
     routineId: w.routineId,
-    exercises: w.exercises.map((e) => ({
-      id: e.id,
-      exerciseId: e.exerciseId,
-      name: e.name,
-      type: e.type,
-      sets: e.sets.map((s) => ({
-        id: s.id,
-        ...valuesFor(e.type, s),
-        completedAt: s.completedAt,
-        prKinds: s.prKinds,
-      })),
-    })),
+    exercises: w.exercises
+      .map((e) => ({
+        id: e.id,
+        exerciseId: e.exerciseId,
+        name: e.name,
+        type: e.type,
+        sets: e.sets
+          .filter((s) => s.done && isSetComplete(e.type, valuesFor(e.type, s)))
+          .map((s) => ({
+            id: s.id,
+            ...valuesFor(e.type, s),
+            completedAt: s.completedAt,
+            prKinds: s.prKinds,
+          })),
+      }))
+      .filter((e) => e.sets.length),
   };
 }
 
@@ -759,21 +852,26 @@ export function exerciseStats(userId: string, types: ReadonlyMap<string, Exercis
   return out;
 }
 
+/** A day's workout counts once something in it is ticked; an empty one (exercises picked, nothing done) doesn't. */
+export const HAS_TICKED_SET = `EXISTS (SELECT 1 FROM workout_sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
+  WHERE we.workout_id = workouts.id AND s.done = 1)`;
+
 export function recentWorkouts(userId: string, limit = 10): Workout[] {
   return hydrate(
     getDb().getAllSync<WorkoutRow>(
-      `SELECT * FROM workouts WHERE user_id = ? AND status = 'done' AND deleted = 0 ORDER BY started_at DESC LIMIT ?`,
+      `SELECT * FROM workouts WHERE user_id = ? AND status = 'done' AND deleted = 0 AND ${HAS_TICKED_SET}
+        ORDER BY started_at DESC LIMIT ?`,
       userId,
       limit,
     ),
   );
 }
 
-/** Finished workouts in [from, to] (local dates, inclusive). */
+/** Workouts with something ticked in [from, to] (local dates, inclusive). */
 export function workoutsBetween(userId: string, from: string, to: string): Workout[] {
   return hydrate(
     getDb().getAllSync<WorkoutRow>(
-      `SELECT * FROM workouts WHERE user_id = ? AND status = 'done' AND deleted = 0
+      `SELECT * FROM workouts WHERE user_id = ? AND status = 'done' AND deleted = 0 AND ${HAS_TICKED_SET}
          AND local_date >= ? AND local_date <= ? ORDER BY started_at`,
       userId,
       from,

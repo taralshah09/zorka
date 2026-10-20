@@ -58,7 +58,7 @@ export function previousForServer(userId: string) {
       const a = i.action;
       return {
         kind: a.kind,
-        ...("span" in a ? { span: a.span.slice(0, 300) } : {}),
+        ...("span" in a && a.span ? { span: a.span.slice(0, 300) } : {}),
         ...(a.kind === "ask" ? { topic: a.topic } : {}),
         ...("date" in a && a.date ? { date: a.date } : {}),
       };

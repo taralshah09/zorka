@@ -4,7 +4,7 @@
 // alternatives and a portion stepper, so a wrong item is two taps from right.
 import { router } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 
 import type { AssistantParsedItem, ParseResult } from "@/core/api/types";
 import { Icon } from "@/core/icons/Icon";
@@ -18,9 +18,11 @@ import { formatInt } from "@/features/targets/format";
 import { useActiveUser } from "@/features/users/activeUser";
 import { factsForDayType } from "@shared/domain/assistant";
 import type { DayType } from "@shared/domain/dayType";
+import { MUSCLEWIKI_BROWSE_URL } from "@shared/domain/gym";
 import type { DayFacts } from "@shared/domain/life";
 import { AnswerCard } from "./AnswerCard";
 import { actionIcon } from "./executors";
+import { linkFor, linkId } from "./overlayView";
 import { answerAsk, approve, canUndo, dismiss, portion, swap, undo } from "./thread";
 import { phoneContext } from "./turn";
 import type { StoredItem, StoredTurn } from "./types";
@@ -184,6 +186,29 @@ export function TurnView({
                   <Button label="OK" size="sm" icon="check" onPress={() => void approve(messageId, i)} />
                   {change ? <Button label="Change" size="sm" variant="secondary" icon="edit" onPress={change} /> : null}
                   <Button label="Not now" size="sm" variant="ghost" onPress={() => void dismiss(messageId, i)} />
+                </View>
+              ) : null}
+              {item.resolved?.kind === "exercises" ? (
+                <View style={styles.wrap}>
+                  {item.resolved.matches.some((m) => m.url) ? (
+                    item.resolved.matches.map((m, n) =>
+                      m.url ? (
+                        <Button
+                          key={m.id}
+                          label={m.name}
+                          size="sm"
+                          variant="secondary"
+                          icon="open_in_new"
+                          onPress={() => {
+                            const url = linkFor(item, linkId(n));
+                            if (url) void Linking.openURL(url);
+                          }}
+                        />
+                      ) : null,
+                    )
+                  ) : (
+                    <Button label="Search MuscleWiki" size="sm" variant="secondary" icon="open_in_new" onPress={() => void Linking.openURL(MUSCLEWIKI_BROWSE_URL)} />
+                  )}
                 </View>
               ) : null}
               {item.state === "asking" && item.ask?.options.length ? (

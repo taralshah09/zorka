@@ -91,7 +91,7 @@ describe("answerFacts", () => {
     expect(answerFacts("plan", INPUT).lines[0]).toBe("Today is a lighter, sick day: 1,600 kcal and 60 g protein.");
     expect(answerFacts("why", INPUT).lines[1]).toBe("Lighter today because you're unwell.");
     expect(answerText(answerFacts("what_to_eat", INPUT))).toBe(
-      "You have 712 kcal and 62 g protein left. Good fits: Paneer bhurji (22 g protein).",
+      "You have 712 kcal and 62 g protein left. Good fits: Paneer bhurji (320 kcal, 22 g protein).",
     );
   });
 

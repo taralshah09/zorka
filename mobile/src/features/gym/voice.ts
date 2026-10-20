@@ -43,7 +43,7 @@ export type VoiceOutcome = {
 };
 
 /**
- * Adds parsed sets to the open workout. Each set fills the next empty row of its exercise (adding the
+ * Adds parsed sets to a day's workout. Each set fills the next empty row of its exercise (adding the
  * exercise or a row when needed). `lookup` resolves the server's exercise to this phone's copy.
  * Returns what happened per parsed entry, and the entries it couldn't place (no exercise match).
  */
@@ -58,7 +58,7 @@ export function applyVoiceSets(
   for (const p of sets) {
     const exercise = p.exercise ? (lookup(p.exercise.id) ?? p.exercise) : null;
     let w: Workout | null = getWorkout(workoutId);
-    if (!w || w.status !== "active") break;
+    if (!w) break;
     if (!exercise) {
       unmatched.push(p.query);
       continue;

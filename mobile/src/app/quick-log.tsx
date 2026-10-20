@@ -14,7 +14,6 @@ import { draftActions } from "@/features/log/draft";
 import { getFood } from "@/features/food/catalog";
 import { preferencesFor, usePreferencesVersion } from "@/features/meals/preferences";
 import { mealTypeParam } from "@/features/log/nav";
-import { startWorkout } from "@/features/gym/store";
 import {
   deleteMeal,
   mealKey,
@@ -105,8 +104,7 @@ export default function QuickLog() {
       icon: "fitness_center",
       label: "Workout",
       go: () => {
-        // Resumes the open workout, or starts an empty one.
-        if (userId) startWorkout(userId);
+        // Today's workout: everything logged today goes into it.
         router.replace("/train/workout");
       },
     },

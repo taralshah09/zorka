@@ -17,7 +17,6 @@ import { NetworkBanner } from "@/core/network/NetworkBanner";
 import { Button, Card, EmptyState, ErrorState, IconButton, Screen, Skeleton, Text, useToast } from "@/core/ui";
 import { cachedSteps, useHealthSteps } from "@/features/activity/health";
 import { activeActivity, dayCredit, useActivityClock } from "@/features/activity/store";
-import { useActiveWorkout } from "@/features/gym/store";
 import { draftActions, useDraft } from "@/features/log/draft";
 import { getFood } from "@/features/food/catalog";
 import { rankedUsuals, logUsual, useUsualMeals } from "@/features/meals/usual";
@@ -76,7 +75,6 @@ export default function Today() {
   const meals = useDayMeals(userId, today);
   const voiceNotes = useVoiceQueue(userId);
   const draft = useDraft((s) => s.draft);
-  const workout = useActiveWorkout(userId);
   const activity = activeActivity();
   const openActivity = activity?.userId === userId ? activity : null;
   const usuals = useUsualMeals(userId);
@@ -148,8 +146,8 @@ export default function Today() {
   const facts = dg ? lineFacts(dg, streak) : null;
   let action = situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
   const finished = meals.some((m) => m.mealType === mealType) || dismissedSuggestions.includes(suggestionKey);
-  const priority = briefPriority({ activeSession: !!workout || !!openActivity, chosenDraft: !!draft?.resumeChosen, prepared: !!prepared, optional: !!action?.cta, finished });
-  if (action && priority === "resume") action = { eyebrow: "In progress", title: workout ? `${workout.name} is still open.` : "Your activity is still open.", icon: "play_arrow", tone: "default", cta: "Resume", href: workout ? "/train/workout" : { pathname: "/activity/live", params: { id: openActivity!.id } } };
+  const priority = briefPriority({ activeSession: !!openActivity, chosenDraft: !!draft?.resumeChosen, prepared: !!prepared, optional: !!action?.cta, finished });
+  if (action && priority === "resume") action = { eyebrow: "In progress", title: "Your activity is still open.", icon: "play_arrow", tone: "default", cta: "Resume", href: { pathname: "/activity/live", params: { id: openActivity!.id } } };
   if (action && priority === "continue") action = { eyebrow: "Draft saved", title: `${MEAL_LABEL[draft!.mealType]} · ${localDate(new Date(draft!.loggedAt))} · ready to check`, icon: "restaurant", tone: "default", cta: "Continue draft", href: "/log/confirm" };
   if (action && priority === "prepared") action = { eyebrow: `Your usual ${MEAL_LABEL[mealType].toLowerCase()}?`, title: prepared.items.map((i) => `${formatPortion(i.quantity, i.unit)} ${i.name}`).join(" + "), icon: "restaurant", tone: "default", cta: "Log this", href: "/quick-log" };
   if (action && priority === "finished") action = { ...action, eyebrow: "Done for now", title: "Your work is saved. Nothing needs you now.", icon: "check_circle", tone: "success", cta: null, href: "/day" };

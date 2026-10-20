@@ -4,7 +4,7 @@
 // lines are sent instead.
 import { clockText } from "../../../../shared/domain/memory.js";
 import { UNIT_LABEL, type MealType } from "../../../../shared/domain/food.js";
-import { formatSet } from "../../../../shared/domain/gym.js";
+import { CATEGORY_LABEL, formatSet } from "../../../../shared/domain/gym.js";
 import { ACTIVITY_LABEL } from "../../../../shared/domain/activity.js";
 import { OUT_OF_SCOPE_LINE } from "../../../../shared/domain/assistant.js";
 import { PERSONA_PROMPTS } from "../coach/prompts.js";
@@ -114,6 +114,9 @@ export function receipt(item: TurnItem, today: string): { line: string; numbers:
     case "undo":
       return { line: "Undid the last thing.", numbers: [] };
     case "delete_entry": {
+      if (a.target === "reminder") return { line: `Cancel ${a.span ? `the "${a.span}" reminder` : "your next reminder"}? Tap OK.`, numbers: [] };
+      if (a.target === "planned_meal")
+        return { line: `Drop the ${a.mealType ? `${MEAL_WORD[a.mealType]} ` : ""}plan${a.date && a.date !== today ? ` for ${WEEKDAY[new Date(`${a.date}T00:00:00Z`).getUTCDay()]}` : ""}? Tap OK.`, numbers: [] };
       const day = !a.date || a.date === today ? "today" : "yesterday";
       const what =
         a.target === "meal"
@@ -125,11 +128,34 @@ export function receipt(item: TurnItem, today: string): { line: string; numbers:
               : "the workout";
       return { line: `Delete ${what} from ${day}? Tap OK.`, numbers: a.glasses ? [a.glasses] : [] };
     }
+    case "create_routine": {
+      if (item.resolved?.kind !== "routine" || !item.resolved.exercises.length) return { line: "Which exercises go in it?", numbers: [] };
+      const r = item.resolved;
+      const numbers: number[] = [];
+      const parts = r.exercises.map((e) => {
+        numbers.push(e.targetSets, ...(e.targetReps === null ? [] : [e.targetReps]));
+        return `${e.exercise.name} ${e.targetSets}${e.targetReps === null ? " sets" : `×${e.targetReps}`}`;
+      });
+      const missing = r.unmatched.length ? ` I couldn't find ${r.unmatched.map((u) => `"${u}"`).join(", ")}.` : "";
+      return { line: `Save "${r.name}": ${parts.join(", ")}? Tap OK.${missing}`, numbers };
+    }
+    case "exercise_ref": {
+      if (item.resolved?.kind !== "exercises") return { line: "", numbers: [] };
+      const { matches, category, query } = item.resolved;
+      const linked = matches.filter((m) => m.url);
+      if (!matches.length) return { line: `I couldn't find "${query}" in your exercise list. You can search MuscleWiki for it.`, numbers: [] };
+      if (matches.length === 1)
+        return linked.length
+          ? { line: `Here's ${matches[0]!.name} on MuscleWiki, with how to do it.`, numbers: [] }
+          : { line: `${matches[0]!.name} has no MuscleWiki link yet. You can search MuscleWiki for it.`, numbers: [] };
+      return { line: `${category ? CATEGORY_LABEL[category] : "Some"} exercises from your list: ${matches.map((m) => m.name).join(", ")}. Tap one to see it on MuscleWiki.`, numbers: [] };
+    }
     case "edit_meal": {
       const meal = a.mealType ? MEAL_WORD[a.mealType] : "your last meal";
       const m = mealWords(item);
       if (a.mode === "remove") return { line: `Take ${a.span} out of ${meal}? Tap OK.`, numbers: [] };
       if (a.mode === "add") return { line: `Add ${m.text || a.span} to ${meal}? Tap OK.`, numbers: m.numbers };
+      if (a.from) return { line: `Swap ${a.from} for ${m.text || a.span} in ${meal}? Tap OK.`, numbers: m.numbers };
       return { line: `Change ${meal} to ${m.text || a.span}? Tap OK.`, numbers: m.numbers };
     }
     case "open":

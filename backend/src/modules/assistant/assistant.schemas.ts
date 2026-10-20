@@ -11,6 +11,7 @@ import {
   EDIT_MODES,
   ASK_TOPICS,
   ASSISTANT_SCREENS,
+  ROUTINE_NAME_MAX,
   TURN_TEXT_MAX,
   type AssistantAction,
   type Confidence,
@@ -20,8 +21,10 @@ import {
 import type { AnswerCard, AnswerFacts } from "../../../../shared/domain/assistantFacts.js";
 import { DAY_TYPES, type DayType } from "../../../../shared/domain/dayType.js";
 import { MEAL_TYPES, type FoodUnit, type MealType } from "../../../../shared/domain/food.js";
+import type { ExerciseCategory } from "../../../../shared/domain/gym.js";
 import type { DayFacts } from "../../../../shared/domain/life.js";
 import { ChatMessage, CoachId, DayContext } from "../coach/coach.schemas.js";
+import type { ExerciseDto } from "../exercises/exercises.schemas.js";
 import type { GymParsedSet } from "../gymParse/gymParse.schemas.js";
 import type { AssistantParsedItem } from "../mealParse/parse.service.js";
 import { AUDIO_TYPES, MAX_AUDIO_BASE64 } from "../mealParse/parse.schemas.js";
@@ -52,7 +55,9 @@ export const RouterAction = z.discriminatedUnion("kind", [
     time: z.string().regex(/^\d{1,2}:\d{2}$/),
     date: date.optional(),
   }),
-  z.strictObject({ kind: z.literal("ask"), topic: z.enum(ASK_TOPICS), date: date.optional() }),
+  z.strictObject({ kind: z.literal("ask"), topic: z.enum(ASK_TOPICS), date: date.optional(), mealType: z.enum(MEAL_TYPES).optional() }),
+  z.strictObject({ kind: z.literal("exercise_ref"), span: z.string().trim().min(1).max(80) }),
+  z.strictObject({ kind: z.literal("create_routine"), name: z.string().trim().min(1).max(ROUTINE_NAME_MAX), span }),
   z.strictObject({ kind: z.literal("correct"), index: z.number().int().min(0).max(4), span }),
   z.strictObject({ kind: z.literal("undo") }),
   z.strictObject({
@@ -61,8 +66,18 @@ export const RouterAction = z.discriminatedUnion("kind", [
     mealType: z.enum(MEAL_TYPES).optional(),
     date: date.optional(),
     glasses: z.number().int().min(1).max(20).optional(),
+    /** A reminder's words ("cancel the snacks reminder"). */
+    span: z.string().trim().min(1).max(120).optional(),
   }),
-  z.strictObject({ kind: z.literal("edit_meal"), mode: z.enum(EDIT_MODES), span, mealType: z.enum(MEAL_TYPES).optional(), date: date.optional() }),
+  z.strictObject({
+    kind: z.literal("edit_meal"),
+    mode: z.enum(EDIT_MODES),
+    span,
+    /** replace only: the saved foods that make way for `span` ("dal, not rajma"). */
+    from: span.optional(),
+    mealType: z.enum(MEAL_TYPES).optional(),
+    date: date.optional(),
+  }),
   z.strictObject({ kind: z.literal("open"), screen: z.enum(ASSISTANT_SCREENS) }),
   z.strictObject({
     kind: z.literal("clarify"),
@@ -90,6 +105,9 @@ const factsDay = z
     trained: z.boolean(),
   })
   .strict();
+
+const eatIdea = z.object({ name: z.string().trim().min(1).max(80), kcal: num, proteinG: num }).strict();
+const eatIdeas = z.array(eatIdea).max(5);
 
 /** shared/domain/assistantFacts.ts AssistantFactsInput: the phone's numbers for `ask` (D90). */
 export const AssistantFactsInput = z
@@ -133,9 +151,17 @@ export const AssistantFactsInput = z
       .strict()
       .nullable()
       .optional(),
-    eat: z
-      .array(z.object({ name: z.string().trim().min(1).max(80), kcal: num, proteinG: num }).strict())
-      .max(5)
+    eat: z.array(eatIdea).max(5).nullable().optional(),
+    eatFor: z.enum(MEAL_TYPES).nullable().optional(),
+    eatBySlot: z
+      .object({ breakfast: eatIdeas, lunch: eatIdeas, snack: eatIdeas, dinner: eatIdeas })
+      .partial()
+      .strict()
+      .nullable()
+      .optional(),
+    meals: z
+      .array(z.object({ date, mealType: z.enum(MEAL_TYPES), text: z.string().trim().max(160), kcal: num, proteinG: num }).strict())
+      .max(16)
       .nullable()
       .optional(),
   })
@@ -164,13 +190,13 @@ export const AssistantTurnBody = z
             z
               .object({
                 date,
-                kind: z.enum(["meal", "water", "weight", "workout"]),
+                kind: z.enum(["meal", "water", "weight", "workout", "reminder", "planned_meal"]),
                 mealType: z.enum(MEAL_TYPES).optional(),
                 text: z.string().trim().max(160),
               })
               .strict(),
           )
-          .max(16)
+          .max(24)
           .optional(),
         previous: z
           .object({
@@ -221,7 +247,15 @@ export type Resolution =
   | { kind: "meal"; items: AssistantParsedItem[]; mealType: MealType }
   | { kind: "workout"; sets: GymParsedSet[]; usual: boolean }
   | { kind: "day"; facts: DayFacts; dayType: DayType; question: string | null }
-  | { kind: "answer"; topic: AnswerFacts["topic"]; date: string; known: boolean; lines: string[]; numbers: number[]; card: AnswerCard | null };
+  | { kind: "answer"; topic: AnswerFacts["topic"]; date: string; known: boolean; lines: string[]; numbers: number[]; card: AnswerCard | null }
+  /** exercise_ref: exercises from the user's list with their MuscleWiki page (url null: a custom one without a link). */
+  | { kind: "exercises"; query: string; category: ExerciseCategory | null; matches: ExerciseRef[] }
+  /** create_routine: the exercises matched in the user's list with their targets, and the words that matched none. */
+  | { kind: "routine"; name: string; exercises: RoutineDraftExercise[]; unmatched: string[] };
+
+export type RoutineDraftExercise = { exercise: ExerciseDto; targetSets: number; targetReps: number | null };
+
+export type ExerciseRef = { id: string; name: string; category: ExerciseCategory; url: string | null };
 
 export type TurnItem = {
   action: AssistantAction;

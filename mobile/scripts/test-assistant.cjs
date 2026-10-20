@@ -13,7 +13,7 @@ const vm = require("node:vm");
 const ts = require("typescript");
 const { randomUUID } = require("node:crypto");
 const root = path.resolve(__dirname, "..");
-let sql, modules, preferences, pushed, reminders, gym;
+let sql, modules, preferences, pushed, reminders, gym, catalogFoods;
 
 function load(file) {
   if (modules.has(file)) return modules.get(file).exports;
@@ -65,7 +65,14 @@ function load(file) {
     if (name === "@/core/sync/pull") return { onPulled: () => {}, hasPulledOnce: () => true, usePullStatus: (sel) => sel({}) };
     if (name === "@/core/network/network") return { useNetwork: Object.assign((sel) => sel({ online: true }), { getState: () => ({ online: true }), setState: () => {} }) };
     if (name === "@/features/food/catalog")
-      return { nutritionOf: (f) => ({ per100g: f.per100g, defaultUnit: f.defaultUnit, units: f.units, liquid: f.liquid }), recentFoods: () => [] };
+      return {
+        nutritionOf: (f) => ({ per100g: f.per100g, defaultUnit: f.defaultUnit, units: f.units, liquid: f.liquid }),
+        recentFoods: () => [],
+        // Food ideas (gap/eat.ts) rank these home foods.
+        localFoods: () => catalogFoods,
+        getFood: (_u, id) => catalogFoods.find((f) => f.id === id) ?? null,
+        useFoodsVersion: (sel) => sel({ v: 0 }),
+      };
     if (name === "@/features/activity/health") return { cachedSteps: () => ({ steps: 4200 }) };
     if (name === "@/features/activity/recorder") return { stopRecorder: async () => {} };
     if (name === "@/features/activity/store") return { activeActivity: () => null, dayCredit: () => ({ kcal: 0 }), routePoints: () => [] };
@@ -73,9 +80,8 @@ function load(file) {
     if (name === "@/features/gym/voice") return { applyVoiceSets: (...args) => gym.apply(...args) };
     if (name === "@/features/gym/store")
       return {
-        activeWorkout: () => null,
-        startWorkout: () => ({ id: "w1", name: "Logged with Zorka", exercises: [], status: "active" }),
-        finishWorkout: (id) => (gym.workouts.set(id, { id, status: "done", exercises: [] }), { id }),
+        // One workout per day: the day's workout, made on first use (the real store is covered by test-gym.cjs).
+        startWorkout: () => gym.workouts.get("w1") ?? (gym.workouts.set("w1", { id: "w1", name: "Tuesday workout", exercises: [], status: "done" }), gym.workouts.get("w1")),
         getWorkout: (id) => gym.workouts.get(id) ?? null,
         deleteWorkout: (w) => gym.deleted.push(w.id),
         removeExercise: () => {},
@@ -88,6 +94,10 @@ function load(file) {
       return {
         scheduleReminder: async (what, date, minute) => (reminders.push({ what, date, minute }), { id: `zorka.remind.${reminders.length}` }),
         cancelReminder: async (id) => reminders.push({ cancelled: id }),
+        upcomingReminders: () =>
+          reminders
+            .map((r, i) => ({ ...r, id: `zorka.remind.${i + 1}` }))
+            .filter((r) => r.what && !reminders.some((x) => x.cancelled === r.id)),
       };
     if (name.startsWith("@/")) return load(path.join(root, "src", `${name.slice(2)}.ts`));
     if (name.startsWith("@shared/")) return load(path.join(root, "../shared", `${name.slice(8)}.ts`));
@@ -105,6 +115,7 @@ beforeEach(() => {
   preferences = new Map([["zorka.activeUserId", "a"]]);
   pushed = [];
   reminders = [];
+  catalogFoods = [];
   gym = { deleted: [], workouts: new Map(), apply: () => ({ added: [{ exerciseName: "Barbell Bench Press" }], unmatched: [] }) };
   load(path.join(root, "src/core/storage/db.ts")).getDb();
 });
@@ -416,6 +427,54 @@ test("the snapshot builds without React, from the cached profile and SQLite (hea
   assert.equal(snap.facts.plan, null);
 });
 
+test("what to eat: with no saved plan, the food ideas ranking fills each meal still to come", () => {
+  const { buildSnapshot } = feature("assistant/snapshot");
+  const { answerFacts } = load(path.join(root, "../shared/domain/assistantFacts.ts"));
+  preferences.set("zorka.profileCache.a", JSON.stringify({
+    userId: "a", displayName: "Riya", goal: "lose_fat", age: 30, sex: "female", heightCm: 160, weightKg: 62, activityLevel: "light",
+    diet: "veg", targetWeightKg: 56, pace: "steady", coach: null, oilGheePrompt: false, stepGoal: 8000, waterGoalGlasses: 8,
+    checkinDetailed: false, onboardedAt: "2026-10-01T00:00:00.000Z", updatedAt: null,
+  }));
+  catalogFoods = [
+    { ...food("paneer-bhurji", "Paneer bhurji", 260), category: "protein", per100g: { kcal: 260, proteinG: 18, carbsG: 6, fatG: 18 } },
+    { ...DAL, category: "home_meal" },
+  ];
+  const snap = buildSnapshot("a");
+  assert.equal(snap.facts.plan, null);
+  assert.ok(snap.facts.eatFor, "the next meal is named");
+  assert.ok(snap.facts.eat.length > 0, "ideas without a plan");
+  assert.ok(Object.values(snap.facts.eatBySlot).every((list) => Array.isArray(list)));
+  const dinner = answerFacts("what_to_eat", snap.facts, undefined, "dinner");
+  assert.equal(dinner.known, true);
+  assert.match(dinner.lines[1], /^Good fits for dinner: /);
+});
+
+test("what to eat: at or over the day's calories, it says so instead of offering more food", () => {
+  const { answerFacts } = load(path.join(root, "../shared/domain/assistantFacts.ts"));
+  const day = { targetKcal: 1600, eatenKcal: 1700, targetProteinG: 90, eatenProteinG: 70, steps: null, stepGoal: 8000, glasses: null, waterGoal: null, workoutToday: false, mealsLogged: 3, coverage: "complete" };
+  const out = answerFacts("what_to_eat", { today: TODAY, day, eat: [{ name: "Paneer", kcal: 300, proteinG: 20 }] });
+  assert.match(out.lines[0], /you're at your target/);
+  assert.match(out.lines[1], /20 g protein is still to go/);
+  assert.ok(!out.lines.join(" ").includes("Paneer"));
+});
+
+test("meals: 'what did I have for lunch' reads today's and yesterday's logged meals", () => {
+  const { buildSnapshot } = feature("assistant/snapshot");
+  const { answerFacts } = load(path.join(root, "../shared/domain/assistantFacts.ts"));
+  preferences.set("zorka.profileCache.a", JSON.stringify({
+    userId: "a", displayName: "Riya", goal: "lose_fat", age: 30, sex: "female", heightCm: 160, weightKg: 62, activityLevel: "light",
+    diet: "veg", targetWeightKg: 56, pace: "steady", coach: null, oilGheePrompt: false, stepGoal: 8000, waterGoalGlasses: 8,
+    checkinDetailed: false, onboardedAt: "2026-10-01T00:00:00.000Z", updatedAt: null,
+  }));
+  savedMeal("lunch", [["Roti", 200], ["Dal tadka", 165]]);
+  const snap = buildSnapshot("a");
+  const lunch = answerFacts("meals", snap.facts, undefined, "lunch");
+  assert.equal(lunch.lines[0], "Lunch: roti, dal tadka (365 kcal).");
+  const dinner = answerFacts("meals", snap.facts, undefined, "dinner");
+  assert.equal(dinner.known, false);
+  assert.match(dinner.lines[0], /haven't logged dinner today/);
+});
+
 const savedMeal = (mealType, items) => {
   const id = randomUUID();
   feature("meals/store").saveMeal({
@@ -491,7 +550,7 @@ test("edit_meal removes a food, adds one or replaces the meal, each undoable", a
   const replace = await saveTurn(
     result([item({ kind: "edit_meal", mode: "replace", span: "dal", mealType: "lunch", confidence: "high" }, { kind: "meal", items: [parsedItem("dal", DAL)], mealType: "lunch" })]),
   );
-  assert.match(replace.turn().items[0].receipt, /^Change lunch \(today\) from roti, dal tadka, dal fry \(\d+ kcal\) to dal tadka, 1 katori\?$/);
+  assert.match(replace.turn().items[0].receipt, /^Change lunch \(today\) from roti, dal tadka, dal fry \(\d+ kcal\) to dal tadka, 1 katori \(\d+ kcal\)\?$/);
   await thread.approve(replace.id, 0);
   assert.deepEqual(names(), ["Dal tadka"]);
 
@@ -521,5 +580,114 @@ test("the router is told what's logged today and yesterday", () => {
   assert.deepEqual(loggedForServer("a", TODAY, "2000-01-01"), [
     { date: TODAY, kind: "meal", mealType: "lunch", text: "Roti, Dal tadka" },
     { date: TODAY, kind: "water", text: "1 glasses" },
+  ]);
+});
+
+test("edit_meal replace with `from` swaps one food and keeps the rest; Undo puts it back", async () => {
+  const thread = feature("assistant/thread");
+  savedMeal("lunch", [["Roti", 200], ["Rajma", 240], ["Steamed rice", 130]]);
+  const names = () => meals()[0].items.map((i) => i.name);
+  const swap = await saveTurn(
+    result(
+      [item({ kind: "edit_meal", mode: "replace", span: "dal", from: "rajma", mealType: "lunch", confidence: "high" }, { kind: "meal", items: [parsedItem("dal", DAL)], mealType: "lunch" })],
+      "lunch mein rajma nahi dal tha",
+    ),
+  );
+  assert.match(swap.turn().items[0].receipt, /^Change lunch \(today\) from roti, rajma, steamed rice \(570 kcal\) to roti, 1 katori; dal tadka, 1 katori; steamed rice, 1 katori \(\d+ kcal\)\?$/);
+  await thread.approve(swap.id, 0);
+  assert.deepEqual(names(), ["Roti", "Dal tadka", "Steamed rice"]);
+  await thread.undo(swap.id, 0);
+  assert.deepEqual(names(), ["Roti", "Rajma", "Steamed rice"]);
+
+  const missing = await saveTurn(
+    result([item({ kind: "edit_meal", mode: "replace", span: "dal", from: "paneer", mealType: "lunch", confidence: "high" }, { kind: "meal", items: [parsedItem("dal", DAL)], mealType: "lunch" })]),
+  );
+  assert.equal(missing.turn().items[0].state, "failed");
+  assert.match(missing.turn().items[0].receipt, /doesn't have paneer/);
+});
+
+test("`from` is refused on add and remove by the shared check", () => {
+  const { checkAction } = load(path.join(root, "../shared/domain/assistant.ts"));
+  assert.deepEqual(checkAction({ kind: "edit_meal", mode: "add", span: "dal", from: "rice" }, CTX), { ok: false, reason: "bad_value" });
+  assert.equal(checkAction({ kind: "edit_meal", mode: "replace", span: "dal", from: "rice" }, CTX).ok, true);
+});
+
+test("delete_entry cancels a reminder by its words, and Undo sets it again", async () => {
+  const thread = feature("assistant/thread");
+  reminders.push({ what: "pack snacks", date: TODAY, minute: 1439 }, { what: "call mom", date: TODAY, minute: 1438 });
+  const t = await saveTurn(result([item({ kind: "delete_entry", target: "reminder", span: "snacks" })], "cancel the snacks reminder"));
+  assert.equal(t.turn().items[0].receipt, 'Cancel "pack snacks" at 11:59pm today?');
+  await thread.approve(t.id, 0);
+  assert.deepEqual(reminders.at(-1), { cancelled: "zorka.remind.1" });
+  await thread.undo(t.id, 0);
+  assert.deepEqual(reminders.at(-1), { what: "pack snacks", date: TODAY, minute: 1439 });
+
+  const none = await saveTurn(result([item({ kind: "delete_entry", target: "reminder", span: "gym" })]));
+  assert.equal(none.turn().items[0].state, "failed");
+});
+
+test("delete_entry drops a planned meal; Undo brings the plan back", async () => {
+  const thread = feature("assistant/thread");
+  const planned = feature("assistant/plannedMeals");
+  planned.planMeal("a", TODAY, { mealType: "dinner", text: "paneer tikka", items: [] });
+  const t = await saveTurn(result([item({ kind: "delete_entry", target: "planned_meal", mealType: "dinner" })], "I won't have the paneer for dinner"));
+  assert.equal(t.turn().items[0].receipt, "Drop paneer tikka from dinner today?");
+  await thread.approve(t.id, 0);
+  assert.deepEqual(planned.plannedMeals("a", TODAY), []);
+  await thread.undo(t.id, 0);
+  assert.equal(planned.plannedMeals("a", TODAY)[0].text, "paneer tikka");
+});
+
+test("a reminder or plan can be dropped up to a week ahead, but never a past one", () => {
+  const { checkAction } = load(path.join(root, "../shared/domain/assistant.ts"));
+  const { addDays } = load(path.join(root, "../shared/domain/progress.ts"));
+  assert.equal(checkAction({ kind: "delete_entry", target: "planned_meal", date: addDays(TODAY, 3) }, CTX).ok, true);
+  assert.deepEqual(checkAction({ kind: "delete_entry", target: "reminder", date: addDays(TODAY, -1) }, CTX), { ok: false, reason: "date_out_of_range" });
+  assert.deepEqual(checkAction({ kind: "delete_entry", target: "meal", date: addDays(TODAY, 1) }, CTX), { ok: false, reason: "date_out_of_range" });
+});
+
+test("exercise_ref: only musclewiki.com links survive the phone's check, and the card opens them by index", async () => {
+  const { overlayView, linkFor } = feature("assistant/overlayView");
+  const resolved = {
+    kind: "exercises",
+    query: "chest",
+    category: "chest",
+    matches: [
+      { id: "e1", name: "Barbell Bench Press", category: "chest", url: "https://musclewiki.com/exercise/barbell-bench-press" },
+      { id: "e2", name: "Cable Fly", category: "chest", url: "https://evil.example.com/phish" },
+      { id: "e3", name: "My Fly", category: "chest", url: null },
+    ],
+  };
+  const t = await saveTurn(result([{ action: { kind: "exercise_ref", span: "chest" }, tier: "answer", resolved, ask: null, line: "Chest exercises." }], "exercises for chest"));
+  const stored = t.turn().items[0];
+  assert.equal(stored.state, "answered");
+  assert.equal(stored.resolved.matches[1].url, null);
+  const v = overlayView(t.id, t.turn(), TODAY);
+  assert.deepEqual(v.rows[0].buttons, [{ id: "link:0", label: "Open on MuscleWiki", primary: true }]);
+  assert.equal(linkFor(stored, "link:0"), "https://musclewiki.com/exercise/barbell-bench-press");
+  assert.equal(linkFor(stored, "link:1"), null);
+
+  const none = await saveTurn(result([{ action: { kind: "exercise_ref", span: "zercher" }, tier: "answer", resolved: { kind: "exercises", query: "zercher", category: null, matches: [] }, ask: null, line: "" }]));
+  const nv = overlayView(none.id, none.turn(), TODAY);
+  assert.deepEqual(nv.rows[0].buttons, [{ id: "link:browse", label: "Search MuscleWiki" }]);
+  assert.equal(linkFor(none.turn().items[0], "link:browse"), "https://musclewiki.com/exercises");
+});
+
+test("offline: food questions are answered from local data, with the meal they name", () => {
+  const { localAskTopic, localMealType } = load(path.join(root, "../shared/domain/assistant.ts"));
+  assert.equal(localAskTopic("what should I eat next"), "what_to_eat");
+  assert.equal(localAskTopic("suggest something for dinner"), "what_to_eat");
+  assert.equal(localMealType("suggest something for dinner"), "dinner");
+  assert.equal(localAskTopic("what did I have for lunch"), "meals");
+  assert.equal(localAskTopic("aaj kya khaya"), "meals");
+});
+
+test("the router also sees today's plans and upcoming reminders", () => {
+  reminders.push({ what: "pack snacks", date: TODAY, minute: 1439 });
+  feature("assistant/plannedMeals").planMeal("a", TODAY, { mealType: "dinner", text: "paneer tikka", items: [] });
+  const { loggedForServer } = feature("assistant/executors");
+  assert.deepEqual(loggedForServer("a", TODAY, "2000-01-01"), [
+    { date: TODAY, kind: "planned_meal", mealType: "dinner", text: "paneer tikka" },
+    { date: TODAY, kind: "reminder", text: "11:59pm pack snacks" },
   ]);
 });
