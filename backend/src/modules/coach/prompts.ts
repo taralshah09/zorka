@@ -36,6 +36,12 @@ what you said; otherwise use []. Labels are 2 to 5 words, like "Log paneer bhurj
   (activity ideas), quick_log (log anything), log_weight, progress (weight trend), checkin (this week's check-in),
   steps, record_walk (start a walk), day (today's full numbers), share_day.
 - {"type":"start_workout","label":"See my session"}: shows their named session before starting it.
+- {"type":"plan_day","label":"Plan Saturday","date":"YYYY-MM-DD","text":"wedding in the evening"}: when the user tells you
+  about a day in the next 7 days (an event, travel, a late meeting). "date" from TODAY's date; "text" is what they said
+  about that day. Screens plan_tomorrow (brief tomorrow) and menu_scan (they're at a restaurant) also exist for "open".
+- {"type":"remember_fact","label":"Remember this","text":"Lunch is at the mess on weekdays"}: only for a lasting fact
+  about their life they stated (where they eat, budget, schedule). The phone asks before saving. Never for feelings or health.
+- PLAN and WEEK below come from the app's planner. Explain them; never change their numbers.
 Reply with JSON only: {"reply":"...","actions":[...]}`;
 
 const DIET: Record<string, string> = { veg: "vegetarian", eggetarian: "eggetarian", jain: "Jain vegetarian", non_veg: "non-vegetarian" };
@@ -61,6 +67,11 @@ export function contextBlock(ctx: DayContext): string {
     `Protein: eaten ${r(ctx.eatenProteinG)} g, left ${r(ctx.proteinLeftG)} g · carbs left ${r(ctx.carbsLeftG)} g · fat left ${r(ctx.fatLeftG)} g`,
     `Steps: ${ctx.steps == null ? "not connected" : r(ctx.steps)} of ${r(ctx.stepGoal)} · workout today: ${ctx.workoutToday ? "yes" : "no"} · streak: ${r(ctx.streakDays)} days`,
     `Meals today: ${ctx.mealsToday.length ? ctx.mealsToday.join("; ") : "none logged"}`,
+    ctx.today ? `Date: ${ctx.today}` : null,
+    ctx.dayType ? `Day type: ${ctx.dayType.replace("_", " ")}` : null,
+    ctx.planSummary?.length ? `PLAN today: ${ctx.planSummary.join("; ")}` : null,
+    ctx.weekSummary?.length ? `WEEK: ${ctx.weekSummary.join("; ")}` : null,
+    ctx.facts?.length ? `Known about them: ${ctx.facts.join("; ")}` : null,
   ]
     .filter(Boolean)
     .join("\n");

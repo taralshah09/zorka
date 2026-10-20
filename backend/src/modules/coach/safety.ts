@@ -60,7 +60,17 @@ const LATE_NIGHT = "21:30";
  * UX N1 · The buttons to send: each one well-formed, clean, not a workout late at night, no duplicates, at most
  * MAX_ACTIONS. Anything else is dropped quietly; the reply still goes out.
  */
-export function checkActions(raw: readonly unknown[] | undefined, localTime: string): CoachAction[] {
+const DAY_MS = 86_400_000;
+/** LA6: a plan_day button only for today … 7 days on (D73). Without the phone's date, only its format is checked. */
+function planDateOk(date: string, today: string | undefined): boolean {
+  const d = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(d)) return false;
+  if (!today) return true;
+  const diff = (d - Date.parse(`${today}T00:00:00Z`)) / DAY_MS;
+  return diff >= 0 && diff <= 7;
+}
+
+export function checkActions(raw: readonly unknown[] | undefined, localTime: string, today?: string): CoachAction[] {
   const out: CoachAction[] = [];
   const seen = new Set<string>();
   for (const item of raw ?? []) {
@@ -71,6 +81,7 @@ export function checkActions(raw: readonly unknown[] | undefined, localTime: str
     if (PROFANITY.test(words) || UNSAFE_ADVICE.test(words)) continue;
     if (localTime >= LATE_NIGHT && (a.type === "start_workout" || (a.type === "open" && a.screen === "record_walk")))
       continue;
+    if (a.type === "plan_day" && !planDateOk(a.date, today)) continue;
     const key = a.type === "open" ? `open:${a.screen}` : a.type;
     if (seen.has(key)) continue;
     seen.add(key);

@@ -23,6 +23,13 @@ function toProfileDto(user: UserWithProfile): ProfileDto {
     stepGoal: p?.stepGoal ?? STEP_TARGET,
     waterGoalGlasses: p?.waterGoalGlasses ?? WATER_GOAL_DEFAULT,
     checkinDetailed: p?.checkinDetailed ?? false,
+    mealSource: p?.mealSource ?? null,
+    budget: p?.budget ?? null,
+    workPattern: p?.workPattern ?? null,
+    hasKitchen: p?.hasKitchen ?? null,
+    hasFridge: p?.hasFridge ?? null,
+    sessionsPerWeek: p?.sessionsPerWeek ?? null,
+    briefPromptMinute: p?.briefPromptMinute ?? null,
     onboardedAt: p?.onboardedAt?.toISOString() ?? null,
     updatedAt: p?.updatedAt?.toISOString() ?? null,
   };

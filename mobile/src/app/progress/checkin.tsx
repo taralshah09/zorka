@@ -16,6 +16,9 @@ import { useProgress } from "@/features/progress/hooks";
 import { formatInt, formatShortDate } from "@/features/targets/format";
 import { addDays, dayNumber, weekday } from "@shared/domain/progress";
 import { WeeklyLearning } from "@/features/progress/WeeklyLearning";
+import { useDayPlan } from "@/features/life/planner";
+import { WeekStrip } from "@/features/life/WeekStrip";
+import { localDate } from "@shared/domain/food";
 
 const BURN_WEEKS = 6;
 
@@ -23,6 +26,8 @@ export default function CheckinScreen() {
   const { colors } = useTheme();
   const toast = useToast();
   const p = useProgress(useActivityClock());
+  // LA4: this week's ledger strip (the same Mon–Sun week as the plan, D75).
+  const weekPlan = useDayPlan(localDate(new Date()), { save: "never" });
   const [showBurn, setShowBurn] = useState(false);
   const detailed = !!p.profile.data?.checkinDetailed;
   const back = () => router.back();
@@ -93,6 +98,7 @@ export default function CheckinScreen() {
         ))}
       </Card>
       <Button label="Review meal coverage" variant="secondary" onPress={() => router.push({ pathname: "/progress/records", params: { end: pending.window.end } })} />
+      {weekPlan.plan ? <WeekStrip week={weekPlan.plan.week} today={localDate(new Date())} /> : null}
 
       {r.status === "ready" ? (
         <>

@@ -204,6 +204,7 @@ export default function QuickLog() {
         </View>
       ))}
       <Button label="More meals · manage usuals" variant="ghost" onPress={() => router.push("/log/usuals")} />
+      <Button label="Eating out? Scan the menu" variant="ghost" icon="menu_book" onPress={() => router.push("/menu/scan")} />
     </BottomSheet>
   );
 }

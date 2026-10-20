@@ -39,6 +39,10 @@ import "@/features/progress/phases";
 import "@/features/progress/weights";
 // Registers water_log (Today water taps) for push and pull.
 import "@/features/water/store";
+// Register day_brief, day_plan and memory_fact (the life plan, LA1–LA5) for push and pull.
+import "@/features/life/briefs";
+import "@/features/life/plans";
+import "@/features/life/memory";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
 import { ConfettiBurstHost } from "@/features/celebrate/ConfettiBurst";
 import { OrderedItPrompt } from "@/features/gap/sheets";
@@ -96,6 +100,9 @@ function RootStack() {
         <Stack.Screen name="notifications" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="celebrate" options={{ presentation: "transparentModal", animation: "fade" }} />
+        <Stack.Screen name="plan" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="menu" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="knows" options={{ animation: "slide_from_right" }} />
       </Stack>
       {/* P34 "Ordered it?" on return from Zomato/Blinkit, and P36's on-device nudge planner. Both render nothing until needed. */}
       <OrderedItPrompt />

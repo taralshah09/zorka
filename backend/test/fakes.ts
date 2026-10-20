@@ -40,6 +40,10 @@ import type { WaterLogRecord, WaterRepository } from "../src/modules/water/water
 import { waterService } from "../src/modules/water/water.service.js";
 import type { WorkoutRecord, WorkoutsRepository } from "../src/modules/workouts/workouts.repository.js";
 import { workoutsService } from "../src/modules/workouts/workouts.service.js";
+import { briefsService } from "../src/modules/briefs/briefs.service.js";
+import type { DayBriefRecord, DayPlanRecord, LifeRepositories, MemoryFactRecord } from "../src/modules/life/life.repository.js";
+import { lifeService } from "../src/modules/life/life.service.js";
+import { menuService } from "../src/modules/menu/menu.service.js";
 
 export const RIYA = "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11";
 export const ARJUN = "8a2d4b6f-1c3e-4d8b-8f32-6b8c4dae1f22";
@@ -75,6 +79,13 @@ export function memoryUsers(): UsersRepository & { rows: Map<string, UserWithPro
         stepGoal: 8000,
         waterGoalGlasses: 8,
         checkinDetailed: false,
+        mealSource: null,
+        budget: null,
+        workPattern: null,
+        hasKitchen: null,
+        hasFridge: null,
+        sessionsPerWeek: null,
+        briefPromptMinute: null,
         onboardedAt: null,
         createdAt: now,
         updatedAt: now,
@@ -324,6 +335,26 @@ export function memoryPhases(): PhasesRepository & { rows: Map<string, PhaseReco
   return { rows: m.rows, findPhase: m.find, upsertPhase: m.upsert, softDeletePhase: m.softDelete, listChanged: m.listChanged };
 }
 
+/** LA1–LA5: day briefs, day plans and memory facts in memory. */
+export function memoryLife(): LifeRepositories & {
+  briefRows: Map<string, DayBriefRecord>;
+  planRows: Map<string, DayPlanRecord>;
+  factRows: Map<string, MemoryFactRecord>;
+} {
+  const briefs = memoryEntity<DayBriefRecord>((b) => b as unknown as DayBriefRecord);
+  const plans = memoryEntity<DayPlanRecord>(({ acceptedAt, ...p }) => ({ ...p, acceptedAt: acceptedAt ? new Date(acceptedAt as string) : null }) as unknown as DayPlanRecord);
+  const facts = memoryEntity<MemoryFactRecord>((f) => f as unknown as MemoryFactRecord);
+  const repo = (m: typeof briefs | typeof plans | typeof facts) => ({ find: m.find, upsert: m.upsert, softDelete: m.softDelete, listChanged: m.listChanged });
+  return {
+    briefs: repo(briefs) as LifeRepositories["briefs"],
+    plans: repo(plans) as LifeRepositories["plans"],
+    facts: repo(facts) as LifeRepositories["facts"],
+    briefRows: briefs.rows,
+    planRows: plans.rows,
+    factRows: facts.rows,
+  };
+}
+
 /** Server-side change times for the in-memory repos: strictly increasing, like updated_at. */
 let clock = Date.parse("2026-10-11T00:00:00.000Z");
 const tick = () => new Date((clock += 1000));
@@ -385,6 +416,8 @@ export function testApp(
   const checkins = checkinsService(checkinsRepo);
   const phasesRepo = memoryPhases();
   const phases = phasesService(phasesRepo);
+  const lifeRepo = memoryLife();
+  const life = lifeService(lifeRepo);
   const ai = opts.ai ?? fakeAi();
   const search = opts.search ?? fakeSearch();
   const app = createApp({
@@ -404,6 +437,9 @@ export function testApp(
       water_log: water.syncWater,
       checkin: checkins.syncCheckin,
       phase: phases.syncPhase,
+      day_brief: life.syncBrief,
+      day_plan: life.syncPlan,
+      memory_fact: life.syncFact,
     }),
     changes: changesService(sync.userExists, {
       meal_log: meals.changes,
@@ -414,6 +450,9 @@ export function testApp(
       water_log: water.changes,
       checkin: checkins.changes,
       phase: phases.changes,
+      day_brief: life.briefChanges,
+      day_plan: life.planChanges,
+      memory_fact: life.factChanges,
     }),
     foods,
     foodLookup: foodLookupService(ai, search, foodsRepo.userExists, opts.now),
@@ -425,6 +464,8 @@ export function testApp(
     gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
     nearby: nearbyService(ai, search, foodsRepo.userExists, opts.now),
     coach: coachService(ai, foodsRepo.userExists),
+    briefs: briefsService(ai, foodsRepo.userExists),
+    menu: menuService(ai, foodsRepo.userExists),
     ai,
     search,
     devRoutes: true,
@@ -444,5 +485,6 @@ export function testApp(
     water: waterRepo,
     checkins: checkinsRepo,
     phases: phasesRepo,
+    life: lifeRepo,
   };
 }

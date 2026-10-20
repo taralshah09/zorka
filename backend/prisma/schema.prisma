@@ -74,6 +74,9 @@ model User {
   waterLogs  WaterLog[]
   checkins   Checkin[]
   phases     Phase[]
+  dayBriefs  DayBrief[]
+  dayPlans   DayPlan[]
+  memoryFacts MemoryFact[]
 
   @@map("users")
 }
@@ -98,6 +101,16 @@ model Profile {
   waterGoalGlasses Int            @default(8) @map("water_goal_glasses")
   /// P28: the weekly check-in shows the detailed (geek) version instead of the simple one (D50).
   checkinDetailed  Boolean        @default(false) @map("checkin_detailed")
+  /// LA1 · Standing life (docs/LIFE_PLAN.md). Every answer can be skipped (null).
+  mealSource        LifeMealSource? @map("meal_source")
+  budget            BudgetBand?     @map("budget")
+  workPattern       WorkPattern?    @map("work_pattern")
+  hasKitchen        Boolean?        @map("has_kitchen")
+  hasFridge         Boolean?        @map("has_fridge")
+  /// 0–7; null = learn from logs.
+  sessionsPerWeek   Int?            @map("sessions_per_week")
+  /// Minute of the day for the evening brief prompt (D73); null = off.
+  briefPromptMinute Int?            @map("brief_prompt_minute")
   onboardedAt      DateTime?      @map("onboarded_at") @db.Timestamptz(3)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -587,4 +600,138 @@ model Phase {
 
   @@index([userId, updatedAt])
   @@map("phases")
+}
+
+// ---------------------------------------------------------------------------
+// LA1–LA5 · Life plan (docs/LIFE_PLAN.md, D72–D80). Standing life lives on the profile; the brief, the accepted plan
+// and the memory facts are local-first entities synced like the rest (D23). Chat transcripts never come here (D78).
+// `LifeMealSource` is the plan's "MealSource" (renamed: MealSource already means how a meal was logged).
+// ---------------------------------------------------------------------------
+
+enum LifeMealSource {
+  home_self
+  home_family
+  mess
+  canteen
+  eat_out
+  mixed
+}
+
+enum BudgetBand {
+  comfortable
+  careful
+  tight
+}
+
+enum WorkPattern {
+  office
+  shifts
+  student
+  wfh
+  irregular
+}
+
+enum BriefStatus {
+  draft
+  confirmed
+}
+
+/// calendar is unused until later (D74).
+enum BriefSource {
+  brief
+  calendar
+  inferred
+}
+
+model DayBrief {
+  id              String      @id @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  /// The day it describes.
+  localDate       String      @map("local_date")
+  /// What the user said; editable.
+  rawText         String      @map("raw_text")
+  /// DayFacts (shared/domain/life.ts), already validated.
+  parsed          Json
+  status          BriefStatus
+  source          BriefSource
+  clientUpdatedAt DateTime    @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?   @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, localDate])
+  @@map("day_briefs")
+}
+
+model DayPlan {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  localDate       String    @map("local_date")
+  /// DayPlan (shared/domain/planDay.ts).
+  plan            Json
+  /// Re-plan only when the inputs change (planInputsHash).
+  inputsHash      String    @map("inputs_hash")
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(3)
+  clientUpdatedAt DateTime  @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, localDate])
+  @@map("day_plans")
+}
+
+enum FactKind {
+  constraint
+  pattern
+  preference
+  event
+}
+
+enum FactSource {
+  onboarding
+  brief
+  chat
+  inferred
+  user
+}
+
+enum FactStatus {
+  suggested
+  active
+  dismissed
+}
+
+model MemoryFact {
+  id              String     @id @db.Uuid
+  userId          String     @map("user_id") @db.Uuid
+  /// Stable, e.g. "usual_meal:lunch:weekday" (shared/domain/memory.ts FACT_KEYS). One row per key on the phone.
+  key             String
+  kind            FactKind
+  value           Json
+  text            String
+  source          FactSource
+  /// 0–1, inferred facts only.
+  confidence      Float
+  /// { count, window, lastSeen }
+  evidence        Json?
+  status          FactStatus
+  validFrom       String?    @map("valid_from")
+  validUntil      String?    @map("valid_until")
+  clientUpdatedAt DateTime   @map("client_updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, key])
+  @@map("memory_facts")
 }

@@ -28,6 +28,12 @@ export const DayContext = z
     streakDays: num,
     workoutToday: z.boolean(),
     mealsToday: z.array(z.string().trim().max(120)).max(12),
+    /** LA6: the user's today (for "Saturday" → a date), today's day type and plan, the week, and what Zorka knows. */
+    today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dayType: z.enum(["normal", "busy", "away", "travel", "late_work", "feast", "exam", "sick", "rest"]).optional(),
+    planSummary: z.array(z.string().trim().max(120)).max(6).optional(),
+    weekSummary: z.array(z.string().trim().max(120)).max(4).optional(),
+    facts: z.array(z.string().trim().max(200)).max(8).optional(),
   })
   .strict();
 export type DayContext = z.infer<typeof DayContext>;
@@ -65,6 +71,9 @@ export const COACH_SCREENS = [
   "record_walk",
   "day",
   "share_day",
+  // LA6/LA7: tomorrow's brief and plan, and the menu scan.
+  "plan_tomorrow",
+  "menu_scan",
 ] as const;
 
 const label = z.string().trim().min(1).max(40);
@@ -79,6 +88,10 @@ export const CoachAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open"), label, screen: z.enum(COACH_SCREENS) }).strict(),
   /** Starts the user's next gym routine (the phone knows which; the server doesn't see routines). */
   z.object({ type: z.literal("start_workout"), label }).strict(),
+  /** LA6: opens the brief for a day in the next week, pre-filled with what the user said ("Plan Saturday"). */
+  z.object({ type: z.literal("plan_day"), label, date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), text: z.string().trim().min(1).max(300) }).strict(),
+  /** LA6 (D78): offers to remember a fact; the phone asks "Remember this?" before saving it. */
+  z.object({ type: z.literal("remember_fact"), label, text: z.string().trim().min(3).max(200) }).strict(),
 ]);
 export type CoachAction = z.infer<typeof CoachAction>;
 export const MAX_ACTIONS = 2;

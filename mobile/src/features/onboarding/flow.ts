@@ -4,9 +4,10 @@
 import type { Goal } from "@/core/api/types";
 import { goalHasPace } from "@shared/domain/targets";
 
-export type StepId = "goal" | "basics" | "activity" | "target" | "plan";
+// LA1: "Your life" (meals, budget, a typical day, sessions) comes after activity; every answer there can be skipped.
+export type StepId = "goal" | "basics" | "activity" | "life" | "target" | "plan";
 
-const ALL: readonly StepId[] = ["goal", "basics", "activity", "target", "plan"];
+const ALL: readonly StepId[] = ["goal", "basics", "activity", "life", "target", "plan"];
 
 export function stepsFor(goal: Goal | null): StepId[] {
   return goal && !goalHasPace(goal) ? ALL.filter((s) => s !== "target") : [...ALL];

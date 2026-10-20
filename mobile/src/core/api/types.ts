@@ -1,6 +1,8 @@
 // API contract types — mirror backend/src/modules/*/…schemas.ts. Keep the two in step.
 import type { FoodUnit, Macros } from "@shared/domain/food";
 import type { ExerciseCategory, ExerciseType, SetValues } from "@shared/domain/gym";
+import type { BudgetBand, DayFacts, MealSource as LifeMealSource, WorkPattern } from "@shared/domain/life";
+import type { MenuTag, Range } from "@shared/domain/menu";
 
 export type Goal = "lose_fat" | "build_muscle" | "maintain" | "get_fitter";
 export type Sex = "male" | "female" | "unspecified";
@@ -32,6 +34,15 @@ export type Profile = {
   waterGoalGlasses: number;
   /** P28 (D50): show the detailed weekly check-in instead of the simple one. */
   checkinDetailed: boolean;
+  /** LA1 standing life (docs/LIFE_PLAN.md). Missing from a server older than LA1. */
+  mealSource?: LifeMealSource | null;
+  budget?: BudgetBand | null;
+  workPattern?: WorkPattern | null;
+  hasKitchen?: boolean | null;
+  hasFridge?: boolean | null;
+  sessionsPerWeek?: number | null;
+  /** D73: minute of the day for the evening brief prompt; null = off. */
+  briefPromptMinute?: number | null;
   onboardedAt: string | null;
   updatedAt: string | null;
 };
@@ -49,11 +60,24 @@ export type SyncEntity =
   | "weight_log"
   | "water_log"
   | "checkin"
-  | "phase";
+  | "phase"
+  | "day_brief"
+  | "day_plan"
+  | "memory_fact";
 
 /** GET /users/:id/changes (backend/src/modules/sync/changes.ts). */
 export type PullEntity =
-  "meal_log" | "workout" | "routine" | "activity" | "weight_log" | "water_log" | "checkin" | "phase";
+  | "meal_log"
+  | "workout"
+  | "routine"
+  | "activity"
+  | "weight_log"
+  | "water_log"
+  | "checkin"
+  | "phase"
+  | "day_brief"
+  | "day_plan"
+  | "memory_fact";
 export type Change = { entity: PullEntity; id: string; deleted: boolean; data: unknown };
 export type ChangesPage = { changes: Change[]; cursor: string; more: boolean };
 export type SyncOp = {
@@ -133,16 +157,37 @@ export type CoachDayContext = {
   streakDays: number;
   workoutToday: boolean;
   mealsToday: string[];
+  /** LA6: the user's date, today's day type and plan, the week, and up to 8 active facts. */
+  today?: string;
+  dayType?: "normal" | "busy" | "away" | "travel" | "late_work" | "feast" | "exam" | "sick" | "rest";
+  planSummary?: string[];
+  weekSummary?: string[];
+  facts?: string[];
 };
 /** UX N1 · Screens a coach button may open (backend COACH_SCREENS). */
 export type CoachScreen =
-  "gap" | "move" | "quick_log" | "log_weight" | "progress" | "checkin" | "steps" | "record_walk" | "day" | "share_day";
+  | "gap"
+  | "move"
+  | "quick_log"
+  | "log_weight"
+  | "progress"
+  | "checkin"
+  | "steps"
+  | "record_walk"
+  | "day"
+  | "share_day"
+  | "plan_tomorrow"
+  | "menu_scan";
 /** UX N1 · A button under a coach reply. */
 export type CoachAction =
   | { type: "log_meal"; label: string; text: string }
   | { type: "plan_meal" | "save_idea" | "ate_meal"; label: string; text: string }
   | { type: "open"; label: string; screen: CoachScreen }
-  | { type: "start_workout"; label: string };
+  | { type: "start_workout"; label: string }
+  /** LA6: opens the brief for that date, pre-filled. */
+  | { type: "plan_day"; label: string; date: string; text: string }
+  /** LA6 (D78): "Remember this?" before saving a fact. */
+  | { type: "remember_fact"; label: string; text: string };
 export type CoachChatResult = {
   reply: string;
   kind: "ai" | "support" | "fallback";
@@ -248,5 +293,31 @@ export type GymParseResult = {
   transcript: string;
   sets: GymParsedSet[];
   timings: { sttMs: number; aiMs: number; matchMs: number; totalMs: number };
+  ai: { slot: string; model: string; attempts: number };
+};
+
+// ── Life plan (LA2, LA7) — mirrors backend/src/modules/{briefs,menu}/…schemas.ts ──────────────────
+export type BriefParseResult = {
+  transcript: string | null;
+  facts: DayFacts;
+  question: string | null;
+  ai: { slot: string; model: string; attempts: number };
+};
+export type MenuReadDish = {
+  name: string;
+  gloss?: string;
+  section?: string;
+  price?: number | null;
+  veg: boolean | null;
+  tags: MenuTag[];
+  est: { kcal: Range; proteinG: Range; carbsG: Range; fatG: Range };
+};
+export type MenuReadResult = {
+  page: number;
+  unreadable: boolean;
+  restaurant: string | null;
+  cuisine: string | null;
+  currency: string | null;
+  dishes: MenuReadDish[];
   ai: { slot: string; model: string; attempts: number };
 };

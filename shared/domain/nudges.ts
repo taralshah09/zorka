@@ -3,10 +3,15 @@
 // What the coach says comes from the persona templates on the phone; this file only decides when and where taps go.
 //
 // Constants are the ones accepted at the P36 gate (docs/DECISIONS.md D61). Changing any of them is a product decision.
+// LA3 (docs/LIFE_PLAN.md "nudges.ts") adds the day: a nudge that falls inside a block moves to the free minute before it
+// (or is dropped), day-type rules turn kinds off, and `planLifeNudges` adds the brief prompt, prep and water refills.
+import { DAY_RULES, type DayType } from "./dayType.js";
+import type { Block } from "./life.js";
 
 export type NudgeKind =
   "morning" | "protein" | "workout" | "slipping" | "streak" | "praise";
-export type NudgeRoute = "today" | "gap" | "train";
+/** "plan" (LA2): a life nudge tap opens the brief for tomorrow. */
+export type NudgeRoute = "today" | "gap" | "train" | "plan";
 
 export const NUDGE_KINDS: readonly NudgeKind[] = [
   "morning",
@@ -74,6 +79,10 @@ export const DEFAULT_NUDGE_SETTINGS: NudgeSettings = {
 };
 
 export type NudgeFacts = {
+  /** LA3: today's blocks from the brief or the assumed day. Nudges never land inside one. */
+  blocks?: Block[];
+  /** LA3: today's day type; DAY_RULES[type].nudges turns kinds off. */
+  dayType?: DayType;
   coverageComplete?: boolean;
   restToday?: boolean;
   visitFinished?: boolean;
@@ -188,7 +197,95 @@ export function planNudges(
     tomorrow.push(timed("streak", 1));
 
   return [
-    ...capByPriority(today, perDay - facts.deliveredToday),
+    ...capByPriority(fitDay(today, facts, settings), perDay - facts.deliveredToday),
     ...capByPriority(tomorrow, perDay),
   ];
+}
+
+/** Kinds each day-type nudge tactic keeps (LIFE_PLAN.md table). Missing = every kind. */
+export const DAY_NUDGE_KINDS: Partial<Record<(typeof DAY_RULES)[DayType]["nudges"], readonly NudgeKind[]>> = {
+  prep_and_morning: ["morning", "praise"],
+  prep_only: [],
+  minimal: ["morning", "praise"],
+  care_only: ["morning"],
+};
+
+/**
+ * LA3: today's nudges against the day. Day-type tactics turn kinds off; on a late-work day nothing is sent once that
+ * work block starts; a nudge inside a block moves to the minute before the block (dropped if that's past, in quiet
+ * hours or inside another block). Work and study blocks count only with canMove false, so an office day doesn't push
+ * every nudge to 9:29. Immediate nudges (praise) are left alone.
+ */
+function fitDay(list: PlannedNudge[], facts: NudgeFacts, settings: NudgeSettings): PlannedNudge[] {
+  const tactic = facts.dayType ? DAY_RULES[facts.dayType].nudges : "usual";
+  const keep = DAY_NUDGE_KINDS[tactic];
+  const blocks = facts.blocks ?? [];
+  const lateStart =
+    tactic === "none_after_work" ? Math.min(...blocks.filter((b) => b.kind === "work" && b.to > 21 * 60).map((b) => b.from)) : Infinity;
+  // Meetings, events, travel and the like hold nudges back; an ordinary work or study block only when it says it's busy.
+  const holds = (b: Block) => !(b.kind === "work" || b.kind === "study") || b.canMove === false;
+  const inBlock = (m: number) => blocks.find((b) => holds(b) && m >= b.from && m < b.to);
+  const out: PlannedNudge[] = [];
+  for (const n of list) {
+    if (n.immediate) {
+      out.push(n);
+      continue;
+    }
+    if (keep && !keep.includes(n.kind)) continue;
+    let minute = n.minute;
+    const block = inBlock(minute);
+    if (block) minute = block.from - 1;
+    if (minute >= lateStart) continue;
+    if (minute <= facts.minuteOfDay || inQuietHours(minute, settings) || inBlock(minute)) continue;
+    out.push(minute === n.minute ? n : { ...n, minute });
+  }
+  return out;
+}
+
+// ── LA2/LA3 · Life nudges: the evening brief prompt, prep, water refills ─────────────────────────────────────────
+
+export type LifeNudgeKind = "brief_prompt" | "prep" | "water_refill";
+export type LifeNudge = { kind: LifeNudgeKind; dayOffset: 0 | 1; minute: number; text: string };
+/** At most this many life nudges a day, on top of the coach nudges. */
+export const MAX_LIFE_NUDGES_PER_DAY = 3;
+/** D73: the evening prompt, unless the user picked another time. */
+export const DEFAULT_BRIEF_PROMPT_MINUTE = 21 * 60;
+
+export type LifeNudgeInput = {
+  /** Minute of the day now. */
+  now: number;
+  /** null = the brief prompt is off. */
+  briefPromptMinute: number | null;
+  /** Tomorrow already has a confirmed brief: no prompt. */
+  tomorrowBriefed: boolean;
+  /** Reminders from the plans (planDay items): today's prep and water, and tomorrow's evening-before prep. */
+  todayReminders: ReadonlyArray<{ kind: "prep" | "water"; at: number; dayOffset: -1 | 0; text: string; code?: string }>;
+  tomorrowReminders: ReadonlyArray<{ kind: "prep" | "water"; at: number; dayOffset: -1 | 0; text: string; code?: string }>;
+  settings: Pick<NudgeSettings, "enabled" | "quietStart" | "quietEnd">;
+};
+
+/**
+ * Today's life nudges. The brief prompt has its own switch (briefPromptMinute, D73); prep and refills follow the coach
+ * nudge switch (PA: off by default). Quiet hours apply to all of them; MAX_LIFE_NUDGES_PER_DAY caps them, prep first.
+ */
+export function planLifeNudges(input: LifeNudgeInput): LifeNudge[] {
+  const out: LifeNudge[] = [];
+  const ok = (m: number) => m > input.now && m < 24 * 60 && !inQuietHours(m, input.settings);
+  if (input.settings.enabled) {
+    for (const r of input.tomorrowReminders)
+      if (r.kind === "prep" && r.dayOffset === -1 && ok(r.at)) out.push({ kind: "prep", dayOffset: 0, minute: r.at, text: r.text });
+    for (const r of input.todayReminders) {
+      if (r.dayOffset !== 0 || !ok(r.at)) continue;
+      if (r.kind === "prep") out.push({ kind: "prep", dayOffset: 0, minute: r.at, text: r.text });
+      else if (r.code === "refill") out.push({ kind: "water_refill", dayOffset: 0, minute: r.at, text: r.text });
+    }
+  }
+  const prompt = input.briefPromptMinute;
+  if (prompt != null && !input.tomorrowBriefed && ok(prompt))
+    out.push({ kind: "brief_prompt", dayOffset: 0, minute: prompt, text: "How's tomorrow looking?" });
+  const rank: Record<LifeNudgeKind, number> = { prep: 0, brief_prompt: 1, water_refill: 2 };
+  return out
+    .sort((a, b) => rank[a.kind] - rank[b.kind] || a.minute - b.minute)
+    .slice(0, MAX_LIFE_NUDGES_PER_DAY)
+    .sort((a, b) => a.minute - b.minute);
 }

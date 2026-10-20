@@ -1,9 +1,12 @@
 // UX N1 · Buttons under a coach reply. The server only names a screen or a meal; the phone decides the route, so a
 // reply can never send the user somewhere unexpected. Screen routes reuse the Home brief's hrefs (nextAction.ts).
 import { router, type Href } from "expo-router";
+import { Alert } from "react-native";
 
 import type { CoachAction, CoachScreen } from "@/core/api/types";
 import type { IconName } from "@/core/icons/Icon";
+import { rememberFact } from "@/features/life/memory";
+import { useActiveUser } from "@/features/users/activeUser";
 
 const SCREEN_HREF: Record<CoachScreen, Href> = {
   gap: "/gap",
@@ -16,6 +19,8 @@ const SCREEN_HREF: Record<CoachScreen, Href> = {
   record_walk: { pathname: "/activity/record", params: { kind: "walk" } },
   day: "/day",
   share_day: "/share?card=day",
+  plan_tomorrow: "/plan/tomorrow",
+  menu_scan: "/menu/scan",
 };
 
 const SCREEN_ICON: Record<CoachScreen, IconName> = {
@@ -29,9 +34,13 @@ const SCREEN_ICON: Record<CoachScreen, IconName> = {
   record_walk: "directions_walk",
   day: "bar_chart",
   share_day: "ios_share",
+  plan_tomorrow: "calendar_month",
+  menu_scan: "menu_book",
 };
 
 export function actionIcon(a: CoachAction): IconName {
+  if (a.type === "plan_day") return "calendar_month";
+  if (a.type === "remember_fact") return "auto_awesome";
   if ("text" in a) return "restaurant";
   if (a.type === "start_workout") return "fitness_center";
   return SCREEN_ICON[a.screen] ?? "chevron_right";
@@ -53,6 +62,21 @@ export function useCoachAction(): (a: CoachAction, key?: string) => void {
         return;
       case "start_workout": {
         router.push({ pathname: "/train/prepare", params: { actionKey: key } });
+        return;
+      }
+      case "plan_day":
+        // LA6: the brief for that date, pre-filled with what the user said.
+        router.push({ pathname: "/plan/tomorrow", params: { date: a.date, text: a.text } });
+        return;
+      case "remember_fact": {
+        // D78: a fact from chat is saved only after the user says yes.
+        const userId = useActiveUser.getState().userId;
+        if (!userId) return;
+        Alert.alert("Remember this?", a.text, [
+          { text: "Not now", style: "cancel" },
+          { text: "Remember", onPress: () => rememberFact(userId, a.text) },
+        ]);
+        return;
       }
     }
   };

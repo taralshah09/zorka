@@ -13,6 +13,8 @@ import {
   type TargetInput,
 } from "@shared/domain/targets";
 import { clampWaterGoal, WATER_GOAL_DEFAULT } from "@shared/domain/water";
+import type { BudgetBand, MealSource, WorkPattern } from "@shared/domain/life";
+import { DEFAULT_BRIEF_PROMPT_MINUTE } from "@shared/domain/nudges";
 import type { StepId } from "./flow";
 
 export type Draft = {
@@ -31,6 +33,14 @@ export type Draft = {
   stepGoal: number | null;
   /** Daily water goal in glasses. Defaulted; changed on the plan step. */
   waterGoalGlasses: number;
+  /** LA1 standing life. null = skipped. */
+  mealSource: MealSource | null;
+  budget: BudgetBand | null;
+  workPattern: WorkPattern | null;
+  hasKitchen: boolean | null;
+  sessionsPerWeek: number | null;
+  /** D73: the evening "How's tomorrow looking?" prompt; null = off. */
+  briefPromptMinute: number | null;
   /** The last step the user was on, to pick up from there (UX O4). */
   lastStep: StepId | null;
 };
@@ -63,6 +73,12 @@ const EMPTY: Draft = {
   coach: null,
   stepGoal: null,
   waterGoalGlasses: WATER_GOAL_DEFAULT,
+  mealSource: null,
+  budget: null,
+  workPattern: null,
+  hasKitchen: null,
+  sessionsPerWeek: null,
+  briefPromptMinute: DEFAULT_BRIEF_PROMPT_MINUTE,
   lastStep: null,
 };
 
@@ -108,6 +124,12 @@ const pick = (s: DraftState): Draft => ({
   coach: s.coach,
   stepGoal: s.stepGoal,
   waterGoalGlasses: s.waterGoalGlasses,
+  mealSource: s.mealSource,
+  budget: s.budget,
+  workPattern: s.workPattern,
+  hasKitchen: s.hasKitchen,
+  sessionsPerWeek: s.sessionsPerWeek,
+  briefPromptMinute: s.briefPromptMinute,
   lastStep: s.lastStep,
 });
 
@@ -134,6 +156,12 @@ export const useDraft = create<DraftState>((set, get) => ({
             // A redo keeps the user's own goals; a first run leaves them to the suggestions.
             stepGoal: p.onboardedAt ? (p.stepGoal ?? STEP_TARGET) : null,
             waterGoalGlasses: clampWaterGoal(p.waterGoalGlasses),
+            mealSource: p.mealSource ?? null,
+            budget: p.budget ?? null,
+            workPattern: p.workPattern ?? null,
+            hasKitchen: p.hasKitchen ?? null,
+            sessionsPerWeek: p.sessionsPerWeek ?? null,
+            briefPromptMinute: p.onboardedAt ? (p.briefPromptMinute ?? null) : DEFAULT_BRIEF_PROMPT_MINUTE,
           }
         : null),
     });
@@ -156,6 +184,18 @@ export const useDraft = create<DraftState>((set, get) => ({
     }
   },
 }));
+
+/** LA1: the standing-life answers for the profile save. Skipped answers go as null. */
+export function lifeAnswers(d: Draft) {
+  return {
+    mealSource: d.mealSource,
+    budget: d.budget,
+    workPattern: d.workPattern,
+    hasKitchen: d.hasKitchen,
+    sessionsPerWeek: d.sessionsPerWeek,
+    briefPromptMinute: d.briefPromptMinute,
+  };
+}
 
 /** The coach the plan uses: the user's pick, or the one recommended for the goal. */
 export function draftCoach(d: Draft): CoachId | null {

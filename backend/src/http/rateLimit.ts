@@ -46,13 +46,20 @@ export type RateLimitConfig = {
   general: { perMinutePerUser: number; perMinutePerIp: number };
   ai: { perMinute: number; perDay: number };
   search: { perMinute: number; perDay: number };
+  /** LA7 menu pages. Missing = MENU_RATE_LIMIT. */
+  menu?: { perMinute: number; perDay: number };
 };
+
+/** LA7: a scan is at most 12 pages, and 6 scans a user a day (docs/LIFE_PLAN.md "Menu scan"). */
+export const MENU_RATE_LIMIT = { perMinute: 12, perDay: 6 * 12 };
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
 /** Routes that call an AI model. */
-const AI_PATH = /^\/v1\/(users\/[^/]+\/(meals\/parse-(text|voice|photo)|workouts\/parse-voice|coach\/chat)|dev\/ai\/chat)$/;
+const AI_PATH = /^\/v1\/(users\/[^/]+\/(meals\/parse-(text|voice|photo)|workouts\/parse-voice|coach\/chat|brief\/parse)|dev\/ai\/chat)$/;
+/** LA7: menu page reads (vision), limited per page on their own. */
+const MENU_PATH = /^\/v1\/users\/[^/]+\/menu\/read$/;
 /** Routes that call the search API (and an AI model). */
 const SEARCH_PATH = /^\/v1\/users\/[^/]+\/(foods\/lookup|nearby)$/;
 /** Never limited: Render's health check and the app's warm-up ping. */
@@ -71,9 +78,9 @@ function rulesFor(req: Request, config: RateLimitConfig): Rule[] {
   ];
   if (userId) rules.push({ name: "user", key: who, limit: config.general.perMinutePerUser, windowMs: MINUTE });
 
-  const group = SEARCH_PATH.test(req.path) ? "search" : AI_PATH.test(req.path) ? "ai" : null;
+  const group = SEARCH_PATH.test(req.path) ? "search" : MENU_PATH.test(req.path) ? "menu" : AI_PATH.test(req.path) ? "ai" : null;
   if (group) {
-    const { perMinute, perDay } = config[group];
+    const { perMinute, perDay } = group === "menu" ? (config.menu ?? MENU_RATE_LIMIT) : config[group];
     // Checked minute first, so requests turned away by the minute limit don't use up the daily quota.
     rules.push({ name: `${group}-minute`, key: `${group}:${who}`, limit: perMinute, windowMs: MINUTE });
     rules.push({ name: `${group}-day`, key: `${group}:${who}`, limit: perDay, windowMs: DAY });

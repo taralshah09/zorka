@@ -8,7 +8,7 @@ import type { Diet, MealType } from "./food.js";
 import type { GapMacros } from "./gap.js";
 import type { BudgetBand, DayFacts, MealAccess, MealSource, Standing } from "./life.js";
 
-export type EatSource = "usual" | "home" | "zomato" | "blinkit";
+export type EatSource = "usual" | "home" | "zomato" | "blinkit" | "menu";
 
 export type EatCandidate = {
   id: string;

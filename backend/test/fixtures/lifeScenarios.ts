@@ -42,6 +42,13 @@ export const EXPO_WED = facts({
   mealAccess: { breakfast: "home", lunch: "packed", snack: "packed", dinner: "home" },
 });
 
+/** Scenario 1 as written: the expo is the day (home breakfast, packed lunch and snack). */
+export const EXPO_ONLY_WED = facts({
+  blocks: [{ from: at(13), to: at(19), kind: "event", label: "the expo" }],
+  whereabouts: "away_local",
+  mealAccess: { breakfast: "home", lunch: "packed", snack: "packed", dinner: "home" },
+});
+
 /** "Expo tomorrow 1–7, client dinner at 8" (LA2 exit): still away, not a feast. */
 export const EXPO_CLIENT_DINNER = facts({
   blocks: [

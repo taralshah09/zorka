@@ -32,6 +32,10 @@ import { AppHeader } from "@/features/shell/AppHeader";
 import { formatInt } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
+import { lifeContext } from "@/features/life/context";
+import { useActiveFacts } from "@/features/life/memory";
+import { useDayPlan } from "@/features/life/planner";
+import { localDate } from "@shared/domain/food";
 
 const ACCENT_TEXT = { lime: "primaryText", lilac: "secondaryText", orchid: "tertiaryText" } as const;
 
@@ -45,6 +49,10 @@ export default function Coach() {
   const params = useLocalSearchParams<{ about?: string }>();
   const about = params.about?.trim() || null;
   const runAction = useCoachAction();
+  // LA6: the coach knows today's plan, the week and what Zorka has learned.
+  const today = localDate(new Date());
+  const todayPlan = useDayPlan(today, { save: "never" });
+  const facts = useActiveFacts(userId, today);
   const messages = useChat(userId);
   const online = useNetwork((s) => s.online);
   const [text, setText] = useState("");
@@ -68,7 +76,8 @@ export default function Coach() {
     // The brief's context is used once; after that the chips follow the day again.
     if (about) router.setParams({ about: undefined });
     try {
-      await sendToCoach(userId, coach, body, dayContext(dg, profile.data, streak), { retry });
+      const context = { ...dayContext(dg, profile.data, streak), ...lifeContext(todayPlan.plan, facts.texts, today) };
+      await sendToCoach(userId, coach, body, context, { retry });
     } catch (e) {
       const d = describeError(e);
       setError(

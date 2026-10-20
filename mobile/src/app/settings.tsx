@@ -190,6 +190,8 @@ export default function Settings() {
                 divider
                 onPress={() => setSheet("steps")}
               />
+              <ListItem icon="auto_awesome" title="What Zorka knows" subtitle="Your life, learned patterns, the coming days" chevron divider onPress={() => router.push("/knows")} />
+              <ListItem icon="calendar_month" title="Plan a day" chevron divider onPress={() => router.push("/plan/tomorrow")} />
               <ListItem icon="refresh" title="Redo setup" chevron onPress={() => router.push("/onboarding")} />
             </>
           ) : (

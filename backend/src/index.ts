@@ -35,6 +35,10 @@ import { weightsService } from "./modules/weights/weights.service.js";
 import { prismaWaterRepository } from "./modules/water/water.repository.js";
 import { waterService } from "./modules/water/water.service.js";
 import { prismaWorkoutsRepository } from "./modules/workouts/workouts.repository.js";
+import { briefsService } from "./modules/briefs/briefs.service.js";
+import { prismaLifeRepositories } from "./modules/life/life.repository.js";
+import { lifeService } from "./modules/life/life.service.js";
+import { menuService } from "./modules/menu/menu.service.js";
 import { workoutsService } from "./modules/workouts/workouts.service.js";
 
 const env = loadEnv();
@@ -53,6 +57,7 @@ const weights = weightsService(prismaWeightsRepository(prisma));
 const water = waterService(prismaWaterRepository(prisma));
 const checkins = checkinsService(prismaCheckinsRepository(prisma));
 const phases = phasesService(prismaPhasesRepository(prisma));
+const life = lifeService(prismaLifeRepositories(prisma));
 const syncRepo = prismaSyncRepository(prisma);
 const aiSlots = aiSlotsFromEnv(env);
 const ai = createAiClient({ slots: aiSlots, logger });
@@ -79,6 +84,9 @@ const app = createApp({
     water_log: water.syncWater,
     checkin: checkins.syncCheckin,
     phase: phases.syncPhase,
+    day_brief: life.syncBrief,
+    day_plan: life.syncPlan,
+    memory_fact: life.syncFact,
   }),
   changes: changesService(syncRepo.userExists, {
     meal_log: meals.changes,
@@ -89,6 +97,9 @@ const app = createApp({
     water_log: water.changes,
     checkin: checkins.changes,
     phase: phases.changes,
+    day_brief: life.briefChanges,
+    day_plan: life.planChanges,
+    memory_fact: life.factChanges,
   }),
   foods,
   foodLookup: foodLookupService(ai, search, foodsRepo.userExists),
@@ -100,6 +111,8 @@ const app = createApp({
   gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
   nearby: nearbyService(ai, search, foodsRepo.userExists),
   coach: coachService(ai, foodsRepo.userExists),
+  briefs: briefsService(ai, foodsRepo.userExists),
+  menu: menuService(ai, foodsRepo.userExists),
   ai,
   search,
   devRoutes: env.NODE_ENV !== "production",

@@ -22,7 +22,7 @@ export function coachService(ai: AiClient, userExists: (id: string) => Promise<b
       const reply = checkReply(value.reply);
       const used = { slot: meta.slot, model: meta.model, attempts: meta.attempts };
       return reply
-        ? { reply, kind: "ai", actions: checkActions(value.actions, input.context.localTime), ai: used }
+        ? { reply, kind: "ai", actions: checkActions(value.actions, input.context.localTime, input.context.today), ai: used }
         : { reply: FALLBACK_REPLY[input.coach], kind: "fallback", actions: FALLBACK_ACTIONS, ai: used };
     },
   };

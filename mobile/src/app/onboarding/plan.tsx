@@ -20,7 +20,7 @@ import { CoachLine } from "@/features/coach/CoachLine";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { PERSONAS } from "@/features/coach/personas";
 import { ACTIVITY_LABEL, PACE_LABEL } from "@/features/onboarding/copy";
-import { clearSavedDraft, draftCoach, draftStepGoal, draftTargetInput, useDraft } from "@/features/onboarding/draft";
+import { clearSavedDraft, draftCoach, draftStepGoal, draftTargetInput, lifeAnswers, useDraft } from "@/features/onboarding/draft";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
 import { formatInt, formatKg, formatShortDate, formatThousands, formatWeeklyKg } from "@/features/targets/format";
 import { StepGoalField } from "@/features/targets/StepGoalField";
@@ -101,6 +101,7 @@ export default function PlanStep() {
       coach,
       stepGoal,
       waterGoalGlasses: draft.waterGoalGlasses,
+      ...lifeAnswers(draft),
       onboardedAt: new Date().toISOString(),
     };
     if (!online) {

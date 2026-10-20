@@ -14,6 +14,10 @@ export const SYNC_ENTITIES = [
   "water_log",
   "checkin",
   "phase",
+  // LA1–LA5 (docs/LIFE_PLAN.md): the life plan entities.
+  "day_brief",
+  "day_plan",
+  "memory_fact",
 ] as const;
 export type SyncEntity = (typeof SYNC_ENTITIES)[number];
 

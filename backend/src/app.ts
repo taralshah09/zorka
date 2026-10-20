@@ -25,6 +25,10 @@ import type { MealsService } from "./modules/meals/meals.service.js";
 import { GYM_LARGE_BODY_PATH, gymParseRoutes } from "./modules/gymParse/gymParse.routes.js";
 import type { GymParseService } from "./modules/gymParse/gymParse.service.js";
 import { healthRoutes, type DbPing } from "./modules/health/health.routes.js";
+import { BRIEF_LARGE_BODY_PATH, briefsRoutes } from "./modules/briefs/briefs.routes.js";
+import type { BriefsService } from "./modules/briefs/briefs.service.js";
+import { MENU_LARGE_BODY_PATH, menuRoutes } from "./modules/menu/menu.routes.js";
+import type { MenuService } from "./modules/menu/menu.service.js";
 import { routinesRoutes } from "./modules/routines/routines.routes.js";
 import type { RoutinesService } from "./modules/routines/routines.service.js";
 import type { SyncService } from "./modules/sync/sync.service.js";
@@ -51,6 +55,10 @@ export type AppDeps = {
   gymParse: GymParseService;
   nearby: NearbyService;
   coach: CoachService;
+  /** LA2: day brief parsing. */
+  briefs: BriefsService;
+  /** LA7: menu page reading. */
+  menu: MenuService;
   ai: AiClient;
   search: SearchClient;
   /** Mounts /v1/dev/* (never in production). */
@@ -85,6 +93,8 @@ export function createApp(deps: AppDeps) {
     gymParse,
     nearby,
     coach,
+    briefs,
+    menu,
     ai,
     search,
     devRoutes,
@@ -105,7 +115,10 @@ export function createApp(deps: AppDeps) {
   app.use((req, res, next) =>
     (SYNC_PATH.test(req.path)
       ? syncJson
-      : LARGE_BODY_PATHS.test(req.path) || GYM_LARGE_BODY_PATH.test(req.path)
+      : LARGE_BODY_PATHS.test(req.path) ||
+          GYM_LARGE_BODY_PATH.test(req.path) ||
+          BRIEF_LARGE_BODY_PATH.test(req.path) ||
+          MENU_LARGE_BODY_PATH.test(req.path)
         ? largeJson
         : smallJson)(req, res, next),
   );
@@ -129,6 +142,8 @@ export function createApp(deps: AppDeps) {
   v1.use(gymParseRoutes(gymParse));
   v1.use(nearbyRoutes(nearby));
   v1.use(coachRoutes(coach));
+  v1.use(briefsRoutes(briefs));
+  v1.use(menuRoutes(menu));
   if (devRoutes) {
     v1.use(aiDevRoutes(ai));
     // Which search services have keys (names only) and which are cooling down.

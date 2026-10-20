@@ -10,6 +10,10 @@ export const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "ver
 export const DIETS = ["veg", "eggetarian", "jain", "non_veg"] as const;
 export const PACES = ["gentle", "steady", "ambitious"] as const;
 export const COACHES = ["drill_sergeant", "calm_mentor", "desi_legend"] as const;
+/** LA1 standing life (docs/LIFE_PLAN.md). Mirrors shared/domain/life.ts. */
+export const MEAL_SOURCES = ["home_self", "home_family", "mess", "canteen", "eat_out", "mixed"] as const;
+export const BUDGET_BANDS = ["comfortable", "careful", "tight"] as const;
+export const WORK_PATTERNS = ["office", "shifts", "student", "wfh", "irregular"] as const;
 
 export const UserIdParams = z.object({ id: z.string().uuid() });
 
@@ -34,6 +38,15 @@ export const ProfileUpdateBody = z
     waterGoalGlasses: z.number().int().min(WATER_GOAL_MIN).max(WATER_GOAL_MAX),
     /** P28 (D50): show the detailed weekly check-in. */
     checkinDetailed: z.boolean(),
+    /** LA1: standing life. Every answer may be skipped (null). */
+    mealSource: z.enum(MEAL_SOURCES).nullable(),
+    budget: z.enum(BUDGET_BANDS).nullable(),
+    workPattern: z.enum(WORK_PATTERNS).nullable(),
+    hasKitchen: z.boolean().nullable(),
+    hasFridge: z.boolean().nullable(),
+    sessionsPerWeek: z.number().int().min(0).max(7).nullable(),
+    /** D73: minute of the day for the evening brief prompt; null = off. */
+    briefPromptMinute: z.number().int().min(0).max(1439).nullable(),
     onboardedAt: z.string().datetime().nullable(),
   })
   .partial()
@@ -58,6 +71,13 @@ export type ProfileDto = {
   stepGoal: number;
   waterGoalGlasses: number;
   checkinDetailed: boolean;
+  mealSource: (typeof MEAL_SOURCES)[number] | null;
+  budget: (typeof BUDGET_BANDS)[number] | null;
+  workPattern: (typeof WORK_PATTERNS)[number] | null;
+  hasKitchen: boolean | null;
+  hasFridge: boolean | null;
+  sessionsPerWeek: number | null;
+  briefPromptMinute: number | null;
   onboardedAt: string | null;
   updatedAt: string | null;
 };

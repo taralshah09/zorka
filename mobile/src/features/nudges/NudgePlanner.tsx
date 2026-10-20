@@ -21,13 +21,19 @@ import { localDate } from "@shared/domain/food";
 import { computeGap } from "@shared/domain/gap";
 import {
   NUDGE_MINUTE,
+  planLifeNudges,
   planNudges,
+  type LifeNudge,
+  type LifeNudgeInput,
   type NudgeFacts,
   type NudgeKind,
   type NudgeRoute,
   type PlannedNudge,
 } from "@shared/domain/nudges";
 import { addDays } from "@shared/domain/progress";
+import { useBrief } from "@/features/life/briefs";
+import { useDayPlan } from "@/features/life/planner";
+import type { DayPlan } from "@shared/domain/planDay";
 import {
   NUDGE_CHANNEL,
   ensureChannel,
@@ -91,6 +97,7 @@ async function schedule(
   today: string,
   facts: LineFacts,
   delivered: DeliveredLog,
+  life: LifeNudge[],
 ) {
   // Only nudges: a rest-timer alert (gym/rest.ts) scheduled at the same time must survive a re-plan.
   for (const r of await N.getAllScheduledNotificationsAsync())
@@ -119,6 +126,15 @@ async function schedule(
     });
     entries.push({ kind: n.kind, date, minute: n.minute });
   }
+  // LA2/LA3 life nudges: their own cap (MAX_LIFE_NUDGES_PER_DAY), not counted against the coach's.
+  for (const n of life) {
+    const title = n.kind === "brief_prompt" ? n.text : n.kind === "prep" ? "Getting ready" : "Water";
+    const body = n.kind === "brief_prompt" ? "Say it in a line and Zorka plans around it." : n.text;
+    await N.scheduleNotificationAsync({
+      content: { title, body, data: { route: n.kind === "brief_prompt" ? "plan" : "today", kind: n.kind, userId } },
+      trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: at(today, n.minute), channelId: NUDGE_CHANNEL },
+    });
+  }
   kv.set(logKey(userId), JSON.stringify(delivered));
   kv.set(PLAN_KEY, JSON.stringify({ userId, entries } satisfies LoggedPlan));
 }
@@ -129,6 +145,7 @@ export const usePendingRoute = create<{ route: NudgeRoute | null }>(() => ({ rou
 function go(route: NudgeRoute) {
   if (route === "gap") router.push("/gap");
   else if (route === "train") router.push("/train");
+  else if (route === "plan") router.push("/plan/tomorrow");
   else router.navigate("/today");
 }
 
@@ -178,6 +195,18 @@ export function NudgePlanner() {
   }, []);
 
   const today = dg?.day ?? localDate(new Date(clock));
+  const tomorrow = addDays(today, 1);
+  // LA3: the day's blocks and type shape the coach nudges; plans and the brief drive the life nudges.
+  const todayPlan = useDayPlan(today, { save: "never" });
+  const tomorrowPlan = useDayPlan(tomorrow, { save: "never" });
+  const tomorrowBrief = useBrief(userId, tomorrow);
+  const briefPromptMinute = profile.data?.briefPromptMinute ?? null;
+  const reminders = (plan: DayPlan | null): LifeNudgeInput["todayReminders"][number][] =>
+    (plan?.items ?? []).flatMap((i): LifeNudgeInput["todayReminders"][number][] =>
+      i.kind === "prep" ? [{ kind: "prep" as const, at: i.at, dayOffset: i.dayOffset, text: i.text }] : i.kind === "water" ? [{ kind: "water" as const, at: i.at, dayOffset: 0 as const, text: i.text, code: i.code }] : [],
+    );
+  const todayReminders = reminders(todayPlan.plan);
+  const tomorrowReminders = reminders(tomorrowPlan.plan);
   const facts: NudgeFacts | null =
     dg && streak
       ? {
@@ -198,6 +227,8 @@ export function NudgePlanner() {
           allGoalsHit: dg.gap.state === "done",
           deliveredToday: 0,
           praiseSentToday: false,
+          blocks: todayPlan.brief?.facts.blocks ?? [],
+          dayType: todayPlan.plan?.dayType,
         }
       : null;
 
@@ -218,6 +249,12 @@ export function NudgePlanner() {
           facts.loggedToday,
           facts.allGoalsHit,
           Math.round(dg.gap.remaining.kcal / 50),
+          facts.dayType,
+          facts.blocks,
+          briefPromptMinute,
+          tomorrowBrief?.status === "confirmed",
+          todayReminders,
+          tomorrowReminders,
         ])
       : null;
 
@@ -235,7 +272,15 @@ export function NudgePlanner() {
           { ...facts, deliveredToday: delivered.kinds.length, praiseSentToday: delivered.kinds.includes("praise") },
           s,
         );
-        await schedule(N, userId, coach, plan, today, lineFacts(dg, streak), delivered);
+        const life = planLifeNudges({
+          now: facts.minuteOfDay,
+          briefPromptMinute,
+          tomorrowBriefed: tomorrowBrief?.status === "confirmed",
+          todayReminders,
+          tomorrowReminders,
+          settings: s,
+        });
+        await schedule(N, userId, coach, plan, today, lineFacts(dg, streak), delivered, life);
       } catch {
         last.current = null; // try again on the next change
       }

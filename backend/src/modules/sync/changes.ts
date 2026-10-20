@@ -12,7 +12,19 @@ export type Change = { id: string; updatedAt: Date; deleted: boolean; data: unkn
 /** Records changed at or after `since`, oldest change first, at most `limit`. */
 export type ChangeFeed = (userId: string, since: Date, limit: number) => Promise<Change[]>;
 
-export const PULL_ENTITIES = ["meal_log", "workout", "routine", "activity", "weight_log", "water_log", "checkin", "phase"] as const;
+export const PULL_ENTITIES = [
+  "meal_log",
+  "workout",
+  "routine",
+  "activity",
+  "weight_log",
+  "water_log",
+  "checkin",
+  "phase",
+  "day_brief",
+  "day_plan",
+  "memory_fact",
+] as const;
 export type PullEntity = (typeof PULL_ENTITIES)[number];
 
 /** Page size per entity. Activities carry their whole route, so fewer per page. */
@@ -25,6 +37,10 @@ const PAGE: Record<PullEntity, number> = {
   water_log: 500,
   checkin: 200,
   phase: 100,
+  day_brief: 200,
+  // Plans carry the whole day and week, so fewer per page.
+  day_plan: 50,
+  memory_fact: 500,
 };
 
 export type ChangesPage = {

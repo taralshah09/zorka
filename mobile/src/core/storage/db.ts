@@ -286,6 +286,57 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       ALTER TABLE voice_queue ADD COLUMN kind TEXT NOT NULL DEFAULT 'voice';
       ALTER TABLE voice_queue ADD COLUMN text TEXT;
     `),
+
+  // v14 · Life plan (docs/LIFE_PLAN.md): the day brief ("day_brief"), the day plan ("day_plan") and memory facts
+  // ("memory_fact"), all local-first and synced (D78); one live row per date or key on this phone. `menus` keeps the
+  // dishes of a scanned menu (never the photos) for 30 days, phone only (LA7).
+  (db) =>
+    db.execSync(`
+      CREATE TABLE day_briefs (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        raw_text TEXT NOT NULL,
+        parsed TEXT NOT NULL,
+        status TEXT NOT NULL,
+        source TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX day_briefs_day ON day_briefs (user_id, local_date);
+      CREATE TABLE day_plans (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        plan TEXT NOT NULL,
+        inputs_hash TEXT NOT NULL,
+        accepted_at TEXT,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX day_plans_day ON day_plans (user_id, local_date);
+      CREATE TABLE memory_facts (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        data TEXT NOT NULL,
+        status TEXT NOT NULL,
+        client_updated_at TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX memory_facts_key ON memory_facts (user_id, key);
+      CREATE TABLE menus (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        restaurant TEXT,
+        dishes TEXT NOT NULL,
+        scanned_at TEXT NOT NULL
+      );
+      CREATE INDEX menus_user ON menus (user_id, scanned_at);
+    `),
 ];
 
 let db: SQLiteDatabase | null = null;

@@ -58,6 +58,7 @@
     "typecheck": "tsc --noEmit",
     "test:activity": "node scripts/test-activity.cjs",
     "test:pa": "node scripts/test-pa.cjs",
+    "test:life": "node scripts/test-life.cjs",
     "check:activity-config": "node scripts/check-activity-config.cjs",
     "lint": "expo lint",
     "format": "prettier --write src scripts",

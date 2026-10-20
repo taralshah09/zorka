@@ -19,12 +19,14 @@ const SOURCE_LABEL: Record<EatSource, string> = {
   home: "Home",
   zomato: "Zomato",
   blinkit: "Blinkit",
+  menu: "Menu",
 };
 const SOURCE_TONE: Record<EatSource, "lilac" | "orchid" | "lime"> = {
   usual: "lilac",
   home: "orchid",
   zomato: "lime",
   blinkit: "lime",
+  menu: "lime",
 };
 
 /** "480 kcal · 45 g protein left" with the coach's priority and the day's progress bars. */
@@ -117,6 +119,7 @@ const ACTION_LABEL: Record<EatSource, string> = {
   home: "Log",
   zomato: "Open Zomato",
   blinkit: "Open Blinkit",
+  menu: "I ordered this",
 };
 
 export function GapOptionCard({ option, onAction, busy }: { option: EatOption; onAction: () => void; busy?: boolean }) {

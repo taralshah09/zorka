@@ -6,7 +6,7 @@
 // cold-started the app is routed here. P39: a streak milestone or all goals hit opens the celebration (S47) once.
 // Welcome back (S48) after 5 days away is the brief's own situation; its action dismisses it. No bell (brand §8).
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
@@ -43,6 +43,11 @@ import { NudgePromptCard } from "@/features/today/FlowBCards";
 import { consumedFrom } from "@/features/today/TodayCards";
 import { useActiveUser } from "@/features/users/activeUser";
 import { logGlass, useGlasses } from "@/features/water/store";
+import { runMemoryJob } from "@/features/life/memory";
+import { PlanCard } from "@/features/life/PlanCard";
+import { useDayPlan } from "@/features/life/planner";
+import { WeekStrip } from "@/features/life/WeekStrip";
+import { minuteOfDay } from "@shared/domain/gap";
 import { localDate, mealTypeForTime } from "@shared/domain/food";
 import { clampWaterGoal } from "@shared/domain/water";
 
@@ -76,6 +81,11 @@ export default function Today() {
   const coach = profile.data?.coach ?? null;
   const dg = useDayGap(clock);
   const welcome = useWelcomeBack(userId, today, streak);
+  // LA3: today's plan (saved when its inputs change), and LA5's once-a-day memory job.
+  const dayPlan = useDayPlan(today);
+  useEffect(() => {
+    if (userId && targets) runMemoryJob(userId, today, targets.proteinG);
+  }, [userId, today, targets]);
   const eatOptions = useEatOptions({
     userId,
     today,
@@ -179,6 +189,9 @@ export default function Today() {
               }
             />
           ) : null}
+          {dayPlan.plan ? (
+            <PlanCard plan={dayPlan.plan} nowMinute={minuteOfDay(now)} accepted={!!dayPlan.stored?.acceptedAt} onAccept={dayPlan.accept} />
+          ) : null}
           {priority === "prepared" && prepared ? <Card>
             <Text variant="caption">{today} · {MEAL_LABEL[mealType]} · Saved by you</Text>
             <Button label="Change portion" variant="secondary" onPress={() => {
@@ -249,6 +262,8 @@ export default function Today() {
               toast({ kind: "info", message: `Glass logged · ${glasses + 1} of ${waterGoal}` });
             }}
           />
+
+          {dayPlan.plan ? <WeekStrip week={dayPlan.plan.week} today={today} /> : null}
 
           <TodayMeals meals={meals} now={now} />
 
