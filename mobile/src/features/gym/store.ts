@@ -527,6 +527,28 @@ export function deleteWorkout(w: Workout): void {
   notifyLocalWrite();
 }
 
+/** Undo for a deleted finished workout (the Assistant Bar's delete_entry): it comes back and syncs again. */
+export function restoreWorkout(id: string): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    db.runSync(`UPDATE workouts SET deleted = 0, synced = 0, client_updated_at = ? WHERE id = ?`, now, id);
+    const w = getWorkout(id);
+    if (!w) return;
+    enqueue({
+      op_id: randomUUID(),
+      user_id: w.userId,
+      entity: "workout",
+      action: "upsert",
+      record_id: w.id,
+      payload: JSON.stringify(syncPayload(w)),
+      client_updated_at: now,
+    });
+  });
+  bump();
+  notifyLocalWrite();
+}
+
 // ── Pull ───────────────────────────────────────────────────────────────────────────────────────
 
 /** A workout as GET /users/:id/changes sends it (backend WorkoutDto). */

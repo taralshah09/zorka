@@ -82,6 +82,7 @@ function load(file) {
         removeSet: () => {},
         workoutsBetween: () => [],
         recentWorkouts: () => [],
+        restoreWorkout: () => {},
       };
     if (name === "./reminders")
       return {
@@ -166,7 +167,7 @@ async function saveTurn(r, ctx = CTX) {
   const { checkPhoneTurn } = feature("assistant/executors");
   const { addMessage } = feature("coach/chat");
   const thread = feature("assistant/thread");
-  const items = checkPhoneTurn(r, ctx, new Map());
+  const items = checkPhoneTurn(r, ctx, new Map(), "a");
   const turn = { v: 1, date: TODAY, at: new Date().toISOString(), heard: r.heard, kind: r.kind, items, reply: r.reply, replyKind: r.replyKind };
   addMessage("a", "user", r.heard.text, "calm_mentor");
   const id = addMessage("a", "coach", r.reply, "calm_mentor", { turn });
@@ -413,4 +414,112 @@ test("the snapshot builds without React, from the cached profile and SQLite (hea
   assert.ok(snap.facts.day.targetKcal >= 1200);
   assert.equal(snap.context.name, "Riya");
   assert.equal(snap.facts.plan, null);
+});
+
+const savedMeal = (mealType, items) => {
+  const id = randomUUID();
+  feature("meals/store").saveMeal({
+    id,
+    userId: "a",
+    mealType,
+    loggedAt: new Date().toISOString(),
+    localDate: TODAY,
+    source: "text",
+    oilLevel: null,
+    photoUri: null,
+    items: items.map(([name, kcal]) => ({ id: randomUUID(), foodId: null, name, quantity: 1, unit: "katori", grams: 150, kcal, proteinG: 5, carbsG: 20, fatG: 3, diet: "veg", category: null })),
+  });
+  return id;
+};
+const item = (action, resolved = null) => ({ action, tier: "approve", resolved, ask: null, line: "server line" });
+
+test("delete_entry names the saved meal, deletes exactly it on OK, and Undo brings it back", async () => {
+  const thread = feature("assistant/thread");
+  savedMeal("breakfast", [["Poha", 324]]);
+  const lunch = savedMeal("lunch", [["Roti", 200], ["Dal tadka", 165]]);
+  const t = await saveTurn(result([item({ kind: "delete_entry", target: "meal", mealType: "lunch" })], "delete my lunch"));
+  const row = t.turn().items[0];
+  assert.equal(row.state, "pending");
+  assert.equal(row.targetId, lunch);
+  assert.equal(row.receipt, "Delete lunch from today: roti, dal tadka (365 kcal)?");
+  await thread.approve(t.id, 0);
+  assert.deepEqual(meals().map((m) => m.mealType), ["breakfast"]);
+  await thread.undo(t.id, 0);
+  assert.deepEqual(meals().map((m) => m.mealType).sort(), ["breakfast", "lunch"]);
+});
+
+test("a delete with nothing to delete fails with a plain reason, before any OK", async () => {
+  const meal = await saveTurn(result([item({ kind: "delete_entry", target: "meal", mealType: "dinner" })]));
+  const water = await saveTurn(result([item({ kind: "delete_entry", target: "water", glasses: 1 })]));
+  assert.deepEqual([meal, water].map((t) => [t.turn().items[0].state, t.turn().items[0].receipt]), [
+    ["failed", "There's no dinner logged today."],
+    ["failed", "There's no water logged today."],
+  ]);
+  // Two in one turn: the phone keeps the first and refuses the second (one saved record per turn).
+  const both = await saveTurn(result([item({ kind: "delete_entry", target: "meal" }), item({ kind: "delete_entry", target: "water" })]));
+  assert.deepEqual(both.turn().items.map((i) => i.state), ["failed", "refused"]);
+});
+
+test("water: removes the last glasses (no more than were logged), Undo adds them back", async () => {
+  const thread = feature("assistant/thread");
+  const water = feature("water/store");
+  for (let i = 0; i < 3; i++) water.logGlass("a", TODAY);
+  const t = await saveTurn(result([item({ kind: "delete_entry", target: "water", glasses: 2 })]));
+  assert.equal(t.turn().items[0].receipt, "Remove 2 glasses of water from today (3 logged)?");
+  await thread.approve(t.id, 0);
+  assert.equal(water.glassesOn("a", TODAY), 1);
+  await thread.undo(t.id, 0);
+  assert.equal(water.glassesOn("a", TODAY), 3);
+});
+
+test("edit_meal removes a food, adds one or replaces the meal, each undoable", async () => {
+  const thread = feature("assistant/thread");
+  savedMeal("lunch", [["Roti", 200], ["Steamed rice", 130], ["Dal tadka", 165]]);
+  const names = () => meals()[0].items.map((i) => i.name);
+
+  const out = await saveTurn(result([item({ kind: "edit_meal", mode: "remove", span: "rice", mealType: "lunch", confidence: "high" })], "take the rice out of lunch"));
+  assert.equal(out.turn().items[0].receipt, "Take steamed rice out of lunch (today)?");
+  await thread.approve(out.id, 0);
+  assert.deepEqual(names(), ["Roti", "Dal tadka"]);
+
+  const add = await saveTurn(
+    result([item({ kind: "edit_meal", mode: "add", span: "chai", mealType: "lunch", confidence: "high" }, { kind: "meal", items: [parsedItem("chai", DAL_FRY)], mealType: "lunch" })]),
+  );
+  await thread.approve(add.id, 0);
+  assert.deepEqual(names(), ["Roti", "Dal tadka", "Dal fry"]);
+
+  const replace = await saveTurn(
+    result([item({ kind: "edit_meal", mode: "replace", span: "dal", mealType: "lunch", confidence: "high" }, { kind: "meal", items: [parsedItem("dal", DAL)], mealType: "lunch" })]),
+  );
+  assert.match(replace.turn().items[0].receipt, /^Change lunch \(today\) from roti, dal tadka, dal fry \(\d+ kcal\) to dal tadka, 1 katori\?$/);
+  await thread.approve(replace.id, 0);
+  assert.deepEqual(names(), ["Dal tadka"]);
+
+  await thread.undo(replace.id, 0);
+  await thread.undo(add.id, 0);
+  await thread.undo(out.id, 0);
+  assert.deepEqual(names(), ["Roti", "Steamed rice", "Dal tadka"]);
+});
+
+test("removing a food the meal doesn't have fails; removing the last one deletes the meal", async () => {
+  const thread = feature("assistant/thread");
+  savedMeal("snack", [["Banana", 89]]);
+  const none = await saveTurn(result([item({ kind: "edit_meal", mode: "remove", span: "samosa", mealType: "snack", confidence: "high" })]));
+  assert.equal(none.turn().items[0].state, "failed");
+  assert.match(none.turn().items[0].receipt, /doesn't have samosa/);
+  const last = await saveTurn(result([item({ kind: "edit_meal", mode: "remove", span: "banana", mealType: "snack", confidence: "high" })]));
+  await thread.approve(last.id, 0);
+  assert.deepEqual(meals(), []);
+  await thread.undo(last.id, 0);
+  assert.equal(meals()[0].items[0].name, "Banana");
+});
+
+test("the router is told what's logged today and yesterday", () => {
+  savedMeal("lunch", [["Roti", 200], ["Dal tadka", 165]]);
+  feature("water/store").logGlass("a", TODAY);
+  const { loggedForServer } = feature("assistant/executors");
+  assert.deepEqual(loggedForServer("a", TODAY, "2000-01-01"), [
+    { date: TODAY, kind: "meal", mealType: "lunch", text: "Roti, Dal tadka" },
+    { date: TODAY, kind: "water", text: "1 glasses" },
+  ]);
 });

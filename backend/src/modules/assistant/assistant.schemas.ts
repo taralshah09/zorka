@@ -7,6 +7,8 @@ import { z } from "zod";
 
 import {
   ACTION_KINDS,
+  DELETE_TARGETS,
+  EDIT_MODES,
   ASK_TOPICS,
   ASSISTANT_SCREENS,
   TURN_TEXT_MAX,
@@ -53,6 +55,14 @@ export const RouterAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("ask"), topic: z.enum(ASK_TOPICS), date: date.optional() }),
   z.strictObject({ kind: z.literal("correct"), index: z.number().int().min(0).max(4), span }),
   z.strictObject({ kind: z.literal("undo") }),
+  z.strictObject({
+    kind: z.literal("delete_entry"),
+    target: z.enum(DELETE_TARGETS),
+    mealType: z.enum(MEAL_TYPES).optional(),
+    date: date.optional(),
+    glasses: z.number().int().min(1).max(20).optional(),
+  }),
+  z.strictObject({ kind: z.literal("edit_meal"), mode: z.enum(EDIT_MODES), span, mealType: z.enum(MEAL_TYPES).optional(), date: date.optional() }),
   z.strictObject({ kind: z.literal("open"), screen: z.enum(ASSISTANT_SCREENS) }),
   z.strictObject({
     kind: z.literal("clarify"),
@@ -147,6 +157,21 @@ export const AssistantTurnBody = z
       .object({
         activityRunning: z.boolean(),
         lastWeightKg: num.nullable(),
+        /** What's saved today and yesterday, so "delete my lunch" and "remove the rice" name the right meal. Optional:
+         *  an older app doesn't send it. */
+        logged: z
+          .array(
+            z
+              .object({
+                date,
+                kind: z.enum(["meal", "water", "weight", "workout"]),
+                mealType: z.enum(MEAL_TYPES).optional(),
+                text: z.string().trim().max(160),
+              })
+              .strict(),
+          )
+          .max(16)
+          .optional(),
         previous: z
           .object({
             actions: z

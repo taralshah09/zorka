@@ -19,14 +19,16 @@ import {
   getWorkout,
   removeExercise,
   removeSet,
+  restoreWorkout,
   startWorkout,
+  workoutsBetween,
 } from "@/features/gym/store";
 import { applyVoiceSets } from "@/features/gym/voice";
 import { briefFor, deleteBrief, saveBrief } from "@/features/life/briefs";
 import { rememberAlias } from "@/features/life/memory";
-import { deleteMeal, getMeal, lastPortions, saveMeal, type MealItem } from "@/features/meals/store";
-import { deleteWeight, listWeights, logWeight } from "@/features/progress/weights";
-import { logGlass, undoGlass } from "@/features/water/store";
+import { deleteMeal, getMeal, lastPortions, mealsForDay, mealTotals, saveMeal, type Meal, type MealItem } from "@/features/meals/store";
+import { deleteWeight, listWeights, logWeight, restoreWeight } from "@/features/progress/weights";
+import { glassesOn, logGlass, undoGlass } from "@/features/water/store";
 import {
   ASSISTANT_SCREENS,
   deviatesFromUsual,
@@ -41,7 +43,7 @@ import {
 } from "@shared/domain/assistant";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
 import { portion, UNIT_LABEL, type MealType } from "@shared/domain/food";
-import { normalize } from "@shared/domain/foodMatch";
+import { matchScore, MIN_MATCH_SCORE, normalize } from "@shared/domain/foodMatch";
 import { clockText } from "@shared/domain/memory";
 import { SLOT_MINUTE } from "@shared/domain/planDay";
 import { goTo } from "./navigate";
@@ -94,6 +96,8 @@ const KIND_ICON: Record<AssistantAction["kind"], IconName> = {
   ask: "auto_awesome",
   correct: "edit",
   undo: "undo",
+  delete_entry: "delete",
+  edit_meal: "edit",
   open: "chevron_right",
   clarify: "info",
   out_of_scope: "close",
@@ -115,7 +119,7 @@ type Usual = ReadonlyMap<string, { quantity: number; unit: string }>;
  * Re-checks the server's turn with the shared rules and this phone's facts, and gives each item its starting state.
  * An action the phone's check rejects is refused here, whatever the server said; a tier only ever moves up.
  */
-export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, usual: Usual): StoredItem[] {
+export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, usual: Usual, userId?: string): StoredItem[] {
   const planned = planTurn(
     result.items.map((i) => i.action),
     ctx,
@@ -137,8 +141,92 @@ export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, us
       if (odd) tier = stricterTier(tier, "approve");
     }
     const state: ItemState = tier === "ask" ? "asking" : tier === "answer" ? "answered" : tier === "refuse" ? "refused" : "pending";
-    return { ...item, tier, state, receipt: item.line, undo: null };
+    const checked: StoredItem = { ...item, tier, state, receipt: item.line, undo: null };
+    if (userId && (item.action.kind === "delete_entry" || item.action.kind === "edit_meal")) return withTarget(checked, userId, ctx.today);
+    return checked;
   });
+}
+
+// ── Saved records a delete or an edit points at ─────────────────────────────────────────────────
+
+const MEAL_TITLE: Record<MealType, string> = { breakfast: "Breakfast", lunch: "Lunch", snack: "Snack", dinner: "Dinner" };
+const dayWord = (date: string, today: string) => (date === today ? "today" : "yesterday");
+const mealText = (m: Meal) => `${m.items.map((i) => i.name.toLowerCase()).join(", ")} (${r(mealTotals(m).kcal)} kcal)`;
+
+/** The meal a delete or an edit means: that type on that day, else the day's latest. */
+function targetMeal(userId: string, date: string, mealType: MealType | undefined): Meal | null {
+  const meals = mealsForDay(userId, date).filter((m) => !mealType || m.mealType === mealType);
+  return meals[meals.length - 1] ?? null;
+}
+
+/** The saved items a "remove the rice" means. */
+const matching = (meal: Meal, words: string) =>
+  meal.items.filter((i) => normalize(i.name).includes(normalize(words)) || matchScore(words, { name: i.name, aliases: [] }) >= MIN_MATCH_SCORE);
+
+/**
+ * Finds the saved record now, names it in the receipt ("Delete lunch: poha (324 kcal)?") and keeps its id, so OK
+ * changes exactly what the user saw. Nothing there → the row fails with a plain reason instead of guessing.
+ */
+function withTarget(item: StoredItem, userId: string, today: string): StoredItem {
+  const a = item.action;
+  if (item.state === "refused") return item;
+  if (a.kind === "delete_entry") {
+    const date = a.date ?? today;
+    const when = dayWord(date, today);
+    if (a.target === "meal") {
+      const meal = targetMeal(userId, date, a.mealType);
+      if (!meal) return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when}.`);
+      return { ...item, targetId: meal.id, receipt: `Delete ${MEAL_TITLE[meal.mealType].toLowerCase()} from ${when}: ${mealText(meal)}?` };
+    }
+    if (a.target === "water") {
+      const have = glassesOn(userId, date);
+      if (!have) return failed(item, `There's no water logged ${when}.`);
+      const n = Math.min(a.glasses ?? 1, have);
+      return { ...item, receipt: `Remove ${n} glass${n === 1 ? "" : "es"} of water from ${when} (${have} logged)?` };
+    }
+    if (a.target === "weight") {
+      const w = listWeights(userId).filter((x) => x.localDate === date).pop();
+      if (!w) return failed(item, `There's no weigh-in ${when}.`);
+      return { ...item, targetId: w.id, receipt: `Delete ${when}'s weigh-in (${w.kg} kg)?` };
+    }
+    const workout = workoutsBetween(userId, date, date).pop();
+    if (!workout) return failed(item, `There's no workout logged ${when}.`);
+    return { ...item, targetId: workout.id, receipt: `Delete ${workout.name} from ${when}?` };
+  }
+  if (a.kind === "edit_meal") {
+    const date = a.date ?? today;
+    const when = dayWord(date, today);
+    const meal = targetMeal(userId, date, a.mealType);
+    if (!meal) return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when} to change.`);
+    const name = MEAL_TITLE[meal.mealType].toLowerCase();
+    if (a.mode === "remove") {
+      const gone = matching(meal, a.span);
+      if (!gone.length) return failed(item, `Your ${name} doesn't have ${a.span}: ${mealText(meal)}.`);
+      return { ...item, targetId: meal.id, receipt: `Take ${gone.map((i) => i.name.toLowerCase()).join(", ")} out of ${name} (${when})?` };
+    }
+    const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : "";
+    if (!words) return failed(item, `I couldn't find "${a.span}".`);
+    return {
+      ...item,
+      targetId: meal.id,
+      receipt: a.mode === "add" ? `Add ${words} to ${name} (${when})?` : `Change ${name} (${when}) from ${mealText(meal)} to ${words}?`,
+    };
+  }
+  return item;
+}
+
+/** What's saved today and yesterday, for the router (turn.logged): which meal "delete my lunch" means. */
+export function loggedForServer(userId: string, today: string, yesterday: string) {
+  const out: { date: string; kind: "meal" | "water" | "weight" | "workout"; mealType?: MealType; text: string }[] = [];
+  for (const date of [today, yesterday]) {
+    for (const m of mealsForDay(userId, date)) out.push({ date, kind: "meal", mealType: m.mealType, text: m.items.map((i) => i.name).join(", ").slice(0, 160) });
+    const glasses = glassesOn(userId, date);
+    if (glasses) out.push({ date, kind: "water", text: `${glasses} glasses` });
+    const w = listWeights(userId).filter((x) => x.localDate === date).pop();
+    if (w) out.push({ date, kind: "weight", text: `${w.kg} kg` });
+    for (const wk of workoutsBetween(userId, date, date)) out.push({ date, kind: "workout", text: wk.name.slice(0, 160) });
+  }
+  return out.slice(-16);
 }
 
 export const usualPortions = (userId: string): Usual => lastPortions(userId);
@@ -365,6 +453,60 @@ async function undoPrevious(item: StoredItem, ctx: RunContext): Promise<StoredIt
   return done(item, `Undid: ${undone.join("; ")}.`, null);
 }
 
+function deleteEntry(item: StoredItem, ctx: RunContext): StoredItem {
+  const a = item.action;
+  if (a.kind !== "delete_entry") return item;
+  const date = a.date ?? ctx.today;
+  const when = dayWord(date, ctx.today);
+  if (a.target === "meal") {
+    const meal = item.targetId ? getMeal(item.targetId) : null;
+    if (!meal) return failed(item, "That meal is already gone.");
+    deleteMeal(meal);
+    return done(item, `Deleted ${MEAL_TITLE[meal.mealType].toLowerCase()} from ${when}.`, { kind: "meal_restore", meal });
+  }
+  if (a.target === "water") {
+    let removed = 0;
+    for (let n = 0; n < (a.glasses ?? 1); n++) if (undoGlass(ctx.userId, date)) removed++;
+    if (!removed) return failed(item, `There's no water logged ${when}.`);
+    return done(item, `Removed ${removed} glass${removed === 1 ? "" : "es"} of water.`, { kind: "water_add", day: date, glasses: removed });
+  }
+  if (a.target === "weight") {
+    const w = listWeights(ctx.userId).find((x) => x.id === item.targetId);
+    if (!w) return failed(item, "That weigh-in is already gone.");
+    deleteWeight(w);
+    return done(item, `Deleted the ${w.kg} kg weigh-in.`, { kind: "weight_restore", weight: w });
+  }
+  const workout = item.targetId ? getWorkout(item.targetId) : null;
+  if (!workout) return failed(item, "That workout is already gone.");
+  deleteWorkout(workout);
+  return done(item, `Deleted ${workout.name}.`, { kind: "workout_restore", workoutId: workout.id });
+}
+
+function editMeal(item: StoredItem, ctx: RunContext): StoredItem {
+  const a = item.action;
+  if (a.kind !== "edit_meal") return item;
+  const meal = item.targetId ? getMeal(item.targetId) : null;
+  if (!meal) return failed(item, "That meal is gone.");
+  const name = MEAL_TITLE[meal.mealType].toLowerCase();
+  if (a.mode === "remove") {
+    const gone = new Set(matching(meal, a.span).map((i) => i.id));
+    if (!gone.size) return failed(item, `Your ${name} doesn't have ${a.span}.`);
+    const left = meal.items.filter((i) => !gone.has(i.id));
+    // Nothing left: the meal goes (Undo brings it back whole).
+    if (!left.length) {
+      deleteMeal(meal);
+      return done(item, `Deleted ${name}: nothing was left in it.`, { kind: "meal_restore", meal });
+    }
+    saveMeal({ ...meal, items: left });
+    return done(item, `Took ${a.span} out of ${name}.`, { kind: "meal_edit", previous: meal });
+  }
+  const added = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
+  if (!added.length) return failed(item, `I couldn't find "${a.span}".`);
+  saveMeal({ ...meal, items: a.mode === "add" ? [...meal.items, ...added] : added });
+  const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : a.span;
+  return done(item, a.mode === "add" ? `Added ${words} to ${name}.` : `Changed ${name} to ${words}.`, { kind: "meal_edit", previous: meal });
+}
+
 /** Runs one action (tier do, or approved). Never throws: a failure becomes a failed receipt. */
 export async function runItem(item: StoredItem, ctx: RunContext): Promise<StoredItem> {
   const a = item.action;
@@ -414,6 +556,10 @@ export async function runItem(item: StoredItem, ctx: RunContext): Promise<Stored
         return correct(item, ctx);
       case "undo":
         return undoPrevious(item, ctx);
+      case "delete_entry":
+        return deleteEntry(item, ctx);
+      case "edit_meal":
+        return editMeal(item, ctx);
       case "open":
         goTo(SCREEN_HREF[a.screen]);
         return done(item, item.line, null);
@@ -481,6 +627,18 @@ export async function undoToken(userId: string, token: UndoToken): Promise<void>
       return;
     case "reminder":
       await cancelReminder(token.id);
+      return;
+    case "meal_restore":
+      saveMeal(token.meal);
+      return;
+    case "water_add":
+      for (let n = 0; n < token.glasses; n++) logGlass(userId, token.day);
+      return;
+    case "weight_restore":
+      restoreWeight(token.weight);
+      return;
+    case "workout_restore":
+      restoreWorkout(token.workoutId);
       return;
   }
 }

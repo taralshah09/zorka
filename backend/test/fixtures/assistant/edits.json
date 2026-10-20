@@ -1,0 +1,82 @@
+{
+  "group": "edits",
+  "about": "Changing or deleting one saved record (delete_entry, edit_meal). Pass bar: always Approve, one per turn, never a bulk delete. The phone finds the record and names it before OK.",
+  "cases": [
+    {
+      "id": "ed-01",
+      "said": "delete my lunch",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "meal", "mealType": "lunch" }] },
+      "expect": [["delete_entry", "approve"]]
+    },
+    {
+      "id": "ed-02",
+      "said": "remove that water",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "water", "glasses": 1 }] },
+      "expect": [["delete_entry", "approve"]]
+    },
+    {
+      "id": "ed-03",
+      "said": "delete today's weigh-in, it was wrong",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "weight" }] },
+      "expect": [["delete_entry", "approve"]]
+    },
+    {
+      "id": "ed-04",
+      "said": "take the rice out of lunch",
+      "router": { "actions": [{ "kind": "edit_meal", "mode": "remove", "span": "rice", "mealType": "lunch" }] },
+      "expect": [["edit_meal", "approve"]]
+    },
+    {
+      "id": "ed-05",
+      "said": "actually breakfast was 2 idli and sambar",
+      "router": { "actions": [{ "kind": "edit_meal", "mode": "replace", "span": "2 idli and sambar", "mealType": "breakfast" }] },
+      "meals": { "2 idli and sambar": [{ "name": "idli", "quantity": 2, "unit": "piece", "confidence": 0.95 }, { "name": "sambar", "quantity": 1, "unit": "katori", "confidence": 0.9 }] },
+      "expect": [["edit_meal", "approve"]]
+    },
+    {
+      "id": "ed-06",
+      "said": "add a chai to my breakfast",
+      "router": { "actions": [{ "kind": "edit_meal", "mode": "add", "span": "a chai", "mealType": "breakfast" }] },
+      "meals": { "a chai": [{ "name": "chai", "quantity": 1, "unit": "cup", "confidence": 0.95 }] },
+      "expect": [["edit_meal", "approve"]]
+    },
+    {
+      "id": "ed-07",
+      "said": "lunch mein rice nahi tha, hata do",
+      "router": { "actions": [{ "kind": "edit_meal", "mode": "remove", "span": "rice", "mealType": "lunch" }] },
+      "expect": [["edit_meal", "approve"]]
+    },
+    {
+      "id": "ed-08",
+      "said": "delete yesterday's dinner",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "meal", "mealType": "dinner", "date": "2026-10-19" }] },
+      "expect": [["delete_entry", "approve"]]
+    },
+    {
+      "id": "ed-09",
+      "said": "delete lunch and dinner",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "meal", "mealType": "lunch" }, { "kind": "delete_entry", "target": "meal", "mealType": "dinner" }] },
+      "expect": [["delete_entry", "approve"], ["clarify", "ask"]],
+      "askHas": "one saved thing"
+    },
+    {
+      "id": "ed-10",
+      "said": "delete everything I logged today",
+      "router": { "actions": [{ "kind": "out_of_scope" }] },
+      "expect": [["out_of_scope", "refuse"]],
+      "replyKind": "redirect"
+    },
+    {
+      "id": "ed-11",
+      "said": "delete everything",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "everything" }] },
+      "expect": []
+    },
+    {
+      "id": "ed-12",
+      "said": "delete tomorrow's lunch",
+      "router": { "actions": [{ "kind": "delete_entry", "target": "meal", "mealType": "lunch", "date": "2026-10-21" }] },
+      "expect": []
+    }
+  ]
+}

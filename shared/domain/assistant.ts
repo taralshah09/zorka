@@ -57,6 +57,13 @@ export const WEIGHT_JUMP_KG = 2;
 /** More glasses than this in one go is unusual (a mis-heard "two litres" → "twelve"), so it's approved first. */
 export const WATER_USUAL_MAX_GLASSES = 4;
 
+/** Saved records a voice delete may target, one at a time. Bulk deletes stay in the UI (Guardrails 4). */
+export const DELETE_TARGETS = ["meal", "water", "weight", "workout"] as const;
+export type DeleteTarget = (typeof DELETE_TARGETS)[number];
+/** replace: the meal is now these foods · add: these foods join it · remove: the named food leaves it. */
+export const EDIT_MODES = ["replace", "add", "remove"] as const;
+export type EditMode = (typeof EDIT_MODES)[number];
+
 export type AssistantAction =
   | { kind: "log_meal"; span: string; mealType?: MealType; date?: string; confidence: Confidence }
   | { kind: "log_water"; glasses: number }
@@ -71,6 +78,13 @@ export type AssistantAction =
   /** Fixes action `index` of the previous turn with new words ("no, dal not dahl"). */
   | { kind: "correct"; index: number; span: string }
   | { kind: "undo" }
+  /**
+   * Deletes one saved record of today or yesterday: a meal (by type, else the latest), the last `glasses` of water,
+   * the day's weigh-in, or the day's latest workout. Always approved first; the phone names the record it found.
+   */
+  | { kind: "delete_entry"; target: DeleteTarget; mealType?: MealType; date?: string; glasses?: number }
+  /** Changes one saved meal of today or yesterday: its foods replaced, added to, or one removed. Approved first. */
+  | { kind: "edit_meal"; mode: EditMode; span: string; mealType?: MealType; date?: string; confidence: Confidence }
   | { kind: "open"; screen: AssistantScreen }
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "out_of_scope" };
@@ -89,12 +103,15 @@ export const ACTION_KINDS: readonly ActionKind[] = [
   "ask",
   "correct",
   "undo",
+  "delete_entry",
+  "edit_meal",
   "open",
   "clarify",
   "out_of_scope",
 ];
 
-const EDIT_KINDS: ReadonlySet<ActionKind> = new Set(["correct", "undo"]);
+/** Actions that change records already saved. MAX_EDITS_PER_TURN of them per turn. */
+const EDIT_KINDS: ReadonlySet<ActionKind> = new Set(["correct", "undo", "delete_entry", "edit_meal"]);
 
 /** What the phone knows when it checks a turn. */
 export type TurnContext = {
@@ -147,12 +164,20 @@ function validDate(date: string): boolean {
   return back.getUTCFullYear() === y && back.getUTCMonth() === m! - 1 && back.getUTCDate() === d;
 }
 
-/** Dates are checked against the window; `minOffset` 0 means "not in the past" (plans, reminders). */
-function checkDate(date: string | undefined, today: string, minOffset = -DATE_PAST_DAYS): RejectReason | null {
+/**
+ * Dates are checked against the window; `minOffset` 0 means "not in the past" (plans, reminders), `maxOffset` 0 "not
+ * in the future" (changing what was saved).
+ */
+function checkDate(
+  date: string | undefined,
+  today: string,
+  minOffset = -DATE_PAST_DAYS,
+  maxOffset = DATE_FUTURE_DAYS,
+): RejectReason | null {
   if (date === undefined) return null;
   if (typeof date !== "string" || !validDate(date)) return "bad_date";
   const offset = dayNumber(date) - dayNumber(today);
-  return offset < minOffset || offset > DATE_FUTURE_DAYS ? "date_out_of_range" : null;
+  return offset < minOffset || offset > maxOffset ? "date_out_of_range" : null;
 }
 
 /** Trimmed, single-spaced text, or a reason it can't be used. */
@@ -259,6 +284,32 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
     }
     case "undo":
       return ctx.previousActions > 0 ? { ok: true, action: { kind: "undo" } } : fail("nothing_to_edit");
+    case "delete_entry": {
+      if (!oneOf(DELETE_TARGETS, a.target)) return fail("bad_value");
+      if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
+      const bad = checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
+      if (bad) return fail(bad);
+      let glasses: number | undefined;
+      if (a.target === "water") {
+        if (a.glasses !== undefined && (typeof a.glasses !== "number" || !Number.isFinite(a.glasses))) return fail("bad_value");
+        glasses = a.glasses === undefined ? 1 : Math.round(a.glasses);
+        if (glasses < 1 || glasses > WATER_LOG_MAX_GLASSES) return fail("bad_value");
+      }
+      const mealType = a.target === "meal" ? (a.mealType as MealType | undefined) : undefined;
+      return { ok: true, action: { kind: "delete_entry", target: a.target, mealType, date, glasses } };
+    }
+    case "edit_meal": {
+      if (!oneOf(EDIT_MODES, a.mode)) return fail("bad_value");
+      const span = cleanText(a.span, SPAN_MAX);
+      if (isReason(span)) return fail(span);
+      if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
+      const bad = checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
+      if (bad) return fail(bad);
+      return {
+        ok: true,
+        action: { kind: "edit_meal", mode: a.mode, span, mealType: a.mealType as MealType | undefined, date, confidence: confidenceOf(a.confidence) },
+      };
+    }
     case "open":
       return oneOf(ASSISTANT_SCREENS, a.screen) ? { ok: true, action: { kind: "open", screen: a.screen } } : fail("bad_value");
     case "clarify": {
@@ -292,6 +343,9 @@ export function tierFor(action: AssistantAction, ctx: TurnContext): Tier {
     case "ask":
       return "answer";
     case "set_day":
+    // D92: anything that changes or deletes a saved record is shown before it happens.
+    case "delete_entry":
+    case "edit_meal":
       return "approve";
     case "log_meal":
     case "log_workout":

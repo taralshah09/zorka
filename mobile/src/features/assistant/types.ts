@@ -17,7 +17,12 @@ export type UndoToken =
   | { kind: "sets"; workoutId: string; setIds: string[]; exerciseIds: string[] }
   | { kind: "brief"; date: string; previous: Brief | null }
   | { kind: "planned"; date: string; id: string }
-  | { kind: "reminder"; id: string };
+  | { kind: "reminder"; id: string }
+  /** delete_entry: put back what was deleted. */
+  | { kind: "meal_restore"; meal: Meal }
+  | { kind: "water_add"; day: string; glasses: number }
+  | { kind: "weight_restore"; weight: WeightLog }
+  | { kind: "workout_restore"; workoutId: string };
 
 /**
  * done: it ran (Undo available) · pending: waits for OK · asking: waits for a choice · answered: a question answered ·
@@ -33,6 +38,8 @@ export type StoredItem = AssistantTurnItem & {
   undo: UndoToken | null;
   /** The meal a log_meal saved, for the chips (AB6) and `correct`. */
   mealId?: string;
+  /** delete_entry / edit_meal: the saved record the phone found and named before OK, so OK changes exactly that one. */
+  targetId?: string;
   note?: string;
 };
 

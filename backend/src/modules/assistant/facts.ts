@@ -113,6 +113,25 @@ export function receipt(item: TurnItem, today: string): { line: string; numbers:
       return { line: `Changed it to ${a.span}.`, numbers: [] };
     case "undo":
       return { line: "Undid the last thing.", numbers: [] };
+    case "delete_entry": {
+      const day = !a.date || a.date === today ? "today" : "yesterday";
+      const what =
+        a.target === "meal"
+          ? `your ${a.mealType ? MEAL_WORD[a.mealType] : "last meal"}`
+          : a.target === "water"
+            ? `${a.glasses ?? 1} glass${(a.glasses ?? 1) === 1 ? "" : "es"} of water`
+            : a.target === "weight"
+              ? "the weigh-in"
+              : "the workout";
+      return { line: `Delete ${what} from ${day}? Tap OK.`, numbers: a.glasses ? [a.glasses] : [] };
+    }
+    case "edit_meal": {
+      const meal = a.mealType ? MEAL_WORD[a.mealType] : "your last meal";
+      const m = mealWords(item);
+      if (a.mode === "remove") return { line: `Take ${a.span} out of ${meal}? Tap OK.`, numbers: [] };
+      if (a.mode === "add") return { line: `Add ${m.text || a.span} to ${meal}? Tap OK.`, numbers: m.numbers };
+      return { line: `Change ${meal} to ${m.text || a.span}? Tap OK.`, numbers: m.numbers };
+    }
     case "open":
       return { line: `Opening ${SCREEN_WORD[a.screen] ?? "that"}.`, numbers: [] };
     case "clarify":

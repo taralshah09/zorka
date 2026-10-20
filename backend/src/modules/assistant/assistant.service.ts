@@ -54,6 +54,8 @@ import { vocabularyHint } from "./vocab.js";
 export const DENSE_KCAL_PER_100G = 250;
 /** "did my usual", "same as always", "roz wala": the user's next routine, approved first. */
 const USUAL_WORKOUT = /\b(usual|routine|same as (always|usual|last time)|roz wala|hamesha wala)\b/i;
+/** A turn asked for more than one change to saved records (MAX_EDITS_PER_TURN). */
+export const ONE_EDIT_LINE = "I change one saved thing at a time. Say the next one after this.";
 /** Nothing usable came back. */
 export const NOTHING_LINE = 'I couldn\'t find anything to do there. Try "log 2 rotis" or "how\'s my week?"';
 
@@ -76,6 +78,7 @@ function toAction(a: RouterAction, confidence: Confidence): unknown {
     case "log_meal":
     case "log_workout":
     case "log_weight":
+    case "edit_meal":
       return { ...a, confidence };
     case "remind_me": {
       const { time, ...rest } = a;
@@ -88,7 +91,9 @@ function toAction(a: RouterAction, confidence: Confidence): unknown {
 
 /** Actions whose words must have been said (D91, "Router disagreement"). */
 function spanOf(a: RouterAction): string | null {
-  return a.kind === "log_meal" || a.kind === "log_workout" || a.kind === "plan_meal" || a.kind === "correct" ? a.span : null;
+  return a.kind === "log_meal" || a.kind === "log_workout" || a.kind === "plan_meal" || a.kind === "correct" || a.kind === "edit_meal"
+    ? a.span
+    : null;
 }
 
 export function assistantService(deps: AssistantDeps) {
@@ -96,10 +101,11 @@ export function assistantService(deps: AssistantDeps) {
 
   async function resolveMeal(userId: string, words: string, item: TurnItem, ctx: TurnContext, minute: number): Promise<TurnItem> {
     const a = item.action;
-    if (a.kind !== "log_meal" && a.kind !== "plan_meal" && a.kind !== "correct") return item;
+    if (a.kind !== "log_meal" && a.kind !== "plan_meal" && a.kind !== "correct" && a.kind !== "edit_meal") return item;
     const parsed = await parse.parseForAssistant(userId, words);
     const items = parsed.items;
     const saidType = a.kind === "correct" ? undefined : a.mealType;
+    // An edit's foods are what to put in; the phone finds the saved meal (by type, else the latest).
     const mealType = saidType ?? mealTypeAt(minute);
     const out: TurnItem = { ...item, resolved: { kind: "meal", items, mealType } };
     if (a.kind !== "log_meal") return out;
@@ -170,6 +176,9 @@ export function assistantService(deps: AssistantDeps) {
         return resolveMeal(userId, a.span, item, ctx, minute);
       case "log_workout":
         return resolveWorkout(userId, a.span, item, ctx);
+      case "edit_meal":
+        // "Remove the rice": nothing to parse, the phone takes that food out of the saved meal.
+        return a.mode === "remove" ? item : resolveMeal(userId, a.span, item, ctx, minute);
       case "correct": {
         const target = body.turn.previous?.actions[a.index];
         if (target?.kind === "log_meal" || target?.kind === "plan_meal") return resolveMeal(userId, a.span, item, ctx, minute);
@@ -298,6 +307,9 @@ export function assistantService(deps: AssistantDeps) {
         });
       }
       if (dropped.length) log(userId, "assistant turn: actions dropped", { words: text.slice(0, 300), dropped });
+      // One saved record changes per turn; say so instead of quietly skipping the rest.
+      if (dropped.some((d) => d.reason === "too_many_edits"))
+        items.push({ action: { kind: "clarify", question: ONE_EDIT_LINE, options: [] }, tier: "ask", resolved: null, ask: null, line: ONE_EDIT_LINE });
 
       // 7. Phrasing over the receipts only. Anything off falls back to the receipts as written.
       const template = templateReply(items);

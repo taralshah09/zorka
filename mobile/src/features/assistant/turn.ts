@@ -20,7 +20,8 @@ import { useActiveUser } from "@/features/users/activeUser";
 import { localAskTopic, OFFLINE_ANSWER_LINE, TURN_TEXT_MAX, type TurnContext } from "@shared/domain/assistant";
 import { answerFacts, answerText, OFFLINE_TOPICS } from "@shared/domain/assistantFacts";
 import { localDate } from "@shared/domain/food";
-import { checkPhoneTurn, usualPortions } from "./executors";
+import { addDays } from "@shared/domain/progress";
+import { checkPhoneTurn, loggedForServer, usualPortions } from "./executors";
 import type { TurnSnapshot } from "./snapshot";
 import { previousForServer, previousTurn, runSure, threadForServer } from "./thread";
 import type { StoredTurn } from "./types";
@@ -167,7 +168,12 @@ export async function runTurn(snapshot: TurnSnapshot, input: { text?: string; ur
         coach: snapshot.coach,
         context: snapshot.context,
         facts: snapshot.facts,
-        turn: { activityRunning: ctx.activityRunning, lastWeightKg: ctx.lastWeightKg, previous: ctx.previousActions ? previousForServer(snapshot.userId) : null },
+        turn: {
+          activityRunning: ctx.activityRunning,
+          lastWeightKg: ctx.lastWeightKg,
+          previous: ctx.previousActions ? previousForServer(snapshot.userId) : null,
+          logged: loggedForServer(snapshot.userId, snapshot.today, addDays(snapshot.today, -1)),
+        },
         vocab: snapshot.vocab,
         thread: threadForServer(snapshot.userId),
       },
@@ -183,7 +189,7 @@ export async function runTurn(snapshot: TurnSnapshot, input: { text?: string; ur
   if (result.kind === "no_speech") return { kind: "no_speech" };
   if (useActiveUser.getState().userId !== snapshot.userId) return { kind: "error", error: { title: "Profile changed", body: "Say it again on this profile." } };
 
-  const items = result.kind === "support" ? [] : checkPhoneTurn(result, ctx, usualPortions(snapshot.userId));
+  const items = result.kind === "support" ? [] : checkPhoneTurn(result, ctx, usualPortions(snapshot.userId), snapshot.userId);
   const turn: StoredTurn = {
     v: 1,
     date: snapshot.today,

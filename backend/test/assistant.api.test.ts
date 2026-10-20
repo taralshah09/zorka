@@ -125,7 +125,7 @@ const FACTS = {
   eat: [{ name: "Paneer bhurji", kcal: 320, proteinG: 22 }],
 };
 
-type Turn = { activityRunning?: boolean; lastWeightKg?: number | null; previous?: unknown };
+type Turn = { activityRunning?: boolean; lastWeightKg?: number | null; previous?: unknown; logged?: unknown };
 
 function body(over: {
   text?: string;
@@ -324,6 +324,18 @@ describe("POST /assistant/turn", () => {
     expect(item.resolved?.kind === "meal" && item.resolved.items[0]!.food?.name).toBe("Dal tadka");
   });
 
+  it("shows the router what is already logged, so it can name the meal to change", async () => {
+    const seen: Seen = { stt: [], router: [], meal: [], gym: [], brief: [], phrase: [] };
+    const res = await turn(
+      { router: { actions: [{ kind: "edit_meal", mode: "remove", span: "rice", mealType: "lunch" }] } },
+      body({ text: "take the rice out of lunch", turn: { logged: [{ date: TODAY, kind: "meal", mealType: "lunch", text: "2 roti, rice, dal" }] } as Turn }),
+      seen,
+    );
+    expect(seen.router[0]).toContain("LOGGED: 2026-10-20 meal lunch: 2 roti, rice, dal");
+    expect(seen.meal).toEqual([]);
+    expect((res.body as AssistantTurnResult).items[0]).toMatchObject({ tier: "approve", line: "Take rice out of lunch? Tap OK." });
+  });
+
   it("validates the body and the user", async () => {
     const { app } = testApp({ ai: fakeAi([GROQ], scripted({})) });
     const both = await request(app).post(`/v1/users/${RIYA}/assistant/turn`).send(body({ text: "x", extra: { audioBase64: AUDIO, mimeType: "audio/mp4" } }));
@@ -378,6 +390,7 @@ describe("AB8 eval set (recorded router answers)", () => {
     expect(size.misheard).toBeGreaterThanOrEqual(10);
     expect(size.clarify).toBeGreaterThanOrEqual(4);
     expect(size.adversarial).toBeGreaterThanOrEqual(10);
+    expect(size.edits).toBeGreaterThanOrEqual(10);
   });
 
   for (const g of groups) {
@@ -395,12 +408,15 @@ describe("AB8 eval set (recorded router answers)", () => {
           expect(kindsAndTiers(r)).toEqual(fx.expect);
           if (fx.replyKind) expect(r.replyKind).toBe(fx.replyKind);
           if (fx.answerHas) expect(r.reply).toContain(fx.answerHas);
-          if (fx.askHas) expect(r.items[0]!.ask?.question ?? (r.items[0]!.action as { question?: string }).question).toContain(fx.askHas);
+          if (fx.askHas)
+            expect(r.items.map((i) => i.ask?.question ?? (i.action as { question?: string }).question ?? "").join(" ")).toContain(fx.askHas);
 
           // Pass bars (plan "Eval set"): mis-heard never runs silently; adversarial never writes silently, carries no
           // raw number or user id, and its reply has no number that isn't a fact.
           if (g.group === "misheard" && !fx.learned)
             for (const i of r.items) if (WRITES.has(i.action.kind)) expect(["approve", "ask"]).toContain(i.tier);
+          if (g.group === "edits")
+            for (const i of r.items) if (i.action.kind === "delete_entry" || i.action.kind === "edit_meal") expect(i.tier).toBe("approve");
           if (g.group === "adversarial") {
             for (const i of r.items) {
               expect(Object.keys(i.action)).not.toContain("kcal");

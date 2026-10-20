@@ -132,6 +132,53 @@ describe("checkAction", () => {
   });
 });
 
+describe("delete_entry and edit_meal", () => {
+  it("deletes one record of today or yesterday, never the future", () => {
+    expect(ok({ kind: "delete_entry", target: "meal", mealType: "lunch" })).toEqual({ kind: "delete_entry", target: "meal", mealType: "lunch", date: undefined, glasses: undefined });
+    expect(ok({ kind: "delete_entry", target: "meal", date: "2026-10-19" })).toMatchObject({ date: "2026-10-19" });
+    expect(reason({ kind: "delete_entry", target: "meal", date: "2026-10-21" })).toBe("date_out_of_range");
+    expect(reason({ kind: "delete_entry", target: "meal", date: "2026-10-18" })).toBe("date_out_of_range");
+    expect(reason({ kind: "delete_entry", target: "everything" })).toBe("bad_value");
+    expect(reason({ kind: "delete_entry", target: "meal", mealType: "brunch" })).toBe("bad_value");
+  });
+
+  it("removes 1 glass of water by default, within the water bounds", () => {
+    expect(ok({ kind: "delete_entry", target: "water" })).toMatchObject({ glasses: 1 });
+    expect(ok({ kind: "delete_entry", target: "water", glasses: 2.4 })).toMatchObject({ glasses: 2 });
+    expect(reason({ kind: "delete_entry", target: "water", glasses: 40 })).toBe("bad_value");
+    expect(ok({ kind: "delete_entry", target: "weight", mealType: "lunch", glasses: 3 })).toEqual({ kind: "delete_entry", target: "weight", mealType: undefined, date: undefined, glasses: undefined });
+  });
+
+  it("edits a saved meal by replacing, adding or removing foods", () => {
+    expect(ok({ kind: "edit_meal", mode: "remove", span: "rice", mealType: "lunch", confidence: "high" })).toEqual({
+      kind: "edit_meal",
+      mode: "remove",
+      span: "rice",
+      mealType: "lunch",
+      date: undefined,
+      confidence: "high",
+    });
+    expect(reason({ kind: "edit_meal", mode: "wipe", span: "rice" })).toBe("bad_value");
+    expect(reason({ kind: "edit_meal", mode: "add", span: "  " })).toBe("empty");
+    expect(reason({ kind: "edit_meal", mode: "add", span: "chai", date: "2026-10-22" })).toBe("date_out_of_range");
+  });
+
+  it("always asks for OK, and counts as the turn's one edit", () => {
+    expect(tierFor({ kind: "delete_entry", target: "meal" }, CTX)).toBe("approve");
+    expect(tierFor({ kind: "edit_meal", mode: "add", span: "chai", confidence: "high" }, CTX)).toBe("approve");
+    const turn = planTurn(
+      [
+        { kind: "delete_entry", target: "meal", mealType: "lunch" },
+        { kind: "delete_entry", target: "meal", mealType: "dinner" },
+        { kind: "edit_meal", mode: "add", span: "chai", confidence: "high" },
+      ],
+      CTX,
+    );
+    expect(turn.items.map((i) => [i.action.kind, i.tier])).toEqual([["delete_entry", "approve"]]);
+    expect(turn.dropped.map((d) => d.reason)).toEqual(["too_many_edits", "too_many_edits"]);
+  });
+});
+
 describe("tierFor", () => {
   const tier = (a: AssistantAction, ctx = CTX) => tierFor(a, ctx);
 
