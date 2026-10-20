@@ -3,7 +3,7 @@
 // built from data the phone already has. The server's phrasing step words these facts in the persona's voice and the
 // grounding check (assistant.ts numbersGrounded) rejects any number that isn't in `numbers`. Offline, the phone shows
 // `lines` as they are (template phrasing, D98).
-import type { AskTopic } from "./assistant.js";
+import { OFFLINE_ANSWER_LINE, type AskTopic } from "./assistant.js";
 import type { DayType } from "./dayType.js";
 import type { MealType } from "./food.js";
 import { matchScore, MIN_MATCH_SCORE } from "./foodMatch.js";
@@ -358,6 +358,62 @@ function recordsAnswer(input: AssistantFactsInput, about?: string): AnswerFacts 
   return { topic: "records", date: today, known: true, lines, numbers: numbersIn(lines), card };
 }
 
+/** One food of a food_fit question, as the server's food parser read it. `name` null: not found. */
+export type FitFood = { heard: string; name: string | null; amount: string | null; kcal: number; proteinG: number };
+
+/** Below this share of the protein still to go, a food_fit answer suggests a protein side. */
+export const FIT_LOW_PROTEIN_SHARE = 0.3;
+/** …but only when at least this much protein is still to go. */
+export const FIT_PROTEIN_SIDE_MIN_G = 15;
+
+/**
+ * "Would dal and rice be ok for lunch?": the food's numbers (the server's food parser) against what's left today.
+ * Without parsed foods (offline, the phone has no parser) it waits for the server.
+ */
+export function foodFitFacts(input: AssistantFactsInput, words: string, foods: readonly FitFood[] | null): AnswerFacts {
+  const today = input.today;
+  if (!words.trim()) return unknown("food_fit", today, "Tell me the food and I'll check it against what you have left today.");
+  if (!foods) return unknown("food_fit", today, OFFLINE_ANSWER_LINE);
+  const found = foods.filter((f) => f.name);
+  if (!found.length) return unknown("food_fit", today, `I couldn't find "${words}" in the food list, so I can't size it up. Try naming the foods one by one.`);
+  const kcal = r(found.reduce((s, f) => s + f.kcal, 0));
+  const protein = r(found.reduce((s, f) => s + f.proteinG, 0));
+  const t = input.day;
+  const kcalLeft = r(t.targetKcal - t.eatenKcal);
+  const proteinLeft = Math.max(0, r(t.targetProteinG - t.eatenProteinG));
+  const missing = foods.filter((f) => !f.name).map((f) => `"${f.heard}"`);
+  const what = found.map((f) => `${f.name!.toLowerCase()}${f.amount ? ` (${f.amount})` : ""}`).join(" and ");
+  const lines = [`${what} comes to about ${fmt(kcal)} kcal and ${fmt(protein)} g protein${missing.length ? `; I couldn't find ${missing.join(", ")}` : ""}.`];
+  if (kcalLeft <= 0) lines.push(`You've had ${fmt(t.eatenKcal)} of ${fmt(t.targetKcal)} kcal today, so it would put you ${fmt(kcal - kcalLeft)} kcal over. A smaller portion fits better if you're hungry.`);
+  else if (kcal <= kcalLeft) lines.push(`It fits: you have ${fmt(kcalLeft)} kcal left, and it leaves ${fmt(kcalLeft - kcal)}.`);
+  else lines.push(`That's ${fmt(kcal - kcalLeft)} kcal more than the ${fmt(kcalLeft)} you have left, so a smaller portion fits better.`);
+  if (proteinLeft <= 0) lines.push("Your protein is already covered today.");
+  else if (protein >= proteinLeft) lines.push(`It covers the ${fmt(proteinLeft)} g protein you still need.`);
+  else if (protein < proteinLeft * FIT_LOW_PROTEIN_SHARE && proteinLeft >= FIT_PROTEIN_SIDE_MIN_G)
+    lines.push(`It's light on protein for the ${fmt(proteinLeft)} g still to go: add curd, paneer, eggs or chicken on the side.`);
+  else lines.push(`It covers ${fmt(protein)} of the ${fmt(proteinLeft)} g protein you still need.`);
+  return { topic: "food_fit", date: today, known: true, lines, numbers: numbersIn(lines), card: null };
+}
+
+/**
+ * What an `advice` answer may lean on: today's numbers, the plan, this week's workouts and recent lifts, as
+ * code-written lines. Every number in the advice must be one of `numbers`.
+ */
+export function adviceGrounds(input: AssistantFactsInput): { lines: string[]; numbers: number[] } {
+  const t = input.day;
+  const lines = [...todayAnswer(input, input.today).lines.filter((l) => !l.startsWith("Some meals"))];
+  lines.push(t.workoutToday ? "They've logged a workout today." : "No workout logged today.");
+  if (input.plan) lines.push(`Today is ${DAY_TYPE_WORDS[input.plan.dayType]} day.`);
+  const w = input.week;
+  if (w) {
+    const trained = w.days.filter((d) => d.trained && d.date < input.today).map((d) => weekdayName(d.date));
+    lines.push(`${w.sessionsDone} of ${w.sessionsTarget} workouts done this week${trained.length ? ` (trained ${trained.join(", ")})` : ""}.`);
+  }
+  const recent = (input.records ?? []).slice(0, 5).map((x) => x.name);
+  if (recent.length) lines.push(`Exercises trained most recently: ${recent.join(", ")}.`);
+  return { lines, numbers: numbersIn(lines) };
+}
+
 /**
  * The facts for one question. `date` defaults to today; `today` and `meals` read another day ("and yesterday?").
  * `mealType` narrows a food question to one meal; `about` names the exercise of a records question.
@@ -388,6 +444,11 @@ export function answerFacts(
       return mealsAnswer(input, date ?? input.today, mealType);
     case "records":
       return recordsAnswer(input, about);
+    // Both need the server: the food parser for food_fit, a written answer for advice.
+    case "food_fit":
+      return foodFitFacts(input, about ?? "", null);
+    case "advice":
+      return unknown("advice", input.today, OFFLINE_ANSWER_LINE);
   }
 }
 

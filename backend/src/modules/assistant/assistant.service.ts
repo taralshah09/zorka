@@ -29,7 +29,7 @@ import {
   type Confidence,
   type TurnContext,
 } from "../../../../shared/domain/assistant.js";
-import { answerFacts } from "../../../../shared/domain/assistantFacts.js";
+import { adviceGrounds, answerFacts, foodFitFacts, type AnswerFacts, type FitFood } from "../../../../shared/domain/assistantFacts.js";
 import { UNIT_LABEL } from "../../../../shared/domain/food.js";
 import type { Logger } from "pino";
 
@@ -40,6 +40,7 @@ import { checkReply, needsSupport, SUPPORT_REPLY } from "../coach/safety.js";
 import { routineFromSets, type GymParseService } from "../gymParse/gymParse.service.js";
 import type { ParseService } from "../mealParse/parse.service.js";
 import {
+  AiAdvice,
   AiPhrasing,
   AiRomanized,
   AiRouterOutput,
@@ -50,7 +51,7 @@ import {
   type DropReason,
   type TurnItem,
 } from "./assistant.schemas.js";
-import { phrasingSystem, phrasingUser, receipt, templateReply } from "./facts.js";
+import { ADVICE_DOWN_LINE, ADVICE_SYSTEM, adviceUser, phrasingSystem, phrasingUser, qty, receipt, templateReply } from "./facts.js";
 import { runAgent, type Screen } from "./agent.js";
 import { ROMANIZE_SYSTEM, ROUTER_SYSTEM_FOR, routerUser } from "./router.prompt.js";
 import { vocabularyHint } from "./vocab.js";
@@ -200,6 +201,39 @@ export function assistantService(deps: AssistantDeps) {
     return out;
   }
 
+  /** "Would dal and rice be ok for lunch?": the food parser's numbers against what's left today. */
+  async function foodFit(userId: string, body: AssistantTurnBody, words: string): Promise<AnswerFacts> {
+    if (!words.trim()) return foodFitFacts(body.facts, words, []);
+    let foods: FitFood[];
+    try {
+      const { items } = await parse.parseForAssistant(userId, words);
+      foods = items.map((i) => ({
+        heard: i.query,
+        name: i.food?.name ?? null,
+        amount: i.food ? `${qty(i.quantity)} ${UNIT_LABEL[i.unit][i.quantity === 1 ? "one" : "many"]}` : null,
+        kcal: i.macros.kcal,
+        proteinG: i.macros.proteinG,
+      }));
+    } catch {
+      return { topic: "food_fit", date: body.facts.today, known: false, lines: ["Food lookup is down right now. Ask me again in a minute."], numbers: [], card: null };
+    }
+    return foodFitFacts(body.facts, words, foods);
+  }
+
+  /** "Legs are sore and it's legs day, what should I do?": a short answer over today's facts, checked like a reply. */
+  async function advice(body: AssistantTurnBody, said: string): Promise<AnswerFacts> {
+    const grounds = adviceGrounds(body.facts);
+    const down: AnswerFacts = { topic: "advice", date: body.facts.today, known: false, lines: [ADVICE_DOWN_LINE], numbers: [], card: null };
+    try {
+      const { value } = await ai.json({ system: ADVICE_SYSTEM, user: adviceUser(grounds.lines, said), schema: AiAdvice });
+      const lines = value.lines.map((l) => checkReply(l));
+      if (lines.some((l) => !l) || !numbersGrounded(lines.join(" "), grounds.numbers)) return down;
+      return { topic: "advice", date: body.facts.today, known: true, lines: lines as string[], numbers: grounds.numbers, card: null };
+    } catch {
+      return down;
+    }
+  }
+
   async function resolve(userId: string, body: AssistantTurnBody, said: string, item: TurnItem, ctx: TurnContext): Promise<TurnItem> {
     const a = item.action;
     const minute = minuteOf(body.context.localTime);
@@ -238,7 +272,12 @@ export function assistantService(deps: AssistantDeps) {
         return { ...item, resolved: { kind: "day", facts: factsForDayType(a.dayType, base), dayType: a.dayType, question } };
       }
       case "ask": {
-        const f = answerFacts(a.topic, body.facts, a.date, a.mealType, a.about);
+        const f =
+          a.topic === "food_fit"
+            ? await foodFit(userId, body, a.about ?? "")
+            : a.topic === "advice"
+              ? await advice(body, said)
+              : answerFacts(a.topic, body.facts, a.date, a.mealType, a.about);
         return { ...item, resolved: { kind: "answer", topic: f.topic, date: f.date, known: f.known, lines: f.lines, numbers: f.numbers, card: f.card } };
       }
       case "exercise_ref": {

@@ -33,13 +33,15 @@ type Script = {
   roman?: string;
   /** The phrasing step's reply; default: the FACTS lines as given (always grounded). */
   reply?: string;
+  /** An advice question's answer lines; default: a sore-legs answer with no numbers. */
+  advice?: string[];
   /** D100: the tool router's calls per step, as actions ({ kind, ...args }; kind "check_foods" for the lookup). Default:
    *  `router`'s actions on the first step, then done. */
   steps?: Record<string, unknown>[][];
   /** Steps that answer with an HTTP 500. "router" fails both routers, "tools" only the tool router. */
   fail?: ("router" | "tools" | "phrase" | "brief")[];
 };
-type Seen = { stt: string[]; router: string[]; meal: string[]; gym: string[]; brief: string[]; phrase: string[]; tools?: unknown[][] };
+type Seen = { stt: string[]; router: string[]; meal: string[]; gym: string[]; brief: string[]; phrase: string[]; tools?: unknown[][]; advice?: string[] };
 
 const json = (content: unknown) =>
   Response.json({ model: "t", choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) } }] });
@@ -89,6 +91,10 @@ function scripted(s: Script, seen: Seen = { stt: [], router: [], meal: [], gym: 
       seen.brief.push(user);
       if (s.fail?.includes("brief")) return new Response("down", { status: 500 });
       return json(s.brief ?? { blocks: [], flags: [] });
+    }
+    if (system.includes("coaching brain of Zorka")) {
+      seen.advice?.push(user);
+      return json({ lines: s.advice ?? ["Skip heavy legs today and train upper body instead.", "Give your legs a short easy walk and some stretching."] });
     }
     if (system.includes("writing Zorka's reply")) {
       seen.phrase.push(user);
@@ -315,6 +321,40 @@ describe("POST /assistant/turn", () => {
       body({ text: "drank 2 glasses of water" }),
     );
     expect(res.body).toMatchObject({ replyKind: "template" });
+  });
+
+  it("answers whether a named food fits what's left today, from the food parser's numbers", async () => {
+    const res = await turn(
+      {
+        router: { actions: [{ kind: "ask", topic: "food_fit", about: "dal and rice", mealType: "lunch" }] },
+        meals: { "dal and rice": [{ name: "dal", quantity: 1, unit: "katori", confidence: 0.95 }, { name: "rice", quantity: 1, unit: "katori", confidence: 0.95 }] },
+      },
+      body({ text: "would dal and rice be a nice option for lunch?" }),
+    );
+    expect(res.status).toBe(200);
+    const r = res.body as AssistantTurnResult;
+    const item = r.items[0]!;
+    expect(item.tier).toBe("answer");
+    expect(item.resolved?.kind === "answer" && item.resolved.known).toBe(true);
+    // 1800 - 900 eaten: 900 kcal left today.
+    expect(item.line).toContain("you have 900 kcal left");
+  });
+
+  it("writes advice over today's facts, and falls back when it has a number that isn't one", async () => {
+    const seen: Seen = { stt: [], router: [], meal: [], gym: [], brief: [], phrase: [], advice: [] };
+    const said = "my legs are sore, i was hoping to hit legs day today, suggest me what to do";
+    const ok = await turn({ router: { actions: [{ kind: "ask", topic: "advice" }] } }, body({ text: said }), seen);
+    expect((ok.body as AssistantTurnResult).items[0]!.line).toContain("upper body");
+    expect(seen.advice![0]).toContain("legs are sore");
+    expect(seen.advice![0]).toContain("No workout logged today.");
+
+    const made = await turn(
+      { router: { actions: [{ kind: "ask", topic: "advice" }] }, advice: ["Do 45 minutes of upper body instead."] },
+      body({ text: said }),
+    );
+    const item = (made.body as AssistantTurnResult).items[0]!;
+    expect(item.line).toContain("Ask me again");
+    expect(item.resolved?.kind === "answer" && item.resolved.known).toBe(false);
   });
 
   it("still answers when the phrasing step is down", async () => {

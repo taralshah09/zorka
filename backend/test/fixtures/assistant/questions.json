@@ -16,6 +16,21 @@
       "router": { "actions": [{ "kind": "ask", "topic": "today", "date": "2026-10-19" }] },
       "expect": [["ask", "answer"]],
       "answerHas": "Monday"
+    },
+    {
+      "id": "qu-food-fit",
+      "said": "considering the current gap would dal and rice be a nice option for lunch?",
+      "router": { "actions": [{ "kind": "ask", "topic": "food_fit", "about": "dal and rice", "mealType": "lunch" }] },
+      "meals": { "dal and rice": [{ "name": "dal", "quantity": 1, "unit": "katori", "confidence": 0.95 }, { "name": "rice", "quantity": 1, "unit": "katori", "confidence": 0.95 }] },
+      "expect": [["ask", "answer"]],
+      "answerHas": "It fits"
+    },
+    {
+      "id": "qu-advice",
+      "said": "my legs are sore right now, i was hoping to hit legs day today suggest me what to do?",
+      "router": { "actions": [{ "kind": "ask", "topic": "advice" }] },
+      "expect": [["ask", "answer"]],
+      "answerHas": "upper body"
     }
   ]
 }

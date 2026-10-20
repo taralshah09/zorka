@@ -41,7 +41,9 @@ every tool their words ask for (one step at a time is fine; you see each result)
   logged → log_meal. A new amount of a logged food → set_amount. Assume the obvious: "remove that water" = 1 glass.
 - correct/undo only touch PREVIOUS.
 - Days: leave out for today; else as said ("tomorrow", "kal", "sunday").
-- Questions about their numbers, plan, meals, records → answer_question.
+- Questions about their numbers, plan, meals, records → answer_question. "Would X be good / ok / fit my gap (for lunch)?"
+  → answer_question food_fit, about = the food words. Any other ask for a suggestion about their training, food,
+  recovery or day ("legs are sore, it's legs day, what should I do?") → answer_question advice. A question logs nothing.
 - They say what a day is like (out of city, travelling, sick, wedding, exams, late work) → also set_day for it
   ("out of city tomorrow, protein 75 g" = set_day away + set_target).
 - Not their own health, food, water, workouts, weight, day or progress → decline. Self-harm, starving, purging → decline.
@@ -86,7 +88,7 @@ export const AGENT_TOOLS: ToolSpec[] = [
   tool(
     "answer_question",
     "A question about their own data; the app answers.",
-    params({ topic: oneOf(ASK_TOPICS), date: DATE, mealType: MEAL, about: str("records: the exercise") }, ["topic"]),
+    params({ topic: oneOf(ASK_TOPICS), date: DATE, mealType: MEAL, about: str("records: the exercise; food_fit: the food words") }, ["topic"]),
   ),
   tool("exercise_ref", "How to do an exercise, or exercises for a muscle.", params({ span: WORDS }, ["span"])),
   tool("correct", "Fix one PREVIOUS action.", params({ index: int, span: str("The whole entry, fixed.") }, ["index", "span"])),

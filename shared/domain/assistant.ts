@@ -30,8 +30,12 @@ export const ASSISTANT_SCREENS = [
 ] as const;
 export type AssistantScreen = (typeof ASSISTANT_SCREENS)[number];
 
-/** What a question can be about. The facts for each come from code (assistantFacts.ts), never from the AI. */
-export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why", "meals", "records"] as const;
+/**
+ * What a question can be about. The facts for each come from code (assistantFacts.ts), never from the AI. Two need the
+ * server: `food_fit` ("would dal rice be ok for lunch?") weighs the food parser's numbers against today's gap, and
+ * `advice` ("legs are sore, what should I do?") is a short coach answer written over today's facts.
+ */
+export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why", "meals", "records", "food_fit", "advice"] as const;
 export type AskTopic = (typeof ASK_TOPICS)[number];
 
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ["walk", "run", "ride"];
@@ -97,8 +101,9 @@ export type AssistantAction =
   | { kind: "plan_meal"; span: string; mealType: MealType; date?: string }
   | { kind: "remind_me"; what: string; minute: number; date?: string }
   /**
-   * `mealType`: which meal "what should I have for dinner" or "what did I eat for lunch" is about. `about`: the
-   * exercise a records question names ("what's my bench PR" → "bench").
+   * `mealType`: which meal "what should I have for dinner", "what did I eat for lunch" or "would dal rice be ok for
+   * lunch" is about. `about`: the exercise a records question names ("what's my bench PR" → "bench"), or the food a
+   * food_fit question names ("dal and rice").
    */
   | { kind: "ask"; topic: AskTopic; date?: string; mealType?: MealType; about?: string }
   /** How to do an exercise, or exercises for a muscle: links to MuscleWiki pages from the exercise list (D38). */
@@ -328,10 +333,10 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
       const bad = checkDate(date, ctx.today, -DATE_FUTURE_DAYS);
       if (bad) return fail(bad);
       // Only food questions are about one meal.
-      const mealType = a.topic === "what_to_eat" || a.topic === "meals" ? (a.mealType as MealType | undefined) : undefined;
-      // Only a records question names an exercise.
+      const mealType = a.topic === "what_to_eat" || a.topic === "meals" || a.topic === "food_fit" ? (a.mealType as MealType | undefined) : undefined;
+      // Only a records question names an exercise, and only a food_fit question names a food.
       let about: string | undefined;
-      if (a.topic === "records" && a.about !== undefined) {
+      if ((a.topic === "records" || a.topic === "food_fit") && a.about !== undefined) {
         const clean = cleanText(a.about, OPTION_MAX * 2);
         if (clean === "too_long" || clean === "bad_value") return fail(clean);
         about = clean === "empty" ? undefined : clean;

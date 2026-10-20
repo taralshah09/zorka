@@ -63,7 +63,7 @@ export const RouterAction = z.discriminatedUnion("kind", [
     topic: z.enum(ASK_TOPICS),
     date: date.optional(),
     mealType: z.enum(MEAL_TYPES).optional(),
-    /** records: the exercise words ("bench"). */
+    /** records: the exercise words ("bench"). food_fit: the food words ("dal and rice"). */
     about: z.string().trim().min(1).max(80).optional(),
   }),
   z.strictObject({ kind: z.literal("exercise_ref"), span: z.string().trim().min(1).max(80) }),
@@ -111,6 +111,8 @@ export type RouterAction = z.infer<typeof RouterAction>;
 export const AiRouterOutput = z.object({ actions: z.array(z.unknown()).max(12) });
 
 export const AiPhrasing = z.object({ reply: z.string().trim().min(1).max(600) });
+/** An `advice` question's answer: 1 to 3 short sentences over today's facts. */
+export const AiAdvice = z.object({ lines: z.array(z.string().trim().min(1).max(240)).min(1).max(3) });
 /** Hindi in Devanagari, written in Roman letters (Hinglish). */
 export const AiRomanized = z.object({ text: z.string().trim().min(1).max(TURN_TEXT_MAX) });
 

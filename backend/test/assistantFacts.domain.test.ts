@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { numbersGrounded } from "../../shared/domain/assistant.js";
-import { answerFacts, answerText, onTarget, type AssistantFactsInput } from "../../shared/domain/assistantFacts.js";
+import { adviceGrounds, answerFacts, answerText, foodFitFacts, onTarget, type AssistantFactsInput, type FitFood } from "../../shared/domain/assistantFacts.js";
 import { activeFacts, aliasesFrom, aliasFact, type MemoryFact } from "../../shared/domain/memory.js";
 
 const day = (date: string, kcal: number | null, proteinG: number | null, trained = false) => ({
@@ -138,5 +138,43 @@ describe("alias facts (D97)", () => {
       { heard: "dahl", means: "Dal tadka" },
     ]);
     expect(activeFacts(facts, "2026-10-20").texts).toEqual([]);
+  });
+});
+
+describe("food_fit and advice", () => {
+  const dalRice: FitFood[] = [
+    { heard: "dal", name: "Dal tadka", amount: "1 katori", kcal: 180, proteinG: 9 },
+    { heard: "rice", name: "Steamed rice", amount: "1 katori", kcal: 200, proteinG: 4 },
+  ];
+
+  it("weighs a named food against what's left today", () => {
+    // 1612 - 900: 712 kcal left; 110 - 48: 62 g protein to go.
+    const f = foodFitFacts(INPUT, "dal and rice", dalRice);
+    expect(f.known).toBe(true);
+    expect(f.lines[0]).toBe("dal tadka (1 katori) and steamed rice (1 katori) comes to about 380 kcal and 13 g protein.");
+    expect(f.lines[1]).toBe("It fits: you have 712 kcal left, and it leaves 332.");
+    expect(f.lines[2]).toContain("light on protein for the 62 g");
+    expect(numbersGrounded(answerText(f), f.numbers)).toBe(true);
+  });
+
+  it("says how far over a food would go, and never asks to make up for it", () => {
+    const full = { ...INPUT, day: { ...INPUT.day, eatenKcal: 1500 } };
+    const f = foodFitFacts(full, "dal and rice", dalRice);
+    expect(f.lines[1]).toBe("That's 268 kcal more than the 112 you have left, so a smaller portion fits better.");
+    const over = foodFitFacts({ ...INPUT, day: { ...INPUT.day, eatenKcal: 1700 } }, "dal and rice", dalRice);
+    expect(over.lines[1]).toContain("468 kcal over");
+  });
+
+  it("needs a found food, and the server", () => {
+    expect(foodFitFacts(INPUT, "xyz", [{ heard: "xyz", name: null, amount: null, kcal: 0, proteinG: 0 }]).known).toBe(false);
+    expect(answerFacts("food_fit", INPUT, undefined, "lunch", "dal").known).toBe(false);
+    expect(answerFacts("advice", INPUT).known).toBe(false);
+  });
+
+  it("grounds advice in today's numbers and this week's training", () => {
+    const g = adviceGrounds(INPUT);
+    expect(g.lines.join(" ")).toContain("No workout logged today.");
+    expect(g.lines.join(" ")).toContain("trained Tuesday");
+    expect(g.numbers).toContain(712);
   });
 });

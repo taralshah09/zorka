@@ -168,6 +168,14 @@ internal class OverlayCard(private val context: Context, private val wm: WindowM
     }, 150)
   }
 
+  /** The Undo window, or longer when the card has more to read (an answer or a suggestion runs to a few sentences). */
+  private fun readingMs(view: JSONObject): Long {
+    var chars = view.optString("reply").length
+    val rows = view.optJSONArray("rows")
+    for (i in 0 until (rows?.length() ?: 0)) chars += rows!!.getJSONObject(i).optString("text").length
+    return (READ_BASE_MS + chars * READ_MS_PER_CHAR).coerceIn(UNDO_WINDOW_MS, READ_MAX_MS)
+  }
+
   fun showMessage(message: String, openApp: String?) = show(false, MESSAGE_MS) { c ->
     header(c, "Zorka", openApp)
     gap(c, 6)
@@ -182,7 +190,7 @@ internal class OverlayCard(private val context: Context, private val wm: WindowM
     }
     val messageId = view.optString("messageId")
     val sticky = view.optBoolean("sticky", false)
-    show(false, if (sticky) null else UNDO_WINDOW_MS) { c ->
+    show(false, if (sticky) null else readingMs(view)) { c ->
       header(c, "Zorka", "zorka://coach")
       val heard = view.optString("heard")
       if (heard.isNotEmpty() && !view.isNull("heard")) {
@@ -261,5 +269,9 @@ internal class OverlayCard(private val context: Context, private val wm: WindowM
     val OUTLINE = Color.parseColor("#3A3D44")
     private const val UNDO_WINDOW_MS = 10_000L
     private const val MESSAGE_MS = 6_000L
+    /** Reading time for a result card: a base, plus about 15 characters a second, capped. */
+    private const val READ_BASE_MS = 4_000L
+    private const val READ_MS_PER_CHAR = 65L
+    private const val READ_MAX_MS = 30_000L
   }
 }
