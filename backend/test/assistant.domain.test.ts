@@ -24,6 +24,7 @@ import {
   type TurnContext,
 } from "../../shared/domain/assistant.js";
 import { classifyDay, DAY_TYPES } from "../../shared/domain/dayType.js";
+import { resolveDay } from "../src/modules/assistant/agent.js";
 import { EMPTY_STANDING, validateDayFacts } from "../../shared/domain/life.js";
 
 const CTX: TurnContext = { today: "2026-10-20", lastWeightKg: 72, activityRunning: false, previousActions: 2 };
@@ -503,5 +504,24 @@ describe("localAskTopic (offline, D98)", () => {
     expect(localAskTopic("had poha for breakfast")).toBeNull();
     expect(localAskTopic("start a walk")).toBeNull();
     expect(localAskTopic("")).toBeNull();
+  });
+});
+
+describe("resolveDay (D100: the tool router names days, code dates them)", () => {
+  // 2026-10-20 is a Tuesday.
+  it("reads relative days and weekdays, forward for plans and back for logs", () => {
+    expect(resolveDay("tomorrow", "2026-10-20", true)).toBe("2026-10-21");
+    expect(resolveDay("yesterday", "2026-10-20", false)).toBe("2026-10-19");
+    expect(resolveDay("kal", "2026-10-20", true)).toBe("2026-10-21");
+    expect(resolveDay("kal", "2026-10-20", false)).toBe("2026-10-19");
+    expect(resolveDay("sunday", "2026-10-20", true)).toBe("2026-10-25");
+    expect(resolveDay("on Sunday", "2026-10-20", false)).toBe("2026-10-18");
+    expect(resolveDay("tuesday", "2026-10-20", false)).toBe("2026-10-20");
+    expect(resolveDay("2026-10-23", "2026-10-20", true)).toBe("2026-10-23");
+  });
+
+  it("leaves anything else for the schema to reject", () => {
+    expect(resolveDay("someday", "2026-10-20", true)).toBe("someday");
+    expect(resolveDay(5, "2026-10-20", true)).toBe(5);
   });
 });

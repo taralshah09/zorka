@@ -1,6 +1,6 @@
 // P14 · Raw provider calls over fetch (no SDKs, D30). Groq, Gemini and OpenRouter all expose an
-// OpenAI-compatible /chat/completions; speech-to-text uses Groq's Whisper endpoint or Gemini's native
-// generateContent with inline audio. Every failure becomes a ProviderError with a `kind` the chain
+// OpenAI-compatible /chat/completions (with tool calling, D100); speech-to-text uses Sarvam (D100), Groq's Whisper
+// endpoint or Gemini's native generateContent with inline audio. Every failure becomes a ProviderError with a `kind` the chain
 // uses to decide how long the slot sits out.
 import { sttConfidence, type Confidence, type SttSegment } from "../../../../shared/domain/assistant.js";
 import type { AiSlot, Capability } from "./ai.config.js";
@@ -23,11 +23,23 @@ export type Usage = { inputTokens: number; outputTokens: number };
 export type ImageInput = { base64: string; mimeType: string };
 export type AudioInput = { base64: string; mimeType: string };
 
-const CHAT_BASE: Record<AiSlot["provider"], string> = {
+const CHAT_BASE: Partial<Record<AiSlot["provider"], string>> = {
   groq: "https://api.groq.com/openai/v1",
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   openrouter: "https://openrouter.ai/api/v1",
 };
+
+function chatUrl(slot: AiSlot): string {
+  const base = CHAT_BASE[slot.provider];
+  if (!base) throw new ProviderError("not_found", `No chat on ${slot.provider}`);
+  return `${base}/chat/completions`;
+}
+
+function chatHeaders(slot: AiSlot): Record<string, string> {
+  const headers: Record<string, string> = { authorization: `Bearer ${slot.apiKey}`, "content-type": "application/json" };
+  if (slot.provider === "openrouter") headers["x-title"] = "Zorka";
+  return headers;
+}
 
 export type Fetch = typeof globalThis.fetch;
 
@@ -75,10 +87,10 @@ export type ChatRequest = {
  * Keeps reasoning models from spending the reply budget on hidden "thinking" (and from putting it in the
  * reply): gpt-oss and Gemini 3 get low effort, Qwen gets its reasoning hidden.
  */
-function reasoningParams(slot: AiSlot, model: string): Record<string, unknown> {
-  if (slot.provider === "groq" && model.startsWith("openai/gpt-oss")) return { reasoning_effort: "low" };
+function reasoningParams(slot: AiSlot, model: string, effort: "low" | "medium" = "low"): Record<string, unknown> {
+  if (slot.provider === "groq" && model.startsWith("openai/gpt-oss")) return { reasoning_effort: effort };
   if (slot.provider === "groq" && model.startsWith("qwen/")) return { reasoning_format: "hidden" };
-  if (slot.provider === "gemini" && /^gemini-3/.test(model)) return { reasoning_effort: "low" };
+  if (slot.provider === "gemini" && /^gemini-3/.test(model)) return { reasoning_effort: effort };
   return {};
 }
 
@@ -108,13 +120,7 @@ export async function chat(
   // gets the instruction in the prompt, and the caller validates the output either way.
   if (req.json && slot.provider === "groq" && capability === "text") body["response_format"] = { type: "json_object" };
 
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${slot.apiKey}`,
-    "content-type": "application/json",
-  };
-  if (slot.provider === "openrouter") headers["x-title"] = "Zorka";
-
-  const res = await send(fetchImpl, `${CHAT_BASE[slot.provider]}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) }, signal);
+  const res = await send(fetchImpl, chatUrl(slot), { method: "POST", headers: chatHeaders(slot), body: JSON.stringify(body) }, signal);
   if (!res.ok) throw await failure(res);
 
   const json = (await res.json().catch(() => null)) as {
@@ -129,6 +135,67 @@ export async function chat(
   if (typeof text !== "string" || !text.trim()) throw new ProviderError("bad_output", "Empty response");
   return {
     text,
+    model: json?.model ?? model,
+    usage: { inputTokens: json?.usage?.prompt_tokens ?? 0, outputTokens: json?.usage?.completion_tokens ?? 0 },
+  };
+}
+
+// ── Tool calling (D100) ──────────────────────────────────────────────────────────────────────────
+
+/** A function the model may call: JSON Schema parameters in the OpenAI shape every provider here accepts. */
+export type ToolSpec = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
+export type ToolCall = { id: string; name: string; arguments: string };
+/**
+ * One message of a tool-calling conversation. The assistant's reply goes back exactly as it came (Gemini 3 needs its
+ * thought signature on the tool calls returned with them).
+ */
+export type AgentMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "tool"; tool_call_id: string; content: string }
+  | ({ role: "assistant" } & Record<string, unknown>);
+
+/** One tool-calling turn with `model`: the assistant's message, its text and the tools it called. */
+export async function chatTools(
+  fetchImpl: Fetch,
+  slot: AiSlot,
+  model: string,
+  req: { messages: AgentMessage[]; tools: ToolSpec[]; maxTokens?: number },
+  signal: AbortSignal,
+): Promise<{ message: AgentMessage; content: string; toolCalls: ToolCall[]; model: string; usage: Usage }> {
+  const body = {
+    model,
+    temperature: 0.1,
+    max_tokens: req.maxTokens ?? 2048,
+    // Picking every action a sentence asks for (and its reason's day) needs more thought than low effort gives (D100).
+    ...reasoningParams(slot, model, "medium"),
+    messages: req.messages,
+    tools: req.tools,
+    tool_choice: "auto",
+  };
+  const res = await send(fetchImpl, chatUrl(slot), { method: "POST", headers: chatHeaders(slot), body: JSON.stringify(body) }, signal);
+  if (!res.ok) throw await failure(res);
+  const json = (await res.json().catch(() => null)) as {
+    model?: string;
+    choices?: { message?: Record<string, unknown> & { content?: string | null; tool_calls?: unknown } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    error?: { message?: string };
+  } | null;
+  if (json?.error) throw new ProviderError("server", json.error.message ?? "Provider error");
+  const message = json?.choices?.[0]?.message;
+  if (!message) throw new ProviderError("bad_output", "No message");
+  const raw = Array.isArray(message.tool_calls) ? (message.tool_calls as { id?: unknown; function?: { name?: unknown; arguments?: unknown } }[]) : [];
+  const toolCalls: ToolCall[] = raw.map((c, i) => ({
+    id: typeof c.id === "string" && c.id ? c.id : `call_${i}`,
+    name: typeof c.function?.name === "string" ? c.function.name : "",
+    arguments: typeof c.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c.function?.arguments ?? {}),
+  }));
+  // Ids are made up when a provider leaves them out, so the tool results always point at a call.
+  const echoed = { ...message, role: "assistant" as const, content: message.content ?? null };
+  if (raw.length) echoed.tool_calls = raw.map((c, i) => ({ ...c, id: toolCalls[i]!.id }));
+  return {
+    message: echoed,
+    content: typeof message.content === "string" ? message.content : "",
+    toolCalls,
     model: json?.model ?? model,
     usage: { inputTokens: json?.usage?.prompt_tokens ?? 0, outputTokens: json?.usage?.completion_tokens ?? 0 },
   };
@@ -158,6 +225,27 @@ export async function transcribe(
   signal: AbortSignal,
 ): Promise<{ text: string; model: string; usage: Usage; confidence: Confidence }> {
   if (slot.provider === "openrouter") throw new ProviderError("not_found", `No speech-to-text on ${slot.provider}`);
+
+  // D100 · Sarvam: `translit` writes Hindi and Hinglish in Roman letters ("do katori poha"), the script everything
+  // after speech-to-text reads. No word scores, so the transcript is "medium" like Gemini's (D93).
+  if (slot.provider === "sarvam") {
+    const form = new FormData();
+    const bytes = Buffer.from(audio.base64, "base64");
+    form.append("file", new Blob([bytes], { type: audio.mimeType }), `audio.${EXT[audio.mimeType] ?? "m4a"}`);
+    form.append("model", model);
+    form.append("mode", "translit");
+    form.append("language_code", "unknown");
+    const res = await send(
+      fetchImpl,
+      "https://api.sarvam.ai/speech-to-text",
+      { method: "POST", headers: { "api-subscription-key": slot.apiKey }, body: form },
+      signal,
+    );
+    if (!res.ok) throw await failure(res);
+    const json = (await res.json().catch(() => null)) as { transcript?: string } | null;
+    if (typeof json?.transcript !== "string") throw new ProviderError("bad_output", "No transcript");
+    return { text: json.transcript.trim(), model, usage: { inputTokens: 0, outputTokens: 0 }, confidence: "medium" };
+  }
 
   if (slot.provider === "groq") {
     const form = new FormData();

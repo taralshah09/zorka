@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AiSlot } from "../src/modules/ai/ai.config.js";
 import type { Fetch } from "../src/modules/ai/providers.js";
+import { KIND_TOOL } from "../src/modules/assistant/agent.js";
 import { NOTHING_LINE } from "../src/modules/assistant/assistant.service.js";
 import type { AssistantTurnResult } from "../src/modules/assistant/assistant.schemas.js";
 import { BASE_VOCABULARY } from "../src/modules/assistant/vocab.js";
@@ -32,10 +33,13 @@ type Script = {
   roman?: string;
   /** The phrasing step's reply; default: the FACTS lines as given (always grounded). */
   reply?: string;
-  /** Steps that answer with an HTTP 500. */
-  fail?: ("router" | "phrase" | "brief")[];
+  /** D100: the tool router's calls per step, as actions ({ kind, ...args }; kind "check_foods" for the lookup). Default:
+   *  `router`'s actions on the first step, then done. */
+  steps?: Record<string, unknown>[][];
+  /** Steps that answer with an HTTP 500. "router" fails both routers, "tools" only the tool router. */
+  fail?: ("router" | "tools" | "phrase" | "brief")[];
 };
-type Seen = { stt: string[]; router: string[]; meal: string[]; gym: string[]; brief: string[]; phrase: string[] };
+type Seen = { stt: string[]; router: string[]; meal: string[]; gym: string[]; brief: string[]; phrase: string[]; tools?: unknown[][] };
 
 const json = (content: unknown) =>
   Response.json({ model: "t", choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) } }] });
@@ -47,9 +51,24 @@ function scripted(s: Script, seen: Seen = { stt: [], router: [], meal: [], gym: 
       seen.stt.push(String((init?.body as FormData).get("prompt")));
       return Response.json({ text: s.heard ?? "", ...(s.segments ? { segments: s.segments } : {}) });
     }
-    const body = JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[] };
+    const body = JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[]; tools?: unknown[] };
     const system = body.messages.find((m) => m.role === "system")?.content ?? "";
     const user = body.messages.find((m) => m.role === "user")?.content ?? "";
+    if (Array.isArray(body.tools)) {
+      if (s.fail?.includes("router")) return new Response("down", { status: 500 });
+      // A model that won't do tool calls: a 400, which doesn't bench the key.
+      if (s.fail?.includes("tools")) return new Response("tools not supported", { status: 400 });
+      const step = body.messages.filter((m) => m.role === "assistant").length;
+      if (step === 0) seen.router.push(user);
+      (seen.tools ??= []).push(body.messages.filter((m) => m.role === "tool").map((m) => JSON.parse(m.content)));
+      const routed = (s.router as { actions?: Record<string, unknown>[] } | undefined)?.actions ?? [];
+      const calls = s.steps ? (s.steps[step] ?? []) : step === 0 ? routed : [];
+      const tool_calls = calls.map((a, i) => {
+        const { kind, ...args } = a;
+        return { id: `c${step}_${i}`, type: "function", function: { name: KIND_TOOL[String(kind)] ?? String(kind), arguments: JSON.stringify(args) } };
+      });
+      return Response.json({ model: "t", choices: [{ message: { role: "assistant", content: null, ...(tool_calls.length ? { tool_calls } : {}) } }] });
+    }
     if (system.includes("in Roman letters")) return json({ text: s.roman ?? user });
     if (system.includes("intent router of Zorka")) {
       seen.router.push(user);
@@ -188,7 +207,9 @@ describe("POST /assistant/turn", () => {
     expect(meal.line).toBe("Logged poha, 1 full plate (324 kcal) for breakfast.");
     expect(r.items[1]!.resolved).toMatchObject({ kind: "day", dayType: "sick", facts: { flags: ["sick"] } });
     expect(r.items[2]!.line).toBe("Walk started.");
-    expect(r.replyKind).toBe("ai");
+    // The sick day waits for OK, so the receipts are the reply as written (no rephrase that could say it's done).
+    expect(r.replyKind).toBe("template");
+    expect(seen.phrase).toEqual([]);
     expect(seen.meal).toEqual(["poha"]);
     expect(seen.router[0]).toContain("<<<\nhad poha for breakfast, feeling sick today, start a walk\n>>>");
     // No action ever carries a number for calories or a target.
@@ -307,6 +328,47 @@ describe("POST /assistant/turn", () => {
     const res = await turn({ fail: ["router"] }, body({ text: "had poha" }));
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("AI_UNAVAILABLE");
+  });
+
+  it("D100: the tool router sees a rejected call and fixes it on its next step", async () => {
+    const seen: Seen = { stt: [], router: [], meal: [], gym: [], brief: [], phrase: [] };
+    const res = await turn(
+      {
+        steps: [[{ kind: "log_meal", span: "chicken biryani" }], [{ kind: "log_meal", span: "poha", mealType: "breakfast" }]],
+        meals: { poha: [{ name: "poha", quantity: 1, unit: "plate", confidence: 0.95 }] },
+      },
+      body({ text: "had poha for breakfast" }),
+      seen,
+    );
+    expect(res.status).toBe(200);
+    const r = res.body as AssistantTurnResult;
+    expect(kindsAndTiers(r)).toEqual([["log_meal", "do"]]);
+    expect(r.dropped).toEqual([{ kind: "log_meal", reason: "span_not_heard" }]);
+    // The second step saw the first call's error.
+    expect(JSON.stringify(seen.tools?.[1])).toContain("aren't in what they said");
+  });
+
+  it("D100: check_foods shows the model how the app reads the words before it acts", async () => {
+    const seen: Seen = { stt: [], router: [], meal: [], gym: [], brief: [], phrase: [] };
+    const res = await turn(
+      {
+        steps: [[{ kind: "check_foods", words: "do katori poha" }], [{ kind: "log_meal", span: "do katori poha" }]],
+        meals: { "do katori poha": [{ name: "poha", quantity: 2, unit: "katori", confidence: 0.95 }] },
+      },
+      body({ text: "do katori poha khaya" }),
+      seen,
+    );
+    expect(kindsAndTiers(res.body as AssistantTurnResult)[0]?.[0]).toBe("log_meal");
+    expect(JSON.stringify(seen.tools?.[1])).toMatch(/"food":"Poha".*"quantity":2/i);
+  });
+
+  it("D100: when tool calling fails, the JSON router answers the turn", async () => {
+    const res = await turn(
+      { router: { actions: [{ kind: "log_water", glasses: 2 }] }, fail: ["tools"] },
+      body({ text: "drank 2 glasses of water" }),
+    );
+    expect(res.status).toBe(200);
+    expect(kindsAndTiers(res.body as AssistantTurnResult)).toEqual([["log_water", "do"]]);
   });
 
   it("drops actions the router made up and says when nothing is left", async () => {

@@ -81,12 +81,14 @@
     {
       "id": "ed-13",
       "said": "make the poha in breakfast 2 katori",
+      "turn": { "logged": [{ "date": "2026-10-20", "kind": "meal", "mealType": "breakfast", "text": "Poha" }] },
       "router": { "actions": [{ "kind": "set_amount", "quantity": 2, "unit": "katori", "food": "poha", "mealType": "breakfast" }] },
       "expect": [["set_amount", "approve"]]
     },
     {
       "id": "ed-14",
       "said": "nashte mein ek aur roti thi",
+      "turn": { "logged": [{ "date": "2026-10-20", "kind": "meal", "mealType": "breakfast", "text": "Roti, Aloo sabzi" }] },
       "router": { "actions": [{ "kind": "set_amount", "quantity": 1, "unit": "piece", "more": true, "food": "roti", "mealType": "breakfast" }] },
       "expect": [["set_amount", "approve"]]
     },
@@ -95,6 +97,7 @@
       "said": "poha do katori kar do",
       "heard": "पोहा दो कटोरी कर दो",
       "roman": "poha do katori kar do",
+      "turn": { "logged": [{ "date": "2026-10-20", "kind": "meal", "mealType": "breakfast", "text": "Poha" }] },
       "router": { "actions": [{ "kind": "set_amount", "quantity": 2, "unit": "katori", "food": "poha" }] },
       "expect": [["set_amount", "approve"]]
     },

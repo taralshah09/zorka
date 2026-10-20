@@ -144,6 +144,8 @@ export function routerUser(body: AssistantTurnBody, said: string): string {
   const prev = body.turn.previous;
   const lines = [
     `TODAY: ${today} (${weekday}), local time ${body.context.localTime}.`,
+    // Weekday names resolve to these dates (the next seven days), never to a past one.
+    `NEXT DAYS: ${Array.from({ length: 7 }, (_, i) => dayFrom(today, i + 1)).map((d) => `${WEEKDAYS[new Date(`${d}T00:00:00Z`).getUTCDay()]} ${d}`).join(", ")}`,
     prev?.actions.length
       ? `PREVIOUS: ${prev.actions.map((a, i) => `${i}: ${a.kind}${a.span ? ` "${a.span}"` : ""}${a.topic ? ` ${a.topic}` : ""}${a.date ? ` ${a.date}` : ""}`).join("; ")}`
       : "PREVIOUS: none",

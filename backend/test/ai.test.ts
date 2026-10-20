@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { extractJson } from "../src/modules/ai/ai.client.js";
-import type { AiSlot } from "../src/modules/ai/ai.config.js";
+import { aiSlotsFromEnv, type AiSlot } from "../src/modules/ai/ai.config.js";
+import type { Env } from "../src/config/env.js";
 import type { Fetch } from "../src/modules/ai/providers.js";
 import { fakeAi, testApp } from "./fakes.js";
 
@@ -29,7 +30,8 @@ const reply = (content: string) =>
 function network(byKey: Record<string, () => Response | Promise<Response>>) {
   const calls: string[] = [];
   const fetchImpl: Fetch = async (_url, init) => {
-    const auth = new Headers(init?.headers).get("authorization") ?? new Headers(init?.headers).get("x-goog-api-key") ?? "";
+    const h = new Headers(init?.headers);
+    const auth = h.get("authorization") ?? h.get("x-goog-api-key") ?? h.get("api-subscription-key") ?? "";
     const key = auth.replace(/^Bearer /, "");
     calls.push(key);
     const handler = byKey[key];
@@ -59,11 +61,27 @@ describe("AI client fallback (P14)", () => {
     // Within the cooldown, groq#1 isn't even tried.
     await ai.chat({ user: "b" });
     expect(net.calls).toEqual(["key-groq-1", "key-groq-2", "key-groq-2"]);
-    expect(ai.status().slots[0]).toMatchObject({ id: "groq#1", failures: { rate_limit: 1 }, coolingDownForMs: 30_000 });
+    // The limit benches that model, not the key (D100: Groq's limits are per model).
+    expect(ai.status().slots[0]).toMatchObject({ id: "groq#1", failures: { rate_limit: 1 }, coolingDownForMs: 0 });
     // After it, groq#1 is tried first again (still limited here, so groq#2 answers).
     t += 31_000;
     await ai.chat({ user: "c" });
     expect(net.calls.slice(3)).toEqual(["key-groq-1", "key-groq-2"]);
+  });
+
+  it("D100: a rate-limited model moves to the same key's next model before the next key", async () => {
+    const calls: string[] = [];
+    const fetchImpl: Fetch = async (_url, init) => {
+      const model = (JSON.parse(String(init?.body)) as { model: string }).model;
+      calls.push(model);
+      return model === "gpt-oss-120b" ? new Response("limit", { status: 429 }) : reply(`from ${model}`);
+    };
+    const groq: AiSlot = { id: "groq#1", provider: "groq", apiKey: "k", models: { text: ["gpt-oss-120b", "gpt-oss-20b"] } };
+    const ai = fakeAi([groq, slot("gemini", 1)], fetchImpl);
+    expect((await ai.chat({ user: "a" })).text).toBe("from gpt-oss-20b");
+    // The 120b model sits out; the next call goes straight to 20b on the same key.
+    expect((await ai.chat({ user: "b" })).meta).toMatchObject({ slot: "groq#1", model: "m" });
+    expect(calls).toEqual(["gpt-oss-120b", "gpt-oss-20b", "gpt-oss-20b"]);
   });
 
   it("moves across providers on server errors and bad keys", async () => {
@@ -163,6 +181,60 @@ describe("model lists per key (retired models)", () => {
     await ai.json({ system: "s", user: "u", image: { base64: "B", mimeType: "image/jpeg" }, schema: z.object({ n: z.number() }) });
     expect(bodies[0]).toMatchObject({ reasoning_effort: "low", response_format: { type: "json_object" } });
     expect(bodies[1]).toMatchObject({ reasoning_format: "hidden" });
+  });
+});
+
+describe("D100: Sarvam speech-to-text and tool calls", () => {
+  const sarvam: AiSlot = { id: "sarvam#1", provider: "sarvam", apiKey: "key-sarvam-1", models: { stt: ["saaras:v3"] } };
+  const audio = { base64: Buffer.from("fake audio").toString("base64"), mimeType: "audio/mp4" };
+
+  it("transcribes with Sarvam first, in Roman script", async () => {
+    let form: FormData | null = null;
+    const fetchImpl: Fetch = async (url, init) => {
+      expect(String(url)).toBe("https://api.sarvam.ai/speech-to-text");
+      form = init?.body as FormData;
+      return Response.json({ transcript: " poha do katori kar do " });
+    };
+    const r = await fakeAi([sarvam, slot("groq", 1)], fetchImpl).transcribe(audio, "poha");
+    expect(r).toMatchObject({ text: "poha do katori kar do", confidence: "medium", meta: { slot: "sarvam#1" } });
+    expect(form!.get("mode")).toBe("translit");
+    expect(form!.get("model")).toBe("saaras:v3");
+  });
+
+  it("falls through to Whisper when Sarvam is out of credits", async () => {
+    const net = network({
+      "key-sarvam-1": () => new Response("no credits", { status: 429 }),
+      "key-groq-1": () => Response.json({ text: "had poha" }),
+    });
+    const r = await fakeAi([sarvam, slot("groq", 1)], net.fetchImpl).transcribe(audio, "");
+    expect(r.text).toBe("had poha");
+    expect(net.calls).toEqual(["key-sarvam-1", "key-groq-1"]);
+  });
+
+  it("is never used for chat, and leads the key order unless the order names it", () => {
+    const base = { GROQ_API_KEYS: "g1", SARVAM_API_KEYS: "s1,s2", AI_PROVIDER_ORDER: ["groq", "gemini", "openrouter"] } as unknown as Env;
+    expect(aiSlotsFromEnv(base).map((s) => s.id)).toEqual(["sarvam#1", "sarvam#2", "groq#1"]);
+    expect(aiSlotsFromEnv(base)[0]!.models).toEqual({ stt: ["saaras:v3"] });
+    const named = { ...base, AI_PROVIDER_ORDER: ["groq", "sarvam"] } as unknown as Env;
+    expect(aiSlotsFromEnv(named).map((s) => s.id)).toEqual(["groq#1", "sarvam#1", "sarvam#2"]);
+  });
+
+  it("returns tool calls and echoes the message back untouched (Gemini 3 thought signatures)", async () => {
+    let sent: { tools?: unknown[]; tool_choice?: string } = {};
+    const message = {
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "a1", type: "function", function: { name: "log_water", arguments: '{"glasses":2}' }, extra_content: { google: { thought_signature: "sig" } } }],
+    };
+    const fetchImpl: Fetch = async (_url, init) => {
+      sent = JSON.parse(String(init?.body));
+      return Response.json({ model: "m", choices: [{ message }] });
+    };
+    const tools = [{ type: "function" as const, function: { name: "log_water", description: "Water.", parameters: { type: "object", properties: {} } } }];
+    const r = await fakeAi([slot("gemini", 1)], fetchImpl).tools({ messages: [{ role: "user", content: "2 glasses" }], tools });
+    expect(r.toolCalls).toEqual([{ id: "a1", name: "log_water", arguments: '{"glasses":2}' }]);
+    expect(r.message).toEqual(message);
+    expect(sent).toMatchObject({ tools, tool_choice: "auto" });
   });
 });
 

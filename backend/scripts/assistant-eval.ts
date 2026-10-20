@@ -37,7 +37,7 @@ type Fixture = {
 };
 
 const TODAY = "2026-10-20";
-const WRITES = new Set(["log_meal", "log_water", "log_workout", "log_weight", "set_day", "plan_meal", "correct"]);
+const WRITES = new Set(["log_meal", "log_water", "log_workout", "log_weight", "set_day", "set_target", "set_amount", "plan_meal", "correct"]);
 const day = (date: string, kcal: number | null, proteinG: number | null) => ({ date, kcal, proteinG, targetKcal: 1800, targetProteinG: 110, trained: false });
 
 function bodyFor(fx: Fixture): AssistantTurnBody {
@@ -94,6 +94,8 @@ async function main() {
     gymParse: gymParseService(ai, exercisesService(exercisesRepo), userExists),
     briefs: briefsService(ai, userExists),
     userExists,
+    // D100: ASSISTANT_ROUTER=json in .env runs the eval on the old router, for a side-by-side.
+    router: env.ASSISTANT_ROUTER,
   });
 
   const only = process.argv.slice(2);
@@ -110,7 +112,13 @@ async function main() {
     for (const fx of g.cases) {
       let r: AssistantTurnResult;
       try {
-        r = await service.turn(RIYA, bodyFor(fx));
+        r = await service.turn(RIYA, bodyFor(fx)).catch(async (e: unknown) => {
+          // Free-tier keys rest after a burst (a tool-router turn is 1 to 3 calls): wait it out once, then retry.
+          const wait = (e as { details?: { retryAfterSeconds?: number | null } }).details?.retryAfterSeconds;
+          if (wait == null) throw e;
+          await new Promise((done) => setTimeout(done, (wait + 1) * 1000));
+          return service.turn(RIYA, bodyFor(fx));
+        });
       } catch (e) {
         problems.push(`${fx.id} error: ${e instanceof Error ? e.message : String(e)}`);
         continue;

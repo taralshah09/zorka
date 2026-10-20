@@ -1,7 +1,8 @@
 // AB2 · One Assistant Bar turn (docs/ASSISTANT_BAR_PLAN.md "How a turn works", D91–D96). One round trip (D94):
 //   1. speech-to-text with the personal vocabulary hint (voice only) → transcript + confidence
 //   2. support check on the words (safety.ts): a fixed reply, nothing runs
-//   3. learned aliases rewrite mis-heard words (D97), then the router (AI, JSON only) names actions
+//   3. learned aliases rewrite mis-heard words (D97), then the router names actions: by default an LLM with tools
+//      (agent.ts, D100), which sees each call's check and can fix it; the one-shot JSON router when that fails
 //   4. each action: strict schema, its span must be in what was said, then the shared turn rules (planTurn)
 //   5. each action resolved by the existing parser: meal (P15), gym (P22), brief (LA2), facts (AB5)
 //   6. confidence from the transcript and the match moves tiers up (D93)
@@ -33,7 +34,7 @@ import { UNIT_LABEL } from "../../../../shared/domain/food.js";
 import type { Logger } from "pino";
 
 import { notFound } from "../../http/errors.js";
-import type { AiClient } from "../ai/ai.client.js";
+import type { AiClient, AiMeta } from "../ai/ai.client.js";
 import type { BriefsService } from "../briefs/briefs.service.js";
 import { checkReply, needsSupport, SUPPORT_REPLY } from "../coach/safety.js";
 import { routineFromSets, type GymParseService } from "../gymParse/gymParse.service.js";
@@ -50,6 +51,7 @@ import {
   type TurnItem,
 } from "./assistant.schemas.js";
 import { phrasingSystem, phrasingUser, receipt, templateReply } from "./facts.js";
+import { runAgent, type Screen } from "./agent.js";
 import { ROMANIZE_SYSTEM, ROUTER_SYSTEM_FOR, routerUser } from "./router.prompt.js";
 import { vocabularyHint } from "./vocab.js";
 
@@ -70,6 +72,8 @@ export type AssistantDeps = {
   userExists: (id: string) => Promise<boolean>;
   /** Refused and dropped turns are logged (words only, never audio) for the eval set (Guardrails 9). */
   logger?: Pick<Logger, "info">;
+  /** D100 · "tools": the LLM with tools picks actions, the JSON router when it fails. "json": the JSON router only. */
+  router?: "tools" | "json";
 };
 
 const kindOf = (raw: unknown): string | null =>
@@ -126,7 +130,7 @@ function heardFor(a: RouterAction, said: string, body: AssistantTurnBody): strin
 }
 
 export function assistantService(deps: AssistantDeps) {
-  const { ai, parse, gymParse, briefs, userExists, logger } = deps;
+  const { ai, parse, gymParse, briefs, userExists, logger, router = "tools" } = deps;
 
   async function resolveMeal(userId: string, words: string, item: TurnItem, ctx: TurnContext, minute: number): Promise<TurnItem> {
     const a = item.action;
@@ -307,35 +311,58 @@ export function assistantService(deps: AssistantDeps) {
 
       // 3. Aliases, then the router.
       const said = applyAliases(text, body.vocab?.aliases ?? []);
-      const t0 = Date.now();
-      const routed = await ai.json({ system: ROUTER_SYSTEM_FOR(body.facts.today), user: routerUser(body, said), schema: AiRouterOutput });
-      timings.routerMs = Date.now() - t0;
-      const routerAi = { slot: routed.meta.slot, model: routed.meta.model, attempts: routed.meta.attempts };
-
-      // 4. Schema, span, then the shared turn rules.
-      const dropped: AssistantTurnResult["dropped"] = [];
-      const candidates: unknown[] = [];
-      for (const raw of routed.value.actions) {
-        const parsed = RouterAction.safeParse(raw);
-        if (!parsed.success) {
-          dropped.push({ kind: kindOf(raw), reason: "schema" });
-          continue;
-        }
-        const heardWords = heardFor(parsed.data, said, body);
-        // D99: a target's number is the user's own, never one the router came up with.
-        const unheardNumber = parsed.data.kind === "set_target" && !numberInTranscript(parsed.data.value, said);
-        if (unheardNumber || spansOf(parsed.data).some((words) => !spanInTranscript(words, heardWords))) {
-          dropped.push({ kind: parsed.data.kind, reason: "span_not_heard" });
-          continue;
-        }
-        candidates.push(toAction(parsed.data, confidence));
-      }
       const ctx: TurnContext = {
         today: body.facts.today,
         lastWeightKg: body.turn.lastWeightKg,
         activityRunning: body.turn.activityRunning,
         previousActions: body.turn.previous?.actions.length ?? 0,
       };
+      // 4. Schema, then the words (and a target's number) must be in what was said (D91, D99).
+      const screen: Screen = (raw) => {
+        const parsed = RouterAction.safeParse(raw);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return { ok: false, kind: kindOf(raw), reason: "schema", why: `Not a valid call${issue ? `: ${issue.path.join(".") || "arguments"} ${issue.message}` : ""}.` };
+        }
+        const heardWords = heardFor(parsed.data, said, body);
+        const unheardNumber = parsed.data.kind === "set_target" && !numberInTranscript(parsed.data.value, said);
+        if (unheardNumber || spansOf(parsed.data).some((words) => !spanInTranscript(words, heardWords)))
+          return { ok: false, kind: parsed.data.kind, reason: "span_not_heard", why: "Those words (or that number) aren't in what they said. Use their own words." };
+        return { ok: true, action: toAction(parsed.data, confidence) };
+      };
+      const dropped: AssistantTurnResult["dropped"] = [];
+      const candidates: unknown[] = [];
+      const jsonRouter = async () => {
+        const routed = await ai.json({ system: ROUTER_SYSTEM_FOR(body.facts.today), user: routerUser(body, said), schema: AiRouterOutput });
+        for (const raw of routed.value.actions) {
+          const s = screen(raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {});
+          if (s.ok) candidates.push(s.action);
+          else dropped.push({ kind: s.kind, reason: s.reason });
+        }
+        return routed.meta;
+      };
+      const t0 = Date.now();
+      let meta: AiMeta | null;
+      if (router === "tools") {
+        try {
+          const agent = await runAgent({ ai, parse, userId, body, said, ctx, screen });
+          candidates.push(...agent.candidates);
+          dropped.push(...agent.dropped);
+          meta = agent.meta;
+        } catch (e) {
+          // Every tool-calling attempt failed (limits, outage, a model that can't do tools): the JSON router runs.
+          log(userId, "assistant turn: tool router failed, using JSON router", { error: e instanceof Error ? e.message.slice(0, 200) : "unknown" });
+          candidates.length = 0;
+          dropped.length = 0;
+          // Keys benched by that failure can't serve the JSON router either: then the first error is the one to show.
+          meta = await jsonRouter().catch(() => {
+            throw e;
+          });
+        }
+      } else meta = await jsonRouter();
+      timings.routerMs = Date.now() - t0;
+      const routerAi = meta ? { slot: meta.slot, model: meta.model, attempts: meta.attempts } : null;
+
       const planned = planTurn(candidates, ctx);
       for (const d of planned.dropped) dropped.push({ kind: kindOf(d.action), reason: d.reason as DropReason });
 
@@ -372,16 +399,20 @@ export function assistantService(deps: AssistantDeps) {
       const t2 = Date.now();
       let reply = template;
       let replyKind: AssistantTurnResult["replyKind"] = "template";
-      try {
-        const phrased = await ai.json({ system: phrasingSystem(body.coach), user: phrasingUser(items.map((i) => i.line).filter(Boolean)), schema: AiPhrasing });
-        const safe = checkReply(phrased.value.reply);
-        if (safe && numbersGrounded(safe, numbers)) {
-          reply = safe;
-          replyKind = "ai";
+      // Something waits for OK or an answer: the receipts already ask it plainly, and a rephrase tends to say it's done
+      // ("Rice was removed" for an edit still waiting).
+      const waits = items.some((i) => i.tier === "approve" || i.tier === "ask");
+      if (!waits)
+        try {
+          const phrased = await ai.json({ system: phrasingSystem(body.coach), user: phrasingUser(items.map((i) => i.line).filter(Boolean)), schema: AiPhrasing });
+          const safe = checkReply(phrased.value.reply);
+          if (safe && numbersGrounded(safe, numbers)) {
+            reply = safe;
+            replyKind = "ai";
+          }
+        } catch {
+          // The receipts are already a full answer; a phrasing outage never fails the turn.
         }
-      } catch {
-        // The receipts are already a full answer; a phrasing outage never fails the turn.
-      }
       timings.phraseMs = Date.now() - t2;
       return done({ heard, kind: "actions", items, dropped, reply, replyKind, ai: routerAi });
     },

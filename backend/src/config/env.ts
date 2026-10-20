@@ -16,12 +16,17 @@ const EnvSchema = z.object({
   GROQ_API_KEYS: z.string().optional(),
   GEMINI_API_KEYS: z.string().optional(),
   OPENROUTER_API_KEYS: z.string().optional(),
-  /** Which provider's keys are tried first. */
+  /** D100 · Sarvam AI speech-to-text (Hindi and Hinglish in Roman script). Speech-to-text only; tried first for voice. */
+  SARVAM_API_KEYS: z.string().optional(),
+  /** Which provider's keys are tried first. Sarvam goes first when it isn't listed (it only does speech-to-text). */
   AI_PROVIDER_ORDER: z
     .string()
     .default("groq,gemini,openrouter")
     .transform((s) => s.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean))
-    .pipe(z.array(z.enum(["groq", "gemini", "openrouter"])).min(1)),
+    .pipe(z.array(z.enum(["groq", "gemini", "openrouter", "sarvam"])).min(1)),
+  /** D100 · How the Assistant Bar picks actions: the LLM with tools (default), or the older one-shot JSON router. With
+   *  "tools", the JSON router still runs when every tool-calling attempt fails. */
+  ASSISTANT_ROUTER: z.enum(["tools", "json"]).default("tools"),
   // Optional model overrides, <PROVIDER>_<CAPABILITY>_MODEL. Defaults are in modules/ai/ai.config.ts.
   GROQ_TEXT_MODEL: z.string().optional(),
   GROQ_VISION_MODEL: z.string().optional(),
@@ -31,6 +36,7 @@ const EnvSchema = z.object({
   GEMINI_STT_MODEL: z.string().optional(),
   OPENROUTER_TEXT_MODEL: z.string().optional(),
   OPENROUTER_VISION_MODEL: z.string().optional(),
+  SARVAM_STT_MODEL: z.string().optional(),
 
   // P34 · Live search for nearby Zomato/Blinkit options (D59). Any of them may be empty; with none set the phone
   // shows "Couldn't load nearby options" and the other options still work.

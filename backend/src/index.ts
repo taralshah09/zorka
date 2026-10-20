@@ -120,7 +120,7 @@ const app = createApp({
   briefs,
   menu: menuService(ai, foodsRepo.userExists),
   aiPlan: aiPlanService(ai, foodsRepo.userExists),
-  assistant: assistantService({ ai, parse, gymParse, briefs, userExists: foodsRepo.userExists, logger }),
+  assistant: assistantService({ ai, parse, gymParse, briefs, userExists: foodsRepo.userExists, logger, router: env.ASSISTANT_ROUTER }),
   ai,
   search,
   devRoutes: env.NODE_ENV !== "production",

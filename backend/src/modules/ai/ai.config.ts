@@ -5,7 +5,7 @@
 // rate limit cools down and the next one is tried, so several keys spread the free-tier load.
 import type { Env } from "../../config/env.js";
 
-export const PROVIDERS = ["groq", "gemini", "openrouter"] as const;
+export const PROVIDERS = ["groq", "gemini", "openrouter", "sarvam"] as const;
 export type ProviderKind = (typeof PROVIDERS)[number];
 
 export const CAPABILITIES = ["text", "vision", "stt"] as const;
@@ -31,6 +31,8 @@ export const DEFAULT_MODELS: Record<ProviderKind, Partial<Record<Capability, str
   },
   // openrouter/free routes to a free model that supports the request (including images). No STT.
   openrouter: { text: ["openrouter/free"], vision: ["openrouter/free"] },
+  // D100: saaras:v3 is the model with `translit` mode (Hindi and Hinglish come back in Roman script). No text or vision.
+  sarvam: { stt: ["saaras:v3"] },
 };
 
 export type AiSlot = {
@@ -53,6 +55,7 @@ export function aiSlotsFromEnv(env: Env): AiSlot[] {
     groq: listOf(env.GROQ_API_KEYS),
     gemini: listOf(env.GEMINI_API_KEYS),
     openrouter: listOf(env.OPENROUTER_API_KEYS),
+    sarvam: listOf(env.SARVAM_API_KEYS),
   };
   const models = (p: ProviderKind, c: Capability) => {
     const override = env[`${p.toUpperCase()}_${c.toUpperCase()}_MODEL` as keyof Env];
@@ -61,7 +64,9 @@ export function aiSlotsFromEnv(env: Env): AiSlot[] {
   };
 
   const slots: AiSlot[] = [];
-  for (const provider of env.AI_PROVIDER_ORDER) {
+  // Sarvam only does speech-to-text, so leading the list changes nothing else; an explicit order is kept as given.
+  const order = env.AI_PROVIDER_ORDER.includes("sarvam") ? env.AI_PROVIDER_ORDER : ["sarvam" as const, ...env.AI_PROVIDER_ORDER];
+  for (const provider of order) {
     keys[provider].forEach((apiKey, i) => {
       const byCapability: Partial<Record<Capability, string[]>> = {};
       for (const c of CAPABILITIES) {

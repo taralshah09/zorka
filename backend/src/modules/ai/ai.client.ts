@@ -1,8 +1,9 @@
 // P14 · AI client with fallback across slots (D30).
 //
 // For each request the client walks the slots that support the capability, skipping any in cooldown.
-// Rate limits (429) cool a slot down for Retry-After (default 60 s); bad keys and unknown models for
-// 10 min; timeouts, 5xx and network errors for 15 s. Invalid output just moves on to the next slot.
+// Rate limits (429) cool that model down for Retry-After (default 60 s) and the key's next model is tried (limits are
+// per model, D100); bad keys for 10 min and unknown models (that model only) for 10 min; timeouts, 5xx and network
+// errors cool the key for 15 s. Invalid output just moves on to the next slot.
 // Usage (slot, model, latency, tokens, outcome) is logged with pino and counted for /v1/dev/ai/status.
 import type { Logger } from "pino";
 import type { z } from "zod";
@@ -12,13 +13,17 @@ import { AppError } from "../../http/errors.js";
 import { COOLDOWN_MS, TIMEOUTS_MS, type AiSlot, type Capability } from "./ai.config.js";
 import {
   chat,
+  chatTools,
   ProviderError,
   transcribe,
+  type AgentMessage,
   type AudioInput,
   type ChatRequest,
   type Fetch,
   type FailureKind,
   type ImageInput,
+  type ToolCall,
+  type ToolSpec,
   type Usage,
 } from "./providers.js";
 
@@ -57,6 +62,8 @@ export interface AiClient {
   chat(req: { system?: string; user: string }): Promise<{ text: string; meta: AiMeta }>;
   /** Text or image → a JSON object validated by `schema`. Invalid output falls through to the next slot. */
   json<S extends z.ZodType>(req: { system: string; user: string; image?: ImageInput; schema: S }): Promise<{ value: z.infer<S>; meta: AiMeta }>;
+  /** D100 · One tool-calling step: the model's message (to send back as is), its text and the tools it called. */
+  tools(req: { messages: AgentMessage[]; tools: ToolSpec[] }): Promise<{ message: AgentMessage; content: string; toolCalls: ToolCall[]; meta: AiMeta }>;
   /** AB6: `confidence` from Whisper's segment scores; "medium" when the provider gives none (D93). */
   transcribe(audio: AudioInput, vocabularyHint: string): Promise<{ text: string; meta: AiMeta; confidence: Confidence }>;
   status(): AiStatus;
@@ -144,7 +151,11 @@ export function createAiClient({
           continue slots;
         }
         const mk = modelKey(slot, capability, model);
-        if ((modelCooldown.get(mk) ?? 0) > now()) continue;
+        const modelFree = modelCooldown.get(mk) ?? 0;
+        if (modelFree > now()) {
+          soonestFree = Math.min(soonestFree, modelFree);
+          continue;
+        }
         const remaining = total - (now() - started);
         if (remaining <= 500) break slots;
 
@@ -182,8 +193,11 @@ export function createAiClient({
             "ai call failed, trying next",
           );
           const cool = cooldownFor(err);
-          if (err.kind === "not_found") {
-            modelCooldown.set(mk, now() + cool); // this model only → try the key's next model
+          if (err.kind === "not_found" || err.kind === "rate_limit") {
+            // This model only → try the key's next model. Groq's free limits are per model, so gpt-oss-20b still has
+            // room when gpt-oss-120b is out (D100).
+            modelCooldown.set(mk, now() + cool);
+            if (err.kind === "rate_limit") soonestFree = Math.min(soonestFree, now() + cool);
           } else if (err.kind === "bad_request" || err.kind === "bad_output") {
             // try the key's next model, no cooldown
           } else {
@@ -240,6 +254,15 @@ export function createAiClient({
         return { value: parsed.data, model: out.model, usage: out.usage };
       });
       return { value: r.value, meta: r.meta };
+    },
+
+    tools: async (req) => {
+      const r = await run("text", async (slot, model, signal) => {
+        // No tool calls and no text is a valid answer: the model has nothing (more) to do.
+        const out = await chatTools(fetchImpl, slot, model, req, signal);
+        return { value: { message: out.message, content: out.content, toolCalls: out.toolCalls }, model: out.model, usage: out.usage };
+      });
+      return { ...r.value, meta: r.meta };
     },
 
     transcribe: async (audio, vocabularyHint) => {
