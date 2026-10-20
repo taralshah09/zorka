@@ -36,6 +36,7 @@ import { prismaWaterRepository } from "./modules/water/water.repository.js";
 import { waterService } from "./modules/water/water.service.js";
 import { prismaWorkoutsRepository } from "./modules/workouts/workouts.repository.js";
 import { briefsService } from "./modules/briefs/briefs.service.js";
+import { assistantService } from "./modules/assistant/assistant.service.js";
 import { prismaLifeRepositories } from "./modules/life/life.repository.js";
 import { lifeService } from "./modules/life/life.service.js";
 import { menuService } from "./modules/menu/menu.service.js";
@@ -67,6 +68,10 @@ const search = createSearchClient({
   order: env.SEARCH_PROVIDER_ORDER,
   logger,
 });
+
+const parse = parseService(ai, foods, foodsRepo.userExists);
+const gymParse = gymParseService(ai, exercises, exercisesRepo.userExists);
+const briefs = briefsService(ai, foodsRepo.userExists);
 
 const app = createApp({
   logger,
@@ -105,16 +110,17 @@ const app = createApp({
   foods,
   foodLookup: foodLookupService(ai, search, foodsRepo.userExists),
   meals,
-  parse: parseService(ai, foods, foodsRepo.userExists),
+  parse,
   exercises,
   workouts,
   routines,
-  gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
+  gymParse,
   nearby: nearbyService(ai, search, foodsRepo.userExists),
   coach: coachService(ai, foodsRepo.userExists),
-  briefs: briefsService(ai, foodsRepo.userExists),
+  briefs,
   menu: menuService(ai, foodsRepo.userExists),
   aiPlan: aiPlanService(ai, foodsRepo.userExists),
+  assistant: assistantService({ ai, parse, gymParse, briefs, userExists: foodsRepo.userExists, logger }),
   ai,
   search,
   devRoutes: env.NODE_ENV !== "production",

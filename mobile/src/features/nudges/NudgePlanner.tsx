@@ -42,7 +42,7 @@ import {
   useNudgeSettings,
   useNudgeSettingsVersion,
 } from "./settings";
-import { Notifications, REST_NOTIFICATION_PREFIX } from "./notifications";
+import { Notifications, REMINDER_NOTIFICATION_PREFIX, REST_NOTIFICATION_PREFIX } from "./notifications";
 
 // Notifications is null on web and on a dev client built before P36: nudges are then simply off.
 if (Notifications) {
@@ -99,9 +99,10 @@ async function schedule(
   delivered: DeliveredLog,
   life: LifeNudge[],
 ) {
-  // Only nudges: a rest-timer alert (gym/rest.ts) scheduled at the same time must survive a re-plan.
+  // Only nudges: a rest-timer alert (gym/rest.ts) or a reminder the user asked for must survive a re-plan.
   for (const r of await N.getAllScheduledNotificationsAsync())
-    if (!r.identifier.startsWith(REST_NOTIFICATION_PREFIX)) await N.cancelScheduledNotificationAsync(r.identifier);
+    if (!r.identifier.startsWith(REST_NOTIFICATION_PREFIX) && !r.identifier.startsWith(REMINDER_NOTIFICATION_PREFIX))
+      await N.cancelScheduledNotificationAsync(r.identifier);
   const entries: LoggedPlan["entries"] = [];
   for (const n of plan) {
     const date = n.dayOffset ? addDays(today, n.dayOffset) : today;

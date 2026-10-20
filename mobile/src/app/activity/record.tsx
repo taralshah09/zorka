@@ -1,9 +1,11 @@
 // S28 · Record setup (P25/P26). UX T1: screen-off recording is the main path. Tapping Start asks for "Allow all the
 // time" in place when it isn't granted; "Start without it" says plainly that the run pauses when the phone locks.
 // UX T2: with no weight on the profile, an inline field fills it in instead of a Start button disabled with no reason.
+// AB3: `autostart=1` (the Assistant Bar's "start a walk") starts as soon as GPS is ready, asking for location first if
+// needed; stopping stays one tap on the live screen.
 import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppState, Linking, PermissionsAndroid, Platform } from "react-native";
 import { kv, KV_KEYS } from "@/core/storage/kv";
 import { BottomSheet, Button, Card, Header, NumberStepper, Screen, SegmentedControl, Text } from "@/core/ui";
@@ -20,7 +22,7 @@ import { ACTIVITY_LABEL, type ActivityKind, type RoutePoint } from "@shared/doma
 const WEIGHT_START_KG = 70;
 
 export default function RecordSetup() {
-  const params = useLocalSearchParams<{ kind?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; autostart?: string }>();
   const [kind, setKind] = useState<ActivityKind>(
     params.kind === "walk" || params.kind === "ride" ? params.kind : "run",
   );
@@ -30,6 +32,7 @@ export default function RecordSetup() {
   const active = activeActivity();
   const activeId = active?.id;
   const [permission, setPermission] = useState(false);
+  const [permissionKnown, setPermissionKnown] = useState(false);
   const [background, setBackground] = useState(false);
   // "start": the screen-off ask shown when Start is tapped; "background": the same ask from the inline link.
   const [sheet, setSheet] = useState<"location" | "background" | "start" | null>(null);
@@ -45,8 +48,11 @@ export default function RecordSetup() {
   useEffect(() => {
     const refreshPermission = () =>
       void Location.getForegroundPermissionsAsync()
-        .then((p) => setPermission(p.granted))
-        .catch(() => {});
+        .then((p) => {
+          setPermission(p.granted);
+          setPermissionKnown(true);
+        })
+        .catch(() => setPermissionKnown(true));
     refreshPermission();
     if (Platform.OS !== "web")
       void Location.getBackgroundPermissionsAsync()
@@ -164,6 +170,26 @@ export default function RecordSetup() {
       setBusy(false);
     }
   }
+  // AB3: started from the bar. Ask for location if it isn't granted, then start once the fix is good. Deferred a tick so
+  // the effect itself doesn't set state.
+  const autostarted = useRef(false);
+  const askedLocation = useRef(false);
+  useEffect(() => {
+    if (params.autostart !== "1" || autostarted.current || active || !permissionKnown) return;
+    if (!permission) {
+      // Asked once; closing the sheet leaves the usual Enable location button.
+      if (askedLocation.current) return;
+      askedLocation.current = true;
+      const t = setTimeout(() => setSheet("location"), 0);
+      return () => clearTimeout(t);
+    }
+    if (!ready || needsWeight) return;
+    autostarted.current = true;
+    // Not cleared on re-render: once decided, it starts (start() re-checks it can).
+    setTimeout(start, 0);
+    // `start` reads the latest state each render; this runs once the fix is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.autostart, permissionKnown, permission, ready, active, needsWeight]);
   return (
     <Screen header={<Header title="Record activity" onBack={() => router.back()} />}>
       {active ? (

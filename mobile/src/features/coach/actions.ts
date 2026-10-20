@@ -1,42 +1,15 @@
 // UX N1 · Buttons under a coach reply. The server only names a screen or a meal; the phone decides the route, so a
-// reply can never send the user somewhere unexpected. Screen routes reuse the Home brief's hrefs (nextAction.ts).
-import { router, type Href } from "expo-router";
+// reply can never send the user somewhere unexpected. AB7 (D89): the buttons now run through the Assistant Bar: a
+// screen opens with the bar's route map, and a meal is said to Zorka as a turn ("I ate …", "I'll have …"), so it gets
+// the same checks, tiers and Undo as anything said to the bar.
+import { router } from "expo-router";
 import { Alert } from "react-native";
 
-import type { CoachAction, CoachScreen } from "@/core/api/types";
+import type { CoachAction } from "@/core/api/types";
 import type { IconName } from "@/core/icons/Icon";
+import { SCREEN_HREF, SCREEN_ICON } from "@/features/assistant/executors";
 import { rememberFact } from "@/features/life/memory";
 import { useActiveUser } from "@/features/users/activeUser";
-
-const SCREEN_HREF: Record<CoachScreen, Href> = {
-  gap: "/gap",
-  move: "/gap?tab=move",
-  quick_log: "/quick-log",
-  log_weight: "/log-weight",
-  progress: "/(tabs)/progress",
-  checkin: "/progress/checkin",
-  steps: "/activity/steps",
-  record_walk: { pathname: "/activity/record", params: { kind: "walk" } },
-  day: "/day",
-  share_day: "/share?card=day",
-  plan_tomorrow: "/plan/tomorrow",
-  menu_scan: "/menu/scan",
-};
-
-const SCREEN_ICON: Record<CoachScreen, IconName> = {
-  gap: "restaurant",
-  move: "directions_walk",
-  quick_log: "add",
-  log_weight: "monitor_weight",
-  progress: "show_chart",
-  checkin: "calendar_month",
-  steps: "footprint",
-  record_walk: "directions_walk",
-  day: "bar_chart",
-  share_day: "ios_share",
-  plan_tomorrow: "calendar_month",
-  menu_scan: "menu_book",
-};
 
 export function actionIcon(a: CoachAction): IconName {
   if (a.type === "plan_day") return "calendar_month";
@@ -46,19 +19,26 @@ export function actionIcon(a: CoachAction): IconName {
   return SCREEN_ICON[a.screen] ?? "chevron_right";
 }
 
-/** Runs a coach button: opens the screen, logs the meal through the usual text parser, or starts a workout. */
-export function useCoachAction(): (a: CoachAction, key?: string) => void {
+/**
+ * Runs a coach button. `say` sends words to Zorka as a new turn (the thread passes it); without it a meal button
+ * opens the typed-meal screen with the words filled in.
+ */
+export function useCoachAction(say?: (text: string) => void): (a: CoachAction, key?: string) => void {
   return (a, key = "") => {
     switch (a.type) {
       case "open":
         if (SCREEN_HREF[a.screen]) router.push(SCREEN_HREF[a.screen]);
         return;
       case "log_meal":
+      case "ate_meal":
+        // A suggestion is never consumption on its own: "I ate …" still goes through the turn's checks and tiers.
+        if (say) say(`I ate ${a.text}`);
+        else router.push({ pathname: "/log/type", params: { text: a.text, actionKey: key } });
+        return;
       case "plan_meal":
       case "save_idea":
-      case "ate_meal":
-        // Legacy log_meal also opens intent review. A hypothetical suggestion never means consumption.
-        router.push({ pathname: "/coach-meal", params: { text: a.text, actionKey: key } });
+        if (say) say(`I'll have ${a.text} later`);
+        else router.push({ pathname: "/log/type", params: { text: a.text, actionKey: key } });
         return;
       case "start_workout": {
         router.push({ pathname: "/train/prepare", params: { actionKey: key } });

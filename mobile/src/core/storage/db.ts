@@ -337,6 +337,10 @@ const MIGRATIONS: ((db: SQLiteDatabase) => void)[] = [
       );
       CREATE INDEX menus_user ON menus (user_id, scanned_at);
     `),
+
+  // v15 · Assistant Bar (docs/ASSISTANT_BAR_PLAN.md, D89): the coach chat becomes the Zorka thread. A Zorka reply can
+  // carry the turn it answered (JSON: what was heard, each action, its tier, what ran and how to undo it).
+  (db) => db.execSync(`ALTER TABLE coach_messages ADD COLUMN turn TEXT;`),
 ];
 
 let db: SQLiteDatabase | null = null;

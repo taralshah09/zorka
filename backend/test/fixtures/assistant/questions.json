@@ -1,0 +1,21 @@
+{
+  "group": "questions",
+  "about": "Two-way answers (AB5). The numbers come from the facts builder, never the AI.",
+  "cases": [
+    { "id": "qu-01", "said": "how's my week looking?", "router": { "actions": [{ "kind": "ask", "topic": "week" }] }, "expect": [["ask", "answer"]], "answerHas": "days on target" },
+    { "id": "qu-02", "said": "how am I doing today", "router": { "actions": [{ "kind": "ask", "topic": "today" }] }, "expect": [["ask", "answer"]], "answerHas": "kcal" },
+    { "id": "qu-03", "said": "how's my weight trending", "router": { "actions": [{ "kind": "ask", "topic": "trend" }] }, "expect": [["ask", "answer"]], "answerHas": "trend weight" },
+    { "id": "qu-04", "said": "what's my streak", "router": { "actions": [{ "kind": "ask", "topic": "streak" }] }, "expect": [["ask", "answer"]], "answerHas": "streak" },
+    { "id": "qu-05", "said": "what should I eat now", "router": { "actions": [{ "kind": "ask", "topic": "what_to_eat" }] }, "expect": [["ask", "answer"]], "answerHas": "Good fits" },
+    { "id": "qu-06", "said": "why is today lighter", "router": { "actions": [{ "kind": "ask", "topic": "why" }] }, "expect": [["ask", "answer"]], "answerHas": "unwell" },
+    { "id": "qu-07", "said": "what's the plan for today", "router": { "actions": [{ "kind": "ask", "topic": "plan" }] }, "expect": [["ask", "answer"]], "answerHas": "kcal" },
+    {
+      "id": "qu-08",
+      "said": "and yesterday?",
+      "turn": { "previous": { "actions": [{ "kind": "ask", "topic": "today" }] } },
+      "router": { "actions": [{ "kind": "ask", "topic": "today", "date": "2026-10-19" }] },
+      "expect": [["ask", "answer"]],
+      "answerHas": "Monday"
+    }
+  ]
+}

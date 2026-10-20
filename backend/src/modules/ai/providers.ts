@@ -2,6 +2,7 @@
 // OpenAI-compatible /chat/completions; speech-to-text uses Groq's Whisper endpoint or Gemini's native
 // generateContent with inline audio. Every failure becomes a ProviderError with a `kind` the chain
 // uses to decide how long the slot sits out.
+import { sttConfidence, type Confidence, type SttSegment } from "../../../../shared/domain/assistant.js";
 import type { AiSlot, Capability } from "./ai.config.js";
 
 export type FailureKind = "rate_limit" | "auth" | "not_found" | "bad_request" | "server" | "timeout" | "network" | "bad_output";
@@ -144,7 +145,10 @@ const EXT: Record<string, string> = {
   "audio/ogg": "ogg",
 };
 
-/** Speech → text. Groq: Whisper. Gemini: generateContent with the audio inline. */
+/**
+ * Speech → text. Groq: Whisper. Gemini: generateContent with the audio inline. AB6: Whisper answers in `verbose_json`,
+ * so each transcript comes with a confidence from its segment scores; Gemini has none and reads as "medium" (D93).
+ */
 export async function transcribe(
   fetchImpl: Fetch,
   slot: AiSlot,
@@ -152,7 +156,7 @@ export async function transcribe(
   audio: AudioInput,
   vocabularyHint: string,
   signal: AbortSignal,
-): Promise<{ text: string; model: string; usage: Usage }> {
+): Promise<{ text: string; model: string; usage: Usage; confidence: Confidence }> {
   if (slot.provider === "openrouter") throw new ProviderError("not_found", `No speech-to-text on ${slot.provider}`);
 
   if (slot.provider === "groq") {
@@ -160,7 +164,7 @@ export async function transcribe(
     const bytes = Buffer.from(audio.base64, "base64");
     form.append("file", new Blob([bytes], { type: audio.mimeType }), `audio.${EXT[audio.mimeType] ?? "m4a"}`);
     form.append("model", model);
-    form.append("response_format", "json");
+    form.append("response_format", "verbose_json");
     form.append("temperature", "0");
     // No `language`: English first, but forcing "en" would rule out Hinglish later (IDEATION).
     form.append("prompt", vocabularyHint);
@@ -171,9 +175,10 @@ export async function transcribe(
       signal,
     );
     if (!res.ok) throw await failure(res);
-    const json = (await res.json().catch(() => null)) as { text?: string } | null;
+    const json = (await res.json().catch(() => null)) as { text?: string; segments?: SttSegment[] } | null;
     if (typeof json?.text !== "string") throw new ProviderError("bad_output", "No transcript");
-    return { text: json.text.trim(), model, usage: { inputTokens: 0, outputTokens: 0 } };
+    const segments = Array.isArray(json.segments) ? json.segments : null;
+    return { text: json.text.trim(), model, usage: { inputTokens: 0, outputTokens: 0 }, confidence: sttConfidence(segments) };
   }
 
   // Gemini (native API; the OpenAI-compatible layer has no transcription endpoint).
@@ -210,5 +215,6 @@ export async function transcribe(
     text,
     model,
     usage: { inputTokens: json?.usageMetadata?.promptTokenCount ?? 0, outputTokens: json?.usageMetadata?.candidatesTokenCount ?? 0 },
+    confidence: "medium",
   };
 }

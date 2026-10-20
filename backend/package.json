@@ -15,6 +15,7 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
+    "eval:assistant": "tsx --env-file-if-exists=.env scripts/assistant-eval.ts",
     "db:seed": "prisma db seed",
     "db:seed:arjun": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts --write",
     "db:seed:arjun:dry": "tsx --env-file-if-exists=.env prisma/seed-demo-arjun.ts",

@@ -1,0 +1,90 @@
+{
+  "group": "multi",
+  "about": "Several actions in one turn, in the order said.",
+  "cases": [
+    {
+      "id": "mu-01",
+      "said": "had poha for breakfast, feeling sick today, start a walk",
+      "at": "09:30",
+      "router": {
+        "actions": [
+          { "kind": "log_meal", "span": "poha", "mealType": "breakfast" },
+          { "kind": "set_day", "dayType": "sick", "date": "2026-10-20", "note": "feeling sick today" },
+          { "kind": "start_activity", "activity": "walk" }
+        ]
+      },
+      "meals": { "poha": [{ "name": "poha", "quantity": 1, "unit": "plate", "confidence": 0.95 }] },
+      "brief": { "blocks": [], "flags": ["sick"] },
+      "expect": [["log_meal", "do"], ["set_day", "approve"], ["start_activity", "do"]]
+    },
+    {
+      "id": "mu-02",
+      "said": "did 3 sets of squats at 60 kg for 8 reps and had a protein shake after",
+      "router": {
+        "actions": [
+          { "kind": "log_workout", "span": "3 sets of squats at 60 kg for 8 reps" },
+          { "kind": "log_meal", "span": "a protein shake" }
+        ]
+      },
+      "gym": {
+        "3 sets of squats at 60 kg for 8 reps": [
+          { "exercise": "squat", "weight": 60, "unit": "kg", "reps": 8, "seconds": null, "meters": null, "sets": 3, "confidence": 0.95 }
+        ]
+      },
+      "meals": { "a protein shake": [{ "name": "whey shake with milk", "quantity": 1, "unit": "glass", "confidence": 0.85 }] },
+      "expect": [["log_workout", "do"], ["log_meal", "do"]]
+    },
+    {
+      "id": "mu-03",
+      "said": "had 2 idli with sambar and log 2 glasses of water",
+      "at": "08:40",
+      "router": {
+        "actions": [
+          { "kind": "log_meal", "span": "2 idli with sambar" },
+          { "kind": "log_water", "glasses": 2 }
+        ]
+      },
+      "meals": { "2 idli with sambar": [{ "name": "idli", "quantity": 2, "unit": "piece", "confidence": 0.95 }, { "name": "sambar", "quantity": 1, "unit": "katori", "confidence": 0.9 }] },
+      "expect": [["log_meal", "do"], ["log_water", "do"]]
+    },
+    {
+      "id": "mu-04",
+      "said": "had a coffee, how's my day looking",
+      "router": { "actions": [{ "kind": "log_meal", "span": "a coffee" }, { "kind": "ask", "topic": "today" }] },
+      "meals": { "a coffee": [{ "name": "coffee", "quantity": 1, "unit": "cup", "confidence": 0.95 }] },
+      "expect": [["log_meal", "do"], ["ask", "answer"]]
+    },
+    {
+      "id": "mu-05",
+      "said": "weighed 71.8 this morning and start a walk",
+      "router": { "actions": [{ "kind": "log_weight", "kg": 71.8 }, { "kind": "start_activity", "activity": "walk" }] },
+      "expect": [["log_weight", "do"], ["start_activity", "do"]]
+    },
+    {
+      "id": "mu-06",
+      "said": "I'm travelling tomorrow, remind me to pack snacks at 9pm",
+      "router": {
+        "actions": [
+          { "kind": "set_day", "dayType": "travel", "date": "2026-10-21", "note": "travelling tomorrow" },
+          { "kind": "remind_me", "what": "pack snacks", "time": "21:00" }
+        ]
+      },
+      "brief": { "blocks": [], "whereabouts": "travelling", "flags": [] },
+      "expect": [["set_day", "approve"], ["remind_me", "do"]]
+    },
+    {
+      "id": "mu-07",
+      "said": "lunch was rajma and rice, what should I eat for dinner",
+      "router": { "actions": [{ "kind": "log_meal", "span": "rajma and rice", "mealType": "lunch" }, { "kind": "ask", "topic": "what_to_eat" }] },
+      "meals": { "rajma and rice": [{ "name": "rajma", "quantity": 1, "unit": "katori", "confidence": 0.9 }, { "name": "rice", "quantity": 1, "unit": "katori", "confidence": 0.9 }] },
+      "expect": [["log_meal", "do"], ["ask", "answer"]]
+    },
+    {
+      "id": "mu-08",
+      "said": "drank 2 glasses of water and had an apple",
+      "router": { "actions": [{ "kind": "log_water", "glasses": 2 }, { "kind": "log_meal", "span": "an apple" }] },
+      "meals": { "an apple": [{ "name": "apple", "quantity": 1, "unit": "piece", "confidence": 0.95 }] },
+      "expect": [["log_water", "do"], ["log_meal", "do"]]
+    }
+  ]
+}

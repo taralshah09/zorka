@@ -10,6 +10,7 @@
     "../prisma/seed.ts",
     "../prisma/seed-demo-personas.ts",
     "../prisma/seed-demo-arjun.ts",
+    "../scripts",
     "../../shared"
   ]
 }

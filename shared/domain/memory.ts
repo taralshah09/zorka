@@ -38,7 +38,19 @@ export const FACT_KEYS = {
   freshStart: "week:fresh_start",
   /** A fact the user asked the coach to remember (LA6 remember_fact). */
   note: (slug: string) => `note:${slug}`,
+  /** D97 · A word the user corrected ("dahl" → "dal tadka"). Kind "preference", value AliasValue. Not shown to the coach. */
+  alias: (heard: string) => `alias:${slugOf(heard)}`,
 } as const;
+
+const slugOf = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "fact";
+
+/** D97 · What an alias fact stores: the spoken form and what it means (a food or an exercise, by name and id). */
+export type AliasValue = { heard: string; means: string; target: "food" | "exercise"; id: string | null };
 
 /** Days of history the job reads. */
 export const MEMORY_WINDOW_DAYS = 28;
@@ -272,6 +284,8 @@ export function activeFacts(facts: readonly MemoryFact[], today: string): Active
     if (f.status !== "active") continue;
     if (f.validFrom && today < f.validFrom) continue;
     if (f.validUntil && today > f.validUntil) continue;
+    // Aliases feed speech-to-text and matching (aliasesFrom), not the coach's list of what Zorka knows.
+    if (f.key.startsWith("alias:")) continue;
     out.texts.push(f.text);
     const v = obj(f.value);
     const m = /^usual_meal:(breakfast|lunch|snack|dinner):(weekday|weekend)$/.exec(f.key);
@@ -289,11 +303,29 @@ export function activeFacts(facts: readonly MemoryFact[], today: string): Active
 }
 
 /** A stable key for a fact the user asked to remember: "note:" + a slug of its text. */
-export const noteKey = (text: string) =>
-  FACT_KEYS.note(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "fact",
-  );
+export const noteKey = (text: string) => FACT_KEYS.note(slugOf(text));
+
+/** D97 · The user's active aliases, newest first, for the vocabulary hint and for matching before the AI runs. */
+export function aliasesFrom(facts: readonly MemoryFact[]): { heard: string; means: string }[] {
+  return facts
+    .filter((f) => f.status === "active" && f.key.startsWith("alias:"))
+    .map((f) => obj(f.value))
+    .filter((v) => typeof v.heard === "string" && typeof v.means === "string" && v.heard.trim() && v.means.trim())
+    .map((v) => ({ heard: String(v.heard).trim(), means: String(v.means).trim() }))
+    .reverse();
+}
+
+/** D97 · The fact saved when the user fixes a mis-heard word. Same `heard` again updates the same fact (one per key). */
+export function aliasFact(value: AliasValue): Pick<MemoryFact, "key" | "kind" | "value" | "text" | "source" | "confidence" | "status"> {
+  const heard = value.heard.trim().slice(0, 60);
+  const means = value.means.trim().slice(0, 80);
+  return {
+    key: FACT_KEYS.alias(heard),
+    kind: "preference",
+    value: { ...value, heard, means },
+    text: `When you say "${heard}" you mean ${means}.`,
+    source: "user",
+    confidence: 1,
+    status: "active",
+  };
+}

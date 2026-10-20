@@ -7,6 +7,8 @@ import { errorHandler, notFoundHandler } from "./http/errors.js";
 import { rateLimit, type RateLimitConfig, type RateLimitStore } from "./http/rateLimit.js";
 import type { AiClient } from "./modules/ai/ai.client.js";
 import { aiDevRoutes } from "./modules/ai/ai.routes.js";
+import { ASSISTANT_LARGE_BODY_PATH, assistantRoutes } from "./modules/assistant/assistant.routes.js";
+import type { AssistantService } from "./modules/assistant/assistant.service.js";
 import { coachRoutes } from "./modules/coach/coach.routes.js";
 import type { CoachService } from "./modules/coach/coach.service.js";
 import { exercisesRoutes } from "./modules/exercises/exercises.routes.js";
@@ -63,6 +65,8 @@ export type AppDeps = {
   menu: MenuService;
   /** D85: the AI week planner. */
   aiPlan: AiPlanService;
+  /** AB2: the Assistant Bar's turn endpoint. */
+  assistant: AssistantService;
   ai: AiClient;
   search: SearchClient;
   /** Mounts /v1/dev/* (never in production). */
@@ -100,6 +104,7 @@ export function createApp(deps: AppDeps) {
     briefs,
     menu,
     aiPlan,
+    assistant,
     ai,
     search,
     devRoutes,
@@ -123,7 +128,8 @@ export function createApp(deps: AppDeps) {
       : LARGE_BODY_PATHS.test(req.path) ||
           GYM_LARGE_BODY_PATH.test(req.path) ||
           BRIEF_LARGE_BODY_PATH.test(req.path) ||
-          MENU_LARGE_BODY_PATH.test(req.path)
+          MENU_LARGE_BODY_PATH.test(req.path) ||
+          ASSISTANT_LARGE_BODY_PATH.test(req.path)
         ? largeJson
         : smallJson)(req, res, next),
   );
@@ -150,6 +156,7 @@ export function createApp(deps: AppDeps) {
   v1.use(briefsRoutes(briefs));
   v1.use(menuRoutes(menu));
   v1.use(aiPlanRoutes(aiPlan));
+  v1.use(assistantRoutes(assistant));
   if (devRoutes) {
     v1.use(aiDevRoutes(ai));
     // Which search services have keys (names only) and which are cooling down.

@@ -1,5 +1,8 @@
 // API contract types — mirror backend/src/modules/*/…schemas.ts. Keep the two in step.
-import type { FoodUnit, Macros } from "@shared/domain/food";
+import type { AskTopic, AssistantAction, Confidence, Tier } from "@shared/domain/assistant";
+import type { AnswerCard } from "@shared/domain/assistantFacts";
+import type { DayType } from "@shared/domain/dayType";
+import type { FoodUnit, Macros, MealType } from "@shared/domain/food";
 import type { ExerciseCategory, ExerciseType, SetValues } from "@shared/domain/gym";
 import type { BudgetBand, DayFacts, MealSource as LifeMealSource, WorkPattern } from "@shared/domain/life";
 import type { MenuTag, Range } from "@shared/domain/menu";
@@ -320,4 +323,37 @@ export type MenuReadResult = {
   currency: string | null;
   dishes: MenuReadDish[];
   ai: { slot: string; model: string; attempts: number };
+};
+
+// ── Assistant Bar (AB2) — mirrors backend/src/modules/assistant/assistant.schemas.ts ────────────────
+
+/** A parsed food plus its runner-up score and the top 3 other foods (the chip's alternatives, AB6). */
+export type AssistantParsedItem = ParsedItem & { runnerUp: number | null; alternatives: Food[] };
+
+export type AskPatch = { mealType: MealType } | { itemIndex: number; quantity: number; unit: FoodUnit };
+export type AskQuestion = { question: string; options: { label: string; patch: AskPatch }[] };
+
+export type AssistantResolution =
+  | { kind: "meal"; items: AssistantParsedItem[]; mealType: MealType }
+  | { kind: "workout"; sets: GymParsedSet[]; usual: boolean }
+  | { kind: "day"; facts: DayFacts; dayType: DayType; question: string | null }
+  | { kind: "answer"; topic: AskTopic; date: string; known: boolean; lines: string[]; numbers: number[]; card: AnswerCard | null };
+
+export type AssistantTurnItem = {
+  action: AssistantAction;
+  tier: Tier;
+  resolved: AssistantResolution | null;
+  ask: AskQuestion | null;
+  line: string;
+};
+
+export type AssistantTurnResult = {
+  heard: { text: string; source: "voice" | "text"; confidence: Confidence };
+  kind: "actions" | "support" | "no_speech";
+  items: AssistantTurnItem[];
+  dropped: { kind: string | null; reason: string }[];
+  reply: string;
+  replyKind: "ai" | "template" | "support" | "redirect" | "none";
+  timings: { sttMs: number | null; routerMs: number; resolveMs: number; phraseMs: number; totalMs: number };
+  ai: { slot: string; model: string; attempts: number } | null;
 };

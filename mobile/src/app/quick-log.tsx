@@ -1,5 +1,5 @@
-// S11 · Quick-log sheet. No export yet (D27): built from DESIGN.md §6.3. The big mic is the hero;
-// Camera · Type · Search under it; Workout · Run · Weight below that (Workout opens S24 since P19, Run S28 since
+// S11 · Quick-log sheet. No export yet (D27): built from DESIGN.md §6.3. AB7 (D89): talking now goes through the
+// Zorka bubble that floats over every app, so the big mic is gone; a line points to the bubble instead. Camera · Type · Search come first; Workout · Run · Weight below that (Workout opens S24 since P19, Run S28 since
 // P25, Weight S34 since P27); then "Log again" (UX L1): the user's saved usuals, the last meal of this type in
 // the past week, then recent distinct meals, up to 3 one-tap rows (so the sheet fits), each with Undo.
 // With a past day picked on Today, meals log to that day and Workout · Run · Weight are hidden (they stay on today).
@@ -49,7 +49,7 @@ function ago(date: string, day: string): string {
 }
 
 export default function QuickLog() {
-  const { colors, radius, elevation, isDark, layout } = useTheme();
+  const { colors, radius, layout } = useTheme();
   const toast = useToast();
   const params = useLocalSearchParams<{ mealType?: string }>();
   const userId = useActiveUser((s) => s.userId);
@@ -138,21 +138,10 @@ export default function QuickLog() {
       title={isToday ? "Quick log" : `Log to ${formatDayLong(dateOf(day))}`}
     >
       {preferred && preferred !== "voice" ? <Button label={`Use preferred ${preferred}`} variant="secondary" onPress={() => router.replace({ pathname: preferred === "type" ? "/log/type" : preferred === "photo" ? "/log/photo" : "/log/search", params: { mealType } })} /> : null}
-      <View style={styles.micWrap}>
-        <PressableScale
-          onPress={() => router.replace({ pathname: "/log/voice", params: { mealType, autostart: "1" } })}
-          accessibilityRole="button"
-          accessibilityLabel="Talk to log a meal"
-          style={[
-            styles.mic,
-            { backgroundColor: colors.primary, borderRadius: radius.full },
-            isDark ? { boxShadow: elevation.glow } : null,
-          ]}
-        >
-          <Icon name="mic" size={28} color={colors.ink} filled />
-        </PressableScale>
-        <Text variant="label" color="textSecondary">
-          Talk to log
+      <View style={[styles.barHint, { backgroundColor: colors.surfaceHigh, borderRadius: radius.md }]}>
+        <Icon name="mic" size={20} color={colors.textSecondary} />
+        <Text variant="caption" color="textSecondary" style={styles.flex}>
+          To talk, tap the Zorka bubble on the edge of your screen, in any app. Turn it on in Settings.
         </Text>
       </View>
 
@@ -233,8 +222,7 @@ function EntryRow({ entries }: { entries: readonly Entry[] }) {
 }
 
 const styles = StyleSheet.create({
-  micWrap: { alignItems: "center", gap: 8, marginVertical: 8 },
-  mic: { width: 88, height: 88, alignItems: "center", justifyContent: "center" },
+  barHint: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, marginBottom: 8 },
   row: { flexDirection: "row", gap: 8, marginTop: 12 },
   entrySlot: { flex: 1 },
   entry: { minHeight: 72, alignItems: "center", justifyContent: "center", gap: 6 },

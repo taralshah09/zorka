@@ -44,6 +44,8 @@ import "@/features/life/briefs";
 import "@/features/life/plans";
 import "@/features/life/memory";
 import { startRecorderLifecycle } from "@/features/activity/recorder";
+import { startBubbleIfEnabled } from "@/features/assistant/bubble";
+import { markUiMounted } from "@/features/assistant/navigate";
 import { ConfettiBurstHost } from "@/features/celebrate/ConfettiBurst";
 import { OrderedItPrompt } from "@/features/gap/sheets";
 import { NudgePlanner } from "@/features/nudges/NudgePlanner";
@@ -66,9 +68,14 @@ function bootstrap() {
   // UX O4: an onboarding plan saved offline goes to the server once the network is back.
   const stopProfileSync = startPendingProfileSync(queryClient);
   const stopRecorder = startRecorderLifecycle();
+  // AB4: the router exists from here on (the bubble's actions push routes instead of opening deep links), and the
+  // bubble comes back on at launch if the user turned it on.
+  markUiMounted(true);
+  startBubbleIfEnabled();
   return () => {
     stopProfileSync();
     stopRecorder();
+    markUiMounted(false);
   };
 }
 

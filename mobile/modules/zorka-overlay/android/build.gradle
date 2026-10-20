@@ -1,0 +1,22 @@
+// The Zorka bubble (docs/ASSISTANT_BAR_PLAN.md, D89): a local Expo module, autolinked from mobile/modules at prebuild.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.taralshah.zorka'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.zorkaoverlay"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // HeadlessJsTaskService: each turn runs as a headless JS task. Versionless, resolved by the React Native plugin
+  // (as in expo-modules-core).
+  implementation 'com.facebook.react:react-android'
+}

@@ -1,0 +1,109 @@
+{
+  "group": "misheard",
+  "about": "Speech-to-text noise (AB6). Pass bar: every one lands in Approve or Ask, never a silent wrong Do. `heard` is the transcript; `segments` are Whisper scores (none = Gemini, medium). `learned` marks the alias case, which should now just work.",
+  "cases": [
+    {
+      "id": "mh-01",
+      "said": "had dal",
+      "heard": "had dahl",
+      "segments": [{ "avg_logprob": -0.2, "no_speech_prob": 0.01 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "dahl" }] },
+      "meals": { "dahl": [{ "name": "dahl", "quantity": 1, "unit": "katori", "confidence": 0.8 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-02",
+      "said": "had paneer tikka",
+      "heard": "had panir tika",
+      "segments": [{ "avg_logprob": -0.25, "no_speech_prob": 0.01 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "panir tika" }] },
+      "meals": { "panir tika": [{ "name": "panir tika", "quantity": 1, "unit": "plate", "confidence": 0.75 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-03",
+      "said": "two rotis",
+      "heard": "to rotis",
+      "segments": [{ "avg_logprob": -0.3, "no_speech_prob": 0.02 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "to rotis" }] },
+      "meals": { "to rotis": [{ "name": "roti", "quantity": null, "unit": "piece", "confidence": 0.6 }] },
+      "expect": [["log_meal", "ask"]]
+    },
+    {
+      "id": "mh-04",
+      "said": "two litres of water",
+      "heard": "two leaders of water",
+      "segments": [{ "avg_logprob": -0.3, "no_speech_prob": 0.02 }],
+      "router": { "actions": [{ "kind": "log_water", "glasses": 8 }] },
+      "expect": [["log_water", "approve"]]
+    },
+    {
+      "id": "mh-05",
+      "said": "had poha",
+      "heard": "had poha",
+      "segments": [{ "avg_logprob": -1.0, "no_speech_prob": 0.1 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "poha" }] },
+      "meals": { "poha": [{ "name": "poha", "quantity": 1, "unit": "plate", "confidence": 0.95 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-06",
+      "said": "had two idli",
+      "heard": "had two idli",
+      "segments": null,
+      "router": { "actions": [{ "kind": "log_meal", "span": "two idli" }] },
+      "meals": { "two idli": [{ "name": "idli", "quantity": 2, "unit": "piece", "confidence": 0.95 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-07",
+      "said": "two rotis",
+      "heard": "twelve rotis",
+      "segments": [{ "avg_logprob": -0.2, "no_speech_prob": 0.01 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "twelve rotis" }] },
+      "meals": { "twelve rotis": [{ "name": "roti", "quantity": 12, "unit": "piece", "confidence": 0.95 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-08",
+      "said": "I weigh 72",
+      "heard": "I weigh 27",
+      "segments": [{ "avg_logprob": -0.2, "no_speech_prob": 0.01 }],
+      "router": { "actions": [{ "kind": "log_weight", "kg": 27 }] },
+      "expect": [["log_weight", "approve"]]
+    },
+    {
+      "id": "mh-09",
+      "said": "bench 80 kilos 8 reps",
+      "heard": "bench 18 kilos 8 reps",
+      "segments": [{ "avg_logprob": -0.3, "no_speech_prob": 0.01 }],
+      "router": { "actions": [{ "kind": "log_workout", "span": "bench 18 kilos 8 reps" }] },
+      "gym": {
+        "bench 18 kilos 8 reps": [
+          { "exercise": "bench press", "weight": 18, "unit": "kg", "reps": 8, "seconds": null, "meters": null, "sets": 1, "confidence": 0.55 }
+        ]
+      },
+      "expect": [["log_workout", "approve"]]
+    },
+    {
+      "id": "mh-10",
+      "said": "had chhole",
+      "heard": "had chole bature",
+      "segments": [{ "avg_logprob": -0.55, "no_speech_prob": 0.02 }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "chole bature" }] },
+      "meals": { "chole bature": [{ "name": "chole bature", "quantity": 1, "unit": "plate", "confidence": 0.8 }] },
+      "expect": [["log_meal", "approve"]]
+    },
+    {
+      "id": "mh-11",
+      "learned": true,
+      "said": "had dal",
+      "heard": "had dahl",
+      "segments": [{ "avg_logprob": -0.2, "no_speech_prob": 0.01 }],
+      "aliases": [{ "heard": "dahl", "means": "dal tadka" }],
+      "router": { "actions": [{ "kind": "log_meal", "span": "dal tadka" }] },
+      "meals": { "dal tadka": [{ "name": "dal tadka", "quantity": 1, "unit": "katori", "confidence": 0.95 }] },
+      "expect": [["log_meal", "do"]]
+    }
+  ]
+}

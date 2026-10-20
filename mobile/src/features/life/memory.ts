@@ -10,12 +10,15 @@ import { workoutsBetween } from "@/features/gym/store";
 import { glassesBetween } from "@/features/water/store";
 import {
   activeFacts,
+  aliasesFrom,
+  aliasFact,
   FACT_KEYS,
   inferFacts,
   mergeFacts,
   MEMORY_WINDOW_DAYS,
   noteKey,
   type ActiveFacts,
+  type AliasValue,
   type FactStatus,
   type LoggedDay,
   type MemoryFact,
@@ -98,6 +101,21 @@ export function rememberFact(userId: string, text: string, source: "chat" | "use
   store.write(userId, fact);
   return fact;
 }
+
+/**
+ * D97 · The user fixed a mis-heard word ("dahl" → Dal tadka): remember it, so speech-to-text and matching get it right
+ * the next time. One fact per spoken form; the user's own correction, so it's active straight away.
+ */
+export function rememberAlias(userId: string, value: AliasValue): MemoryFact {
+  const base = aliasFact(value);
+  const existing = factsFor(userId).find((f) => f.key === base.key);
+  const fact: MemoryFact = { ...base, id: existing?.id ?? newId(), evidence: null, validFrom: null, validUntil: null };
+  store.write(userId, fact);
+  return fact;
+}
+
+/** D97 · The user's learned aliases, newest first. */
+export const aliasesFor = (userId: string) => aliasesFrom(factsFor(userId));
 
 /**
  * "Start fresh": let go of this week's earlier gaps, so the days from `from` plan at the usual numbers again. Lasts

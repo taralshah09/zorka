@@ -4,6 +4,8 @@
 // Whisper isn't streaming, so the transcript shows on the confirm sheet, not live while talking.
 // The mic starts once the hold ring around the button has filled (HOLD_MS); a shorter press is tap-to-start, and
 // the next tap stops (UX L4). From the quick-log mic (`autostart=1`) it starts listening as soon as it can.
+// AB7 (D89): no longer an entry point: talking goes through the Assistant Bar. It stays to read voice notes queued
+// offline (Today's "Needs you" row opens it with `queued`).
 import {
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,

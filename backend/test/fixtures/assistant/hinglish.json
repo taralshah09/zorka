@@ -1,0 +1,74 @@
+{
+  "group": "hinglish",
+  "about": "Hinglish turns (D95). Spans copy the user's own words; the meal parser names the dishes.",
+  "cases": [
+    {
+      "id": "hi-01",
+      "said": "nashte mein poha khaya",
+      "at": "09:15",
+      "router": { "actions": [{ "kind": "log_meal", "span": "poha", "mealType": "breakfast" }] },
+      "meals": { "poha": [{ "name": "poha", "quantity": 1, "unit": "plate", "confidence": 0.95 }] },
+      "expect": [["log_meal", "do"]]
+    },
+    {
+      "id": "hi-02",
+      "said": "aaj bimaar hoon, halka rakhna",
+      "router": { "actions": [{ "kind": "set_day", "dayType": "sick", "date": "2026-10-20", "note": "aaj bimaar hoon" }] },
+      "brief": { "blocks": [], "flags": ["sick"] },
+      "expect": [["set_day", "approve"]]
+    },
+    {
+      "id": "hi-03",
+      "said": "walk shuru karo",
+      "router": { "actions": [{ "kind": "start_activity", "activity": "walk" }] },
+      "expect": [["start_activity", "do"]]
+    },
+    {
+      "id": "hi-04",
+      "said": "do glass paani piya",
+      "router": { "actions": [{ "kind": "log_water", "glasses": 2 }] },
+      "expect": [["log_water", "do"]]
+    },
+    {
+      "id": "hi-05",
+      "said": "dopahar mein 2 roti aur rajma khaya",
+      "router": { "actions": [{ "kind": "log_meal", "span": "2 roti aur rajma", "mealType": "lunch" }] },
+      "meals": { "2 roti aur rajma": [{ "name": "roti", "quantity": 2, "unit": "piece", "confidence": 0.95 }, { "name": "rajma", "quantity": 1, "unit": "katori", "confidence": 0.9 }] },
+      "expect": [["log_meal", "do"]]
+    },
+    {
+      "id": "hi-06",
+      "said": "raat ko ek katori dahi khaya",
+      "at": "21:30",
+      "router": { "actions": [{ "kind": "log_meal", "span": "ek katori dahi", "mealType": "dinner" }] },
+      "meals": { "ek katori dahi": [{ "name": "dahi", "quantity": 1, "unit": "katori", "confidence": 0.95 }] },
+      "expect": [["log_meal", "do"]]
+    },
+    {
+      "id": "hi-07",
+      "said": "mera weight 71 kilo hai",
+      "router": { "actions": [{ "kind": "log_weight", "kg": 71 }] },
+      "expect": [["log_weight", "do"]]
+    },
+    {
+      "id": "hi-08",
+      "said": "aaj ka plan kya hai",
+      "router": { "actions": [{ "kind": "ask", "topic": "plan" }] },
+      "expect": [["ask", "answer"]]
+    },
+    {
+      "id": "hi-09",
+      "said": "kal shaadi hai",
+      "router": { "actions": [{ "kind": "set_day", "dayType": "feast", "date": "2026-10-21", "note": "kal shaadi hai" }] },
+      "brief": { "blocks": [{ "from": "19:00", "to": "23:00", "kind": "social", "label": "Wedding", "canEat": true }], "mealAccess": { "dinner": "event_food" }, "flags": ["feast"] },
+      "expect": [["set_day", "approve"]]
+    },
+    {
+      "id": "hi-10",
+      "said": "run band karo",
+      "turn": { "activityRunning": true },
+      "router": { "actions": [{ "kind": "stop_activity" }] },
+      "expect": [["stop_activity", "do"]]
+    }
+  ]
+}

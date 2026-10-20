@@ -69,6 +69,8 @@ function load(): LocalNotifications | null {
 
 /** Identifier of the rest-timer alert (gym/rest.ts). The nudge planner leaves it alone when it re-plans. */
 export const REST_NOTIFICATION_PREFIX = "zorka.rest";
+/** AB3 · Reminders the user asked the Assistant Bar for. The nudge planner leaves these alone too. */
+export const REMINDER_NOTIFICATION_PREFIX = "zorka.remind";
 
 /** null on web, or in a build without expo-notifications' native modules. */
 export const Notifications = load();

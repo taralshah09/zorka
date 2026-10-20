@@ -15,7 +15,8 @@ export const userKeys = {
 
 const cacheKey = (id: string) => `zorka.profileCache.${id}`;
 
-function readCachedProfile(id: string): Profile | undefined {
+/** The last profile this phone saw (with unsent edits on top). Works without React: the headless overlay task reads it. */
+export function readCachedProfile(id: string): Profile | undefined {
   const raw = kv.get(cacheKey(id));
   if (!raw) return undefined;
   try {

@@ -7,6 +7,7 @@
 import type { Logger } from "pino";
 import type { z } from "zod";
 
+import type { Confidence } from "../../../../shared/domain/assistant.js";
 import { AppError } from "../../http/errors.js";
 import { COOLDOWN_MS, TIMEOUTS_MS, type AiSlot, type Capability } from "./ai.config.js";
 import {
@@ -56,7 +57,8 @@ export interface AiClient {
   chat(req: { system?: string; user: string }): Promise<{ text: string; meta: AiMeta }>;
   /** Text or image → a JSON object validated by `schema`. Invalid output falls through to the next slot. */
   json<S extends z.ZodType>(req: { system: string; user: string; image?: ImageInput; schema: S }): Promise<{ value: z.infer<S>; meta: AiMeta }>;
-  transcribe(audio: AudioInput, vocabularyHint: string): Promise<{ text: string; meta: AiMeta }>;
+  /** AB6: `confidence` from Whisper's segment scores; "medium" when the provider gives none (D93). */
+  transcribe(audio: AudioInput, vocabularyHint: string): Promise<{ text: string; meta: AiMeta; confidence: Confidence }>;
   status(): AiStatus;
 }
 
@@ -243,9 +245,9 @@ export function createAiClient({
     transcribe: async (audio, vocabularyHint) => {
       const r = await run("stt", async (slot, model, signal) => {
         const out = await transcribe(fetchImpl, slot, model, audio, vocabularyHint, signal);
-        return { value: out.text, model: out.model, usage: out.usage };
+        return { value: { text: out.text, confidence: out.confidence }, model: out.model, usage: out.usage };
       });
-      return { text: r.value, meta: r.meta };
+      return { text: r.value.text, confidence: r.value.confidence, meta: r.meta };
     },
 
     status: () => ({

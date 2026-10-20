@@ -1,4 +1,6 @@
-// Main tabs — DESIGN.md §4: Today · Train · (+) · Progress · Coach, in the floating dock.
+// Main tabs — DESIGN.md §4, AB7 (D89): Today · Train · Progress · (+) in the floating dock. Talking to Zorka happens
+// in the bubble that floats over every app (features/assistant/bubble.ts), not inside these screens. The Zorka thread
+// (the old Coach tab) is a hidden tab: the bubble's card, Home's brief and the "done for you" line open it.
 import { Redirect, router } from "expo-router";
 import { Tabs } from "expo-router/tabs";
 
@@ -10,7 +12,6 @@ const TABS: readonly DockTab[] = [
   { route: "today", icon: "home", label: "Today" },
   { route: "train", icon: "fitness_center", label: "Train" },
   { route: "progress", icon: "bar_chart", label: "Progress" },
-  { route: "coach", icon: "forum", label: "Coach" },
 ];
 
 export default function TabsLayout() {
@@ -21,11 +22,12 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }}
-      tabBar={(props) => <Dock {...props} tabs={TABS} fabAfter={2} onFabPress={() => router.push("/quick-log")} />}
+      tabBar={(props) => <Dock {...props} tabs={TABS} fabAfter={TABS.length} onFabPress={() => router.push("/quick-log")} />}
     >
       {TABS.map((t) => (
         <Tabs.Screen key={t.route} name={t.route} options={{ title: t.label }} />
       ))}
+      <Tabs.Screen name="coach" options={{ title: "Zorka", href: null }} />
     </Tabs>
   );
 }

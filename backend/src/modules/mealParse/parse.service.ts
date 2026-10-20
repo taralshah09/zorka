@@ -8,10 +8,11 @@ import {
   type FoodNutrition,
   type FoodUnit,
 } from "../../../../shared/domain/food.js";
-import { bestMatch, parseUnit } from "../../../../shared/domain/foodMatch.js";
+import { bestMatch, matchScore, parseUnit } from "../../../../shared/domain/foodMatch.js";
 import { notFound } from "../../http/errors.js";
 import type { AiClient, AiMeta } from "../ai/ai.client.js";
 import type { FoodRecord } from "../foods/foods.repository.js";
+import type { FoodDto } from "../foods/foods.schemas.js";
 import { toFoodDto, type FoodsService } from "../foods/foods.service.js";
 import {
   AiParse,
@@ -76,6 +77,25 @@ export function resolveItem(ai: AiItem, catalog: readonly FoodRecord[]): ParsedI
     confidence: ai.confidence,
     uncertain: reasons.length > 0,
     reasons,
+  };
+}
+
+/** AB6 · A parsed item plus what the assistant needs to judge and repair it: the runner-up's score and the top 3 other
+ *  foods (the chip's alternatives, "dal tadka · dal makhani · dal fry"). */
+export type AssistantParsedItem = ParsedItem & { runnerUp: number | null; alternatives: FoodDto[] };
+
+const ALTERNATIVES = 3;
+const ALTERNATIVE_MIN_SCORE = 0.35;
+
+export function withAlternatives(item: ParsedItem, catalog: readonly FoodRecord[]): AssistantParsedItem {
+  const ranked = catalog
+    .map((food, i) => ({ food, i, score: matchScore(item.query, food) }))
+    .filter((x) => x.score >= ALTERNATIVE_MIN_SCORE && x.food.id !== item.food?.id)
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+  return {
+    ...item,
+    runnerUp: ranked[0]?.score ?? null,
+    alternatives: ranked.slice(0, ALTERNATIVES).map((x) => toFoodDto(x.food)),
   };
 }
 
@@ -185,6 +205,20 @@ export function parseService(ai: AiClient, foods: FoodsService, userExists: (id:
         };
       }
       return fromText(userId, text, "voice", started, { transcript: text, ms: meta.ms });
+    },
+
+    /**
+     * AB2 · The assistant's log_meal and correct: the words the router copied out → items, each with its runner-up
+     * score and alternatives (AB6). The caller has already checked the user.
+     */
+    async parseForAssistant(userId: string, text: string): Promise<{ items: AssistantParsedItem[]; ai: ParseResult["ai"] }> {
+      const catalogP = loadCatalog(userId);
+      const { value, meta } = await ai.json({ system: TEXT_SYSTEM, user: textUser(text), schema: AiParse });
+      const catalog = await catalogP;
+      return {
+        items: value.items.map((i) => withAlternatives(resolveItem(i, catalog), catalog)),
+        ai: { slot: meta.slot, model: meta.model, attempts: meta.attempts },
+      };
     },
 
     /** P17: a meal photo. No items = "Couldn't tell. Try search?" on the phone. */

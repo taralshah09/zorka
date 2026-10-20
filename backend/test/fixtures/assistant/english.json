@@ -1,0 +1,83 @@
+{
+  "group": "english",
+  "about": "Single actions in English. Typed text (confidence high) unless a fixture says voice.",
+  "cases": [
+    {
+      "id": "en-01",
+      "said": "two rotis and dal for lunch",
+      "router": { "actions": [{ "kind": "log_meal", "span": "two rotis and dal", "mealType": "lunch" }] },
+      "meals": { "two rotis and dal": [{ "name": "roti", "quantity": 2, "unit": "piece", "confidence": 0.95 }, { "name": "dal", "quantity": null, "unit": null, "confidence": 0.9 }] },
+      "expect": [["log_meal", "do"]]
+    },
+    {
+      "id": "en-02",
+      "said": "log 3 glasses of water",
+      "router": { "actions": [{ "kind": "log_water", "glasses": 3 }] },
+      "expect": [["log_water", "do"]]
+    },
+    {
+      "id": "en-03",
+      "said": "start a run",
+      "router": { "actions": [{ "kind": "start_activity", "activity": "run" }] },
+      "expect": [["start_activity", "do"]]
+    },
+    {
+      "id": "en-04",
+      "said": "I weigh 72.4 kg today",
+      "router": { "actions": [{ "kind": "log_weight", "kg": 72.4 }] },
+      "expect": [["log_weight", "do"]]
+    },
+    {
+      "id": "en-05",
+      "said": "had a banana",
+      "at": "16:45",
+      "router": { "actions": [{ "kind": "log_meal", "span": "a banana" }] },
+      "meals": { "a banana": [{ "name": "banana", "quantity": 1, "unit": "piece", "confidence": 0.95 }] },
+      "expect": [["log_meal", "do"]]
+    },
+    {
+      "id": "en-06",
+      "said": "3 sets of bench press at 40 kg for 10 reps",
+      "router": { "actions": [{ "kind": "log_workout", "span": "3 sets of bench press at 40 kg for 10 reps" }] },
+      "gym": {
+        "3 sets of bench press at 40 kg for 10 reps": [
+          { "exercise": "bench press", "weight": 40, "unit": "kg", "reps": 10, "seconds": null, "meters": null, "sets": 3, "confidence": 0.95 }
+        ]
+      },
+      "expect": [["log_workout", "do"]]
+    },
+    {
+      "id": "en-07",
+      "said": "stop the walk",
+      "turn": { "activityRunning": true },
+      "router": { "actions": [{ "kind": "stop_activity" }] },
+      "expect": [["stop_activity", "do"]]
+    },
+    {
+      "id": "en-08",
+      "said": "remind me to drink water at 4pm",
+      "router": { "actions": [{ "kind": "remind_me", "what": "drink water", "time": "16:00" }] },
+      "expect": [["remind_me", "do"]]
+    },
+    {
+      "id": "en-09",
+      "said": "I'll have paneer bhurji for dinner",
+      "router": { "actions": [{ "kind": "plan_meal", "span": "paneer bhurji", "mealType": "dinner" }] },
+      "meals": { "paneer bhurji": [{ "name": "paneer bhurji", "quantity": 1, "unit": "katori", "confidence": 0.95 }] },
+      "expect": [["plan_meal", "do"]]
+    },
+    {
+      "id": "en-10",
+      "said": "open my progress",
+      "router": { "actions": [{ "kind": "open", "screen": "progress" }] },
+      "expect": [["open", "do"]]
+    },
+    {
+      "id": "en-11",
+      "said": "undo that",
+      "turn": { "previous": { "actions": [{ "kind": "log_water" }] } },
+      "router": { "actions": [{ "kind": "undo" }] },
+      "expect": [["undo", "do"]]
+    }
+  ]
+}

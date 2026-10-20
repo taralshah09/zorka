@@ -45,6 +45,7 @@ import type { DayBriefRecord, DayPlanRecord, LifeRepositories, MemoryFactRecord 
 import { lifeService } from "../src/modules/life/life.service.js";
 import { menuService } from "../src/modules/menu/menu.service.js";
 import { aiPlanService } from "../src/modules/aiPlan/aiPlan.service.js";
+import { assistantService } from "../src/modules/assistant/assistant.service.js";
 
 export const RIYA = "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11";
 export const ARJUN = "8a2d4b6f-1c3e-4d8b-8f32-6b8c4dae1f22";
@@ -421,6 +422,9 @@ export function testApp(
   const life = lifeService(lifeRepo);
   const ai = opts.ai ?? fakeAi();
   const search = opts.search ?? fakeSearch();
+  const parse = parseService(ai, foods, foodsRepo.userExists);
+  const gymParse = gymParseService(ai, exercises, exercisesRepo.userExists);
+  const briefs = briefsService(ai, foodsRepo.userExists);
   const app = createApp({
     logger: pino({ level: "silent" }),
     pingDb: async () => {
@@ -458,16 +462,17 @@ export function testApp(
     foods,
     foodLookup: foodLookupService(ai, search, foodsRepo.userExists, opts.now),
     meals,
-    parse: parseService(ai, foods, foodsRepo.userExists),
+    parse,
     exercises,
     workouts,
     routines,
-    gymParse: gymParseService(ai, exercises, exercisesRepo.userExists),
+    gymParse,
     nearby: nearbyService(ai, search, foodsRepo.userExists, opts.now),
     coach: coachService(ai, foodsRepo.userExists),
-    briefs: briefsService(ai, foodsRepo.userExists),
+    briefs,
     menu: menuService(ai, foodsRepo.userExists),
     aiPlan: aiPlanService(ai, foodsRepo.userExists),
+    assistant: assistantService({ ai, parse, gymParse, briefs, userExists: foodsRepo.userExists }),
     ai,
     search,
     devRoutes: true,

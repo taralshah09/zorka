@@ -11,7 +11,7 @@ const SUPPORT_SIGNALS = [
   /\bwant\s+to\s+die\b/i,
   /\bself[-\s]?harm/i,
   /\b(make|made)\s+myself\s+(throw\s+up|vomit|sick)\b/i,
-  /\bthrow(ing)?\s+up\s+after\s+(eating|meals?)\b/i,
+  /\bthrow(ing)?\s+up\s+after\s+(eating|meals?|breakfast|lunch|dinner|food)\b/i,
   /\bpurg(e|ing)\b/i,
   /\blaxatives?\b/i,
   /\b(starve|starving)\s+myself\b/i,

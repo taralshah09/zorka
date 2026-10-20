@@ -1,0 +1,38 @@
+{
+  "group": "clarify",
+  "about": "A required detail is missing: Zorka asks one short question instead of guessing.",
+  "cases": [
+    {
+      "id": "cl-01",
+      "said": "log my food",
+      "router": { "actions": [{ "kind": "clarify", "question": "What did you eat?", "options": [] }] },
+      "expect": [["clarify", "ask"]]
+    },
+    {
+      "id": "cl-02",
+      "said": "had rice",
+      "at": "16:00",
+      "router": { "actions": [{ "kind": "log_meal", "span": "rice" }] },
+      "meals": { "rice": [{ "name": "rice", "quantity": 1, "unit": "katori", "confidence": 0.9 }] },
+      "expect": [["log_meal", "ask"]],
+      "askHas": "Which meal"
+    },
+    {
+      "id": "cl-03",
+      "said": "had parathas",
+      "at": "09:00",
+      "router": { "actions": [{ "kind": "log_meal", "span": "parathas" }] },
+      "meals": { "parathas": [{ "name": "paratha", "quantity": null, "unit": null, "confidence": 0.85 }] },
+      "expect": [["log_meal", "ask"]],
+      "askHas": "How much"
+    },
+    {
+      "id": "cl-04",
+      "said": "log my workout",
+      "router": { "actions": [{ "kind": "log_workout", "span": "my workout" }] },
+      "gym": { "my workout": [] },
+      "expect": [["log_workout", "ask"]],
+      "askHas": "Which exercises"
+    }
+  ]
+}

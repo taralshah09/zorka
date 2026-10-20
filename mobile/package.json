@@ -1,7 +1,7 @@
 {
   "name": "zorka-mobile",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@maplibre/maplibre-react-native": "^11.5.0",
@@ -59,10 +59,12 @@
     "test:activity": "node scripts/test-activity.cjs",
     "test:pa": "node scripts/test-pa.cjs",
     "test:life": "node scripts/test-life.cjs",
+    "test:assistant": "node scripts/test-assistant.cjs",
     "check:activity-config": "node scripts/check-activity-config.cjs",
     "lint": "expo lint",
     "format": "prettier --write src scripts",
     "gen:icons": "node scripts/gen-icons.mjs",
+    "gen:overlay-tiger": "node scripts/gen-overlay-tiger.mjs",
     "bundle:check": "node scripts/check-bundle.mjs"
   },
   "private": true

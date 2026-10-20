@@ -71,6 +71,19 @@ export function resolveSet(ai: AiGymSet, catalog: readonly ExerciseRecord[], pre
 
 export function gymParseService(ai: AiClient, exercises: ExercisesService, userExists: (id: string) => Promise<boolean>) {
   return {
+    /** AB2 · The assistant's log_workout: words already transcribed → sets. The caller has already checked the user. */
+    async parseText(userId: string, text: string, preferExerciseIds: readonly string[] = []): Promise<{ sets: GymParsedSet[]; ai: GymParseResult["ai"] }> {
+      const catalogP = exercises.candidates(userId);
+      catalogP.catch(() => {});
+      const { value, meta } = await ai.json({ system: GYM_SYSTEM, user: gymUser(text), schema: AiGymParse });
+      const catalog = await catalogP;
+      const prefer = new Set(preferExerciseIds);
+      return {
+        sets: value.sets.map((s) => resolveSet(s, catalog, prefer)),
+        ai: { slot: meta.slot, model: meta.model, attempts: meta.attempts },
+      };
+    },
+
     async parseVoice(
       userId: string,
       audio: { base64: string; mimeType: string },

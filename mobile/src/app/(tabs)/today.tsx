@@ -6,6 +6,7 @@
 // States: loading skeleton, error (offline with no cached profile), not set up yet. P36: a notification tap that
 // cold-started the app is routed here. P39: a streak milestone or all goals hit opens the celebration (S47) once.
 // Welcome back (S48) after 5 days away is the brief's own situation; its action dismisses it. No bell (brand §8).
+import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -30,10 +31,15 @@ import { formatPortion, MEAL_LABEL } from "@/features/food/format";
 import { useEatOptions } from "@/features/gap/eat";
 import { useDayGap } from "@/features/gap/gap";
 import { nextAction } from "@/features/gap/nextAction";
+import { executeNow } from "@/features/assistant/executors";
+import { removePlannedMeal, usePlannedMeals, type PlannedMeal } from "@/features/assistant/plannedMeals";
+import { takeReplanRequest, useReplanVersion } from "@/features/assistant/replan";
+import { DoneForYou } from "@/features/today/DoneForYou";
+import { BubbleOfferCard } from "@/features/assistant/BubbleCards";
 import { lineFacts, situationFor } from "@/features/gap/situation";
 import { useRecordVisit, useWelcomeBack } from "@/features/gap/welcomeBack";
 import { queuedHref, queuedLabel, removeVoice, restoreVoice, useVoiceQueue } from "@/features/log/voiceQueue";
-import { deleteMeal, useDayMeals, type Meal } from "@/features/meals/store";
+import { deleteMeal, saveMeal, useDayMeals, type Meal } from "@/features/meals/store";
 import { consumePendingRoute } from "@/features/nudges/NudgePlanner";
 import { checkinCopy } from "@/features/progress/copy";
 import { useProgress } from "@/features/progress/hooks";
@@ -97,6 +103,33 @@ export default function Today() {
   // D85: the AI re-plans the week once a day, on the first open with a network.
   const replanToday = dayPlan.replan;
   const canPlan = !!dayPlan.input;
+  // AB3: the Assistant Bar changed a day (set_day): re-plan the week with the AI when online.
+  const replanAsked = useReplanVersion((s) => s.v);
+  useEffect(() => {
+    if (userId && canPlan && online && takeReplanRequest(userId)) void replanToday();
+    // replanToday changes identity every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, canPlan, online, replanAsked]);
+  // AB3: meals the user told the bar they will have later. Tapping one on the timeline logs it.
+  const planned = usePlannedMeals(userId, today);
+  const logPlanned = (p: PlannedMeal) => {
+    if (!userId || !p.items.length) return;
+    const meal: Meal = {
+      id: randomUUID(),
+      userId,
+      mealType: p.mealType,
+      loggedAt: new Date().toISOString(),
+      localDate: today,
+      source: "text",
+      oilLevel: null,
+      photoUri: null,
+      items: p.items.map((i) => ({ ...i, id: randomUUID() })),
+      synced: false,
+    };
+    saveMeal(meal);
+    removePlannedMeal(userId, today, p.id);
+    toast({ kind: "success", message: `${MEAL_LABEL[p.mealType]} logged`, onUndo: () => deleteMeal(meal) });
+  };
   useEffect(() => {
     if (userId && canPlan && online && dueForDailyReplan(userId, today)) void replanToday();
     // Once per day; replanToday changes identity every render.
@@ -178,6 +211,8 @@ export default function Today() {
         />
       ) : (
         <>
+          {userId ? <DoneForYou userId={userId} today={today} /> : null}
+
           <TodayHero
             targets={{ kcal: (dayTargets ?? targets).kcal + credit.kcal, proteinG: (dayTargets ?? targets).proteinG, steps: plan ? plan.targets.steps : targets.steps }}
             consumed={consumed}
@@ -213,7 +248,8 @@ export default function Today() {
                   toast({ kind: "success", message: `${MEAL_LABEL[mealType]} saved. You're done for now.`, onUndo: () => { deleteMeal(saved); loggedSuggestions.current.delete(suggestionKey); } });
                   return;
                 }
-                router.push(action.href);
+                if (action.execute) executeNow(action.execute);
+                else router.push(action.href);
               }}
               onAsk={() =>
                 router.navigate({
@@ -297,6 +333,8 @@ export default function Today() {
 
           <DayTimeline
             meals={meals}
+            planned={planned}
+            onLogPlanned={logPlanned}
             now={now}
             nowMinute={minuteOfDay(now)}
             plan={plan}
@@ -313,6 +351,8 @@ export default function Today() {
           />
 
           {plan ? <WeekStrip week={plan.week} today={today} /> : null}
+
+          <BubbleOfferCard />
 
           {userId ? <NudgePromptCard userId={userId} /> : null}
         </>

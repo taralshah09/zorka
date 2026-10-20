@@ -172,8 +172,9 @@ test("Expo Go and older builds report missing Health Connect without loading or 
 test("all migrations apply and only one recording/paused session can exist across profiles", () => {
   store.createActivity("a", "run", 70, false);
   // v10 since P31–P36 (target_eases, coach_messages, nearby_cache), v11 water_logs, v12 coach_messages.actions (UX N1),
-  // v13 voice_queue.kind/text (UX F6), v14 day_briefs, day_plans, memory_facts and menus (life plan).
-  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 14);
+  // v13 voice_queue.kind/text (UX F6), v14 day_briefs, day_plans, memory_facts and menus (life plan), v15
+  // coach_messages.turn (Assistant Bar thread).
+  assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 15);
   assert.throws(() => store.createActivity("b", "walk", 70, false), /Finish/);
   assert.throws(
     () =>

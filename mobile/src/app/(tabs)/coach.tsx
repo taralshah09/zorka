@@ -4,6 +4,9 @@
 // Built from the spec (no Stitch export). The mic in the input is left out: chat is typed (see D63).
 // UX N1: a reply can carry up to two buttons (log this meal, open a screen, start the workout) to act on it in place.
 // UX N2: suggested replies come from the day's situation; Home's brief opens this tab with `about` = its line.
+// AB7 (D89): this is now the Zorka thread, the one conversation with Zorka. Old coach chat stays above; every new
+// message goes through the Assistant Bar's turn (it can act, not only answer), and each turn shows its receipts with
+// Undo for the same day, its approvals and its questions (TurnView). The persona picker stays here.
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from "react-native";
@@ -19,7 +22,10 @@ import { useActivityClock } from "@/features/activity/store";
 import { actionIcon, useCoachAction } from "@/features/coach/actions";
 import { actionResult } from "@/features/coach/actionState";
 import { getMeal, useMealsVersion } from "@/features/meals/store";
-import { dayContext, sendToCoach, useChat } from "@/features/coach/chat";
+import { useChat } from "@/features/coach/chat";
+import { TurnView } from "@/features/assistant/TurnView";
+import { buildSnapshot } from "@/features/assistant/snapshot";
+import { runTurn } from "@/features/assistant/turn";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { coachLine } from "@/features/coach/lines";
 import { PERSONAS } from "@/features/coach/personas";
@@ -32,9 +38,6 @@ import { AppHeader } from "@/features/shell/AppHeader";
 import { formatInt } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
 import { useActiveUser } from "@/features/users/activeUser";
-import { lifeContext } from "@/features/life/context";
-import { useActiveFacts } from "@/features/life/memory";
-import { useDayPlan } from "@/features/life/planner";
 import { localDate } from "@shared/domain/food";
 
 const ACCENT_TEXT = { lime: "primaryText", lilac: "secondaryText", orchid: "tertiaryText" } as const;
@@ -48,11 +51,7 @@ export default function Coach() {
   const { streak, pending } = useProgress(clock);
   const params = useLocalSearchParams<{ about?: string }>();
   const about = params.about?.trim() || null;
-  const runAction = useCoachAction();
-  // LA6: the coach knows today's plan, the week and what Zorka has learned.
   const today = localDate(new Date());
-  const todayPlan = useDayPlan(today, { save: "never" });
-  const facts = useActiveFacts(userId, today);
   const messages = useChat(userId);
   const online = useNetwork((s) => s.online);
   const [text, setText] = useState("");
@@ -68,34 +67,35 @@ export default function Coach() {
     return () => clearTimeout(t);
   }, [messages.length, typing, error]);
 
+  // One door (D89): what's typed here runs as an Assistant Bar turn, so Zorka can do it, not only answer it.
+  const [lastSent, setLastSent] = useState<string | null>(null);
   const send = async (body: string, retry = false) => {
-    if (!userId || !coach || !dg || typing || (!retry && !body.trim())) return;
+    const words = retry ? lastSent : body.trim();
+    const snapshot = userId ? buildSnapshot(userId) : null;
+    if (!userId || !coach || !snapshot || typing || !words) return;
     setError(null);
     setTyping(true);
     if (!retry) setText("");
+    setLastSent(words);
     // The brief's context is used once; after that the chips follow the day again.
     if (about) router.setParams({ about: undefined });
     try {
-      const context = { ...dayContext(dg, profile.data, streak), ...lifeContext(todayPlan.plan, facts.texts, today) };
-      await sendToCoach(userId, coach, body, context, { retry });
-    } catch (e) {
-      const d = describeError(e);
-      setError(
-        d.title === "Can't reach Zorka"
-          ? "You're offline. Your message is saved; retry when you're back."
-          : "Coach is offline right now.",
-      );
+      const out = await runTurn(snapshot, { text: words }, online);
+      if (out.kind === "queued") setError("You're offline. Saved; I'll do it when you're back.");
+      if (out.kind === "error") setError(`${out.error.title}. ${out.error.body}`);
     } finally {
       setTyping(false);
     }
   };
-  const lastIsUser = messages.length > 0 && messages[messages.length - 1]!.role === "user";
+  const lastIsUser = !!error && !!lastSent;
+  // Old coach buttons now say their meal to Zorka as a turn (AB7).
+  const runAction = useCoachAction((words) => void send(words));
 
   if (!coach || !persona || !dg) {
     // P41: loading and "offline with no cached profile" aren't "no plan yet".
     if (profile.isPending || (profile.isError && !profile.data))
       return (
-        <Screen withDock header={<AppHeader eyebrow="Coach" />}>
+        <Screen withDock header={<AppHeader eyebrow="Zorka" />}>
           <NetworkBanner />
           {profile.isPending ? (
             <>
@@ -112,7 +112,7 @@ export default function Coach() {
         </Screen>
       );
     return (
-      <Screen withDock header={<AppHeader eyebrow="Coach" />}>
+      <Screen withDock header={<AppHeader eyebrow="Zorka" />}>
         <EmptyState
           icon="forum"
           title="Set up your plan first"
@@ -135,7 +135,7 @@ export default function Coach() {
   });
 
   return (
-    <Screen withDock scroll={false} header={<AppHeader eyebrow="Coach" />}>
+    <Screen withDock scroll={false} header={<AppHeader eyebrow="Zorka" />}>
       <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <NetworkBanner />
         <View style={styles.coachRow}>
@@ -182,19 +182,23 @@ export default function Coach() {
         >
           {!messages.length ? <Bubble role="coach" text={greeting} accent={persona.accent} /> : null}
           {messages.map((m) => (
-            <Bubble
-              key={m.id}
-              role={m.role}
-              text={m.text}
-              accent={PERSONAS[m.coach].accent}
-              actions={m.actions}
-              onAction={(a, index) => runAction(a, `${m.id}:${index}`)}
-              messageId={m.id}
-            />
+            <View key={m.id} style={styles.message}>
+              <Bubble
+                role={m.role}
+                text={m.text}
+                accent={PERSONAS[m.coach].accent}
+                actions={m.actions}
+                onAction={(a, index) => runAction(a, `${m.id}:${index}`)}
+                messageId={m.id}
+              />
+              {m.turn && m.turn.items.length ? (
+                <TurnView messageId={m.id} turn={m.turn} today={today} onSay={(t) => void send(t)} />
+              ) : null}
+            </View>
           ))}
           {typing ? (
             <Text variant="caption" color={ACCENT_TEXT[persona.accent]} accessibilityLiveRegion="polite">
-              {`${persona.name} is typing…`}
+              {"Zorka is working on it…"}
             </Text>
           ) : null}
           {error ? (
@@ -229,7 +233,7 @@ export default function Coach() {
           keyboardShouldPersistTaps="handled"
         >
           {suggestions.map((s) => (
-            <Chip key={s.label} label={s.label} onPress={() => void send(s.text)} disabled={typing || !online} />
+            <Chip key={s.label} label={s.label} onPress={() => void send(s.text)} disabled={typing} />
           ))}
         </ScrollView>
 
@@ -242,7 +246,7 @@ export default function Coach() {
           <TextInput
             value={text}
             onChangeText={setText}
-            placeholder={`Message ${persona.name}`}
+            placeholder={`Tell Zorka or ask ${persona.name}`}
             placeholderTextColor={colors.textTertiary}
             style={[
               styles.input,
@@ -261,7 +265,7 @@ export default function Coach() {
             accessibilityLabel="Send"
             variant="filled"
             onPress={() => void send(text)}
-            disabled={typing || !text.trim() || !online}
+            disabled={typing || !text.trim()}
           />
         </View>
       </KeyboardAvoidingView>
@@ -343,6 +347,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   messages: { gap: 12, paddingVertical: 4 },
+  message: { gap: 8 },
   bubble: { maxWidth: "85%", paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1 },
   error: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
   // A horizontal ScrollView stretches vertically in a flex column on Android unless told not to grow.

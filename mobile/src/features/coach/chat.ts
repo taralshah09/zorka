@@ -1,5 +1,7 @@
 // P35 · Coach chat on the phone (D58/D60). History is phone only: the last 50 messages per profile in SQLite. The
 // server gets the last 20 messages and today's numbers; it answers in the persona's voice or with a fixed safety reply.
+// AB7 (D89): this is now the Zorka thread. Assistant Bar turns are written here too, a reply carrying its turn (what
+// ran, its receipts and Undo); old coach messages stay as they were.
 import { randomUUID } from "expo-crypto";
 import { useMemo } from "react";
 import { create } from "zustand";
@@ -7,6 +9,7 @@ import { create } from "zustand";
 import { api } from "@/core/api/client";
 import type { CoachAction, CoachChatResult, CoachDayContext, CoachId, Profile } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
+import type { StoredTurn } from "@/features/assistant/types";
 import type { DayGap } from "@/features/gap/gap";
 import type { Streak } from "@shared/domain/streak";
 
@@ -21,6 +24,8 @@ export type ChatMessage = {
   createdAt: string;
   /** UX N1 · Buttons under a coach reply. */
   actions: CoachAction[];
+  /** AB4 · The Assistant Bar turn this reply answered (null for coach chat). */
+  turn: StoredTurn | null;
 };
 
 export const useChatVersion = create<{ v: number }>(() => ({ v: 0 }));
@@ -33,7 +38,18 @@ type Row = {
   coach: CoachId;
   created_at: string;
   actions: string | null;
+  turn: string | null;
 };
+
+function parseTurn(raw: string | null): StoredTurn | null {
+  if (!raw) return null;
+  try {
+    const t = JSON.parse(raw) as StoredTurn;
+    return t?.v === 1 ? t : null;
+  } catch {
+    return null;
+  }
+}
 
 function parseActions(raw: string | null): CoachAction[] {
   if (!raw) return [];
@@ -48,7 +64,9 @@ function parseActions(raw: string | null): CoachAction[] {
 export function chatMessages(userId: string): ChatMessage[] {
   return getDb()
     .getAllSync<Row>(
-      `SELECT * FROM (SELECT * FROM coach_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at`,
+      // Row order breaks ties: an Assistant Bar turn saves its two messages within the same millisecond.
+      `SELECT * FROM (SELECT *, rowid AS seq FROM coach_messages WHERE user_id = ? ORDER BY created_at DESC, seq DESC LIMIT ?)
+        ORDER BY created_at, seq`,
       userId,
       KEEP_MESSAGES,
     )
@@ -59,30 +77,48 @@ export function chatMessages(userId: string): ChatMessage[] {
       coach: r.coach,
       createdAt: r.created_at,
       actions: parseActions(r.actions),
+      turn: parseTurn(r.turn),
     }));
 }
 
-function add(userId: string, role: ChatMessage["role"], text: string, coach: CoachId, actions: CoachAction[] = []) {
+/** Adds a message (and trims the thread to KEEP_MESSAGES). Returns its id. */
+export function addMessage(
+  userId: string,
+  role: ChatMessage["role"],
+  text: string,
+  coach: CoachId,
+  extra: { actions?: CoachAction[]; turn?: StoredTurn | null } = {},
+): string {
   const db = getDb();
+  const id = randomUUID();
+  const actions = extra.actions ?? [];
   db.withTransactionSync(() => {
     db.runSync(
-      `INSERT INTO coach_messages (id, user_id, role, text, coach, created_at, actions) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      randomUUID(),
+      `INSERT INTO coach_messages (id, user_id, role, text, coach, created_at, actions, turn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
       userId,
       role,
       text,
       coach,
       new Date().toISOString(),
       actions.length ? JSON.stringify(actions) : null,
+      extra.turn ? JSON.stringify(extra.turn) : null,
     );
     db.runSync(
       `DELETE FROM coach_messages WHERE user_id = ? AND id NOT IN
-         (SELECT id FROM coach_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?)`,
+         (SELECT id FROM coach_messages WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?)`,
       userId,
       userId,
       KEEP_MESSAGES,
     );
   });
+  bump();
+  return id;
+}
+
+/** AB4 · Saves a turn's new state (an approval ran, an item was undone, a chip was changed). */
+export function updateTurn(messageId: string, turn: StoredTurn) {
+  getDb().runSync(`UPDATE coach_messages SET turn = ? WHERE id = ?`, JSON.stringify(turn), messageId);
   bump();
 }
 
@@ -143,7 +179,7 @@ export async function sendToCoach(
   context: CoachDayContext,
   opts: { retry?: boolean } = {},
 ): Promise<CoachChatResult> {
-  if (!opts.retry) add(userId, "user", text.trim(), coach);
+  if (!opts.retry) addMessage(userId, "user", text.trim(), coach);
   const history = chatMessages(userId)
     .slice(-SEND_MESSAGES)
     .map((m) => ({ role: m.role, text: m.text.slice(0, 1000) }));
@@ -154,6 +190,6 @@ export async function sendToCoach(
     body: { coach, messages: history, context },
     timeoutMs: 30_000,
   });
-  add(userId, "coach", result.reply, coach, result.actions ?? []);
+  addMessage(userId, "coach", result.reply, coach, { actions: result.actions ?? [] });
   return result;
 }

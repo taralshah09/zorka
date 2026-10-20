@@ -3,6 +3,7 @@
 // (P06), sync status (P07). UX O5: goal, target weight, diet, activity, water and steps each have their own row, so
 // a change doesn't mean redoing setup; the goal row opens the phase editor's "Change goal" (UX N3).
 import { router } from "expo-router";
+import { BubbleSettingsRow } from "@/features/assistant/BubbleCards";
 import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -247,6 +248,10 @@ export default function Settings() {
             }
           />
         </Card>
+      </Section>
+
+      <Section title="Zorka bubble">
+        <BubbleSettingsRow />
       </Section>
 
       <Section title="Coach & nudges">

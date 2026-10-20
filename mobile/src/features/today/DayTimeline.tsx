@@ -3,6 +3,7 @@
 // says why the day looks the way it does (a moved target, an assumed day, the protein step-up), never a wall of
 // captions. Without a plan it's the logged meals and the meal that's due. Planned items open the flows that exist: a
 // meal opens the log sheet (or the menu scan when eating out), a workout the prepared session, a walk the recorder.
+// AB3: a meal the user told the Assistant Bar they will have ("paneer for dinner") takes its slot; tapping it logs it.
 import { router, type Href } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -14,7 +15,8 @@ import { ADJUST_CODES, adjustLines, DAY_TYPE_LABEL, itemTime, itemTitle, stepUpL
 import { mealTotals, type Meal } from "@/features/meals/store";
 import { formatInt } from "@/features/targets/format";
 import { mealTypeForTime } from "@shared/domain/food";
-import type { DayPlan, PlanItem } from "@shared/domain/planDay";
+import { SLOT_MINUTE, type DayPlan, type PlanItem } from "@shared/domain/planDay";
+import type { PlannedMeal } from "@/features/assistant/plannedMeals";
 import { AddToMealButton } from "./AddToMeal";
 
 const ICON: Record<PlanItem["kind"], IconName> = {
@@ -37,7 +39,11 @@ function hrefFor(item: PlanItem): Href | null {
   }
 }
 
-type Row = { at: number; key: string } & ({ kind: "logged"; meal: Meal } | { kind: "planned"; item: PlanItem; past: boolean });
+type Row = { at: number; key: string } & (
+  | { kind: "logged"; meal: Meal }
+  | { kind: "planned"; item: PlanItem; past: boolean }
+  | { kind: "told"; meal: PlannedMeal }
+);
 
 const minuteOf = (iso: string) => {
   const d = new Date(iso);
@@ -66,8 +72,13 @@ export function DayTimeline({
   eatenProteinG,
   onReplan,
   replanning,
+  planned = [],
+  onLogPlanned,
 }: {
   meals: readonly Meal[];
+  /** AB3: meals the user said they will have (Assistant Bar `plan_meal`). */
+  planned?: readonly PlannedMeal[];
+  onLogPlanned?: (meal: PlannedMeal) => void;
   now: Date;
   nowMinute: number;
   plan: DayPlan | null;
@@ -80,10 +91,13 @@ export function DayTimeline({
   const { colors, radius } = useTheme();
   const logged = new Set(meals.map((m) => m.mealType));
   const rows: Row[] = meals.map((m) => ({ kind: "logged", meal: m, at: minuteOf(m.loggedAt), key: `m:${m.id}` }));
+  const told = planned.filter((p) => !logged.has(p.mealType));
+  for (const p of told) rows.push({ kind: "told", meal: p, at: SLOT_MINUTE[p.mealType], key: `t:${p.id}` });
+  const toldSlots = new Set(told.map((p) => p.mealType));
   if (plan) {
     plan.items.forEach((item, i) => {
       if (item.kind === "prep" && item.dayOffset === -1) return;
-      if (item.kind === "meal" && logged.has(item.slot)) return;
+      if (item.kind === "meal" && (logged.has(item.slot) || toldSlots.has(item.slot))) return;
       // Past walks, workouts and prep are gone; a past meal stays so it can still be logged.
       const past = item.at < nowMinute - 15;
       if (past && item.kind !== "meal") return;
@@ -91,7 +105,7 @@ export function DayTimeline({
     });
   } else {
     const due = mealTypeForTime(now);
-    if (!logged.has(due))
+    if (!logged.has(due) && !toldSlots.has(due))
       rows.push({ kind: "planned", item: { kind: "meal", slot: due, at: nowMinute, title: "", access: "unknown", options: [], usual: false }, past: false, at: nowMinute, key: "due" });
   }
   rows.sort((a, b) => a.at - b.at);
@@ -143,6 +157,32 @@ export function DayTimeline({
                   {`${formatInt(totals.kcal)} kcal`}
                 </Text>
                 <AddToMealButton meal={r.meal} />
+              </PressableScale>
+            );
+          }
+          if (r.kind === "told") {
+            const kcal = r.meal.items.reduce((sum, i) => sum + i.kcal, 0);
+            return (
+              <PressableScale
+                key={r.key}
+                onPress={onLogPlanned ? () => onLogPlanned(r.meal) : undefined}
+                disabled={!onLogPlanned || !r.meal.items.length}
+                accessibilityRole="button"
+                accessibilityLabel={`${MEAL_LABEL[r.meal.mealType]} planned: ${r.meal.text}. Tap to log it.`}
+                style={styles.row}
+              >
+                <View style={[styles.mark, { borderColor: colors.secondary, borderWidth: 1.5, borderRadius: radius.full }]}>
+                  <Icon name="restaurant" size={16} color={colors.secondaryText} />
+                </View>
+                <View style={styles.flex}>
+                  <Text variant="label" numberOfLines={2}>
+                    {`${MEAL_LABEL[r.meal.mealType]}: ${r.meal.text}`}
+                  </Text>
+                  <Text variant="caption" color="textTertiary">
+                    {`You planned this · ${formatInt(kcal)} kcal · tap to log`}
+                  </Text>
+                </View>
+                <Icon name="add" size={20} color={colors.textTertiary} />
               </PressableScale>
             );
           }
