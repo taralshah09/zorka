@@ -5,6 +5,7 @@
 import { randomUUID } from "expo-crypto";
 import { useMemo } from "react";
 import { create } from "zustand";
+import { completeUsefulAction } from "@/features/nudges/events";
 
 import type { Exercise } from "@/core/api/types";
 import { getDb } from "@/core/storage/db";
@@ -478,7 +479,9 @@ export function finishWorkout(id: string, at = new Date()): Workout | null {
   bump();
   if (empty) return null;
   notifyLocalWrite();
-  return getWorkout(id);
+  const completed = getWorkout(id);
+  if (completed) completeUsefulAction(completed.userId, "workout");
+  return completed;
 }
 
 /** What the server stores (backend/src/modules/workouts/workouts.schemas.ts). */

@@ -9,7 +9,10 @@ import { StyleSheet, View } from "react-native";
 import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { BottomSheet, Button, PressableScale, reactMascot, Text, useToast } from "@/core/ui";
-import { formatKcal, MEAL_LABEL } from "@/features/food/format";
+import { formatKcal, formatPortion, MEAL_LABEL } from "@/features/food/format";
+import { draftActions } from "@/features/log/draft";
+import { getFood } from "@/features/food/catalog";
+import { preferencesFor, usePreferencesVersion } from "@/features/meals/preferences";
 import { mealTypeParam } from "@/features/log/nav";
 import { startWorkout } from "@/features/gym/store";
 import {
@@ -21,7 +24,7 @@ import {
   useRecentMeals,
   type Meal,
 } from "@/features/meals/store";
-import { logUsual, useUsualMeals, type UsualMeal } from "@/features/meals/usual";
+import { logUsual, rankedUsuals, useUsualMeals, type UsualMeal } from "@/features/meals/usual";
 import { formatDayLong } from "@/features/targets/format";
 import { dateOf, logTime, useViewedDay } from "@/features/today/selectedDay";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -50,6 +53,8 @@ export default function QuickLog() {
   const toast = useToast();
   const params = useLocalSearchParams<{ mealType?: string }>();
   const userId = useActiveUser((s) => s.userId);
+  usePreferencesVersion((s) => s.v);
+  const preferred = preferencesFor(userId).capture;
   // Opened from a meal slot ("Log lunch"): everything logs as that meal. Otherwise a repeat keeps its own type.
   const slot = mealTypeParam(params);
   const mealType = slot ?? mealTypeForTime(new Date());
@@ -66,11 +71,11 @@ export default function QuickLog() {
     seen.add(a.key);
     again.push(a);
   };
-  usuals.forEach((u) =>
+  rankedUsuals(usuals, mealType).forEach((u) =>
     push({ key: mealKey(u), items: u.items, mealType: u.mealType, when: "Your usual", usual: u, meal: null }),
   );
   // On a past day, skip meals logged after it.
-  [last, ...recent].forEach((m) => {
+  [last, ...recent.filter((m) => m.mealType === mealType), ...recent].forEach((m) => {
     if (m && m.localDate <= day)
       push({
         key: mealKey(m),
@@ -132,6 +137,7 @@ export default function QuickLog() {
       onClose={() => router.back()}
       title={isToday ? "Quick log" : `Log to ${formatDayLong(dateOf(day))}`}
     >
+      {preferred && preferred !== "voice" ? <Button label={`Use preferred ${preferred}`} variant="secondary" onPress={() => router.replace({ pathname: preferred === "type" ? "/log/type" : preferred === "photo" ? "/log/photo" : "/log/search", params: { mealType } })} /> : null}
       <View style={styles.micWrap}>
         <PressableScale
           onPress={() => router.replace({ pathname: "/log/voice", params: { mealType, autostart: "1" } })}
@@ -181,6 +187,13 @@ export default function QuickLog() {
             <Text variant="caption" color="textSecondary" numberOfLines={1}>
               {`${MEAL_LABEL[slot ?? a.mealType]} · ${a.when} · ${formatKcal(mealTotals(a).kcal)}`}
             </Text>
+            <Text variant="caption" color="textSecondary">{a.items.map((i) => `${formatPortion(i.quantity, i.unit)} ${i.name}`).join(" + ")}</Text>
+            <Button label="Change portion" variant="ghost" size="sm" onPress={() => {
+              if (!userId) return;
+              draftActions.startFromMeal({ ...(a.meal ?? { id: "", userId, source: "repeat", oilLevel: null, photoUri: null, synced: false, localDate: day }), items: a.items, mealType: slot ?? a.mealType, loggedAt: logTime().toISOString() } as Meal, (id) => getFood(userId, id));
+              draftActions.makeNew();
+              router.replace("/log/confirm");
+            }} />
           </View>
           <Button
             label="Log"
@@ -190,9 +203,11 @@ export default function QuickLog() {
           />
         </View>
       ))}
+      <Button label="More meals · manage usuals" variant="ghost" onPress={() => router.push("/log/usuals")} />
     </BottomSheet>
   );
 }
+
 
 function EntryRow({ entries }: { entries: readonly Entry[] }) {
   const { colors, radius } = useTheme();

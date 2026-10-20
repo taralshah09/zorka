@@ -2,6 +2,10 @@
 // text (P15), voice (P16), photo (P17), and editing a saved meal (S21) — and S16 saves it.
 import { randomUUID } from "expo-crypto";
 import { create } from "zustand";
+import { kv } from "@/core/storage/kv";
+import { useActiveUser } from "@/features/users/activeUser";
+import { getDb } from "@/core/storage/db";
+import { completeAction } from "@/features/coach/actionState";
 
 import type { FollowUp, Food, ParseResult, UncertainReason } from "@/core/api/types";
 import { nutritionOf } from "@/features/food/catalog";
@@ -39,6 +43,11 @@ export type DraftItem = {
 };
 
 export type Draft = {
+  userId: string | null;
+  resultId: string;
+  captureId: string | null;
+  resumeChosen?: boolean;
+  actionKey?: string;
   /** Set when editing a saved meal (S21 → Edit). */
   mealId: string | null;
   mealType: MealType;
@@ -56,7 +65,23 @@ export type Draft = {
 };
 
 type DraftState = { draft: Draft | null };
-export const useDraft = create<DraftState>(() => ({ draft: null }));
+const draftKey = (userId: string) => `zorka.mealDraft.${userId}`;
+const captureKey = (userId: string, id: string) => `zorka.captureDraft.${userId}.${id}`;
+function readDraft(key: string): Draft | null {
+  try { return JSON.parse(kv.get(key) ?? "null") as Draft | null; } catch { return null; }
+}
+const initialUser = useActiveUser.getState().userId;
+export const useDraft = create<DraftState>(() => ({ draft: initialUser ? readDraft(draftKey(initialUser)) : null }));
+useDraft.subscribe(({ draft }) => {
+  if (!draft?.userId) return;
+  kv.set(draftKey(draft.userId), JSON.stringify(draft));
+  if (draft.captureId) kv.set(captureKey(draft.userId, draft.captureId), JSON.stringify(draft));
+});
+useActiveUser.subscribe((state, prev) => {
+  if (state.userId === prev.userId) return;
+  useDraft.setState({ draft: state.userId ? readDraft(draftKey(state.userId)) : null });
+  baseline = useDraft.getState().draft ? fingerprint(useDraft.getState().draft!) : null;
+});
 
 /** What the user can change on the confirm sheet; two equal fingerprints mean nothing was changed. */
 const fingerprint = (d: Draft) =>
@@ -98,6 +123,9 @@ const itemFromFood = (food: Food, quantity: number, unit: FoodUnit): DraftItem =
 function base(mealType: MealType | undefined, source: MealSource): Draft {
   const now = logTime();
   return {
+    userId: useActiveUser.getState().userId,
+    resultId: randomUUID(),
+    captureId: null,
     mealId: null,
     mealType: mealType ?? mealTypeForTime(now),
     source,
@@ -113,11 +141,21 @@ function base(mealType: MealType | undefined, source: MealSource): Draft {
 }
 
 export const draftActions = {
+  chooseResume: () => set((d) => ({ ...d, resumeChosen: true })),
+  makeNew: () => set((d) => ({ ...d, mealId: null, resultId: randomUUID(), source: "repeat" })),
   startWithFood(food: Food, quantity: number, unit: FoodUnit, mealType?: MealType) {
     start({ ...base(mealType, "search"), items: [itemFromFood(food, quantity, unit)] });
   },
 
-  startFromParse(result: ParseResult, opts: { mealType?: MealType; photoUri?: string | null; clientMs?: number }) {
+  resumeCapture(userId: string, captureId: string): boolean {
+    if (useActiveUser.getState().userId !== userId) return false;
+    const draft = readDraft(captureKey(userId, captureId));
+    if (!draft) return false;
+    start(draft);
+    return true;
+  },
+  startFromParse(result: ParseResult, opts: { mealType?: MealType; photoUri?: string | null; clientMs?: number; loggedAt?: string; captureId?: string; userId?: string; actionKey?: string }) {
+    if (opts.userId && opts.userId !== useActiveUser.getState().userId) return;
     const items: DraftItem[] = result.items.map((i) => ({
       key: randomUUID(),
       query: i.query,
@@ -129,6 +167,10 @@ export const draftActions = {
     }));
     start({
       ...base(opts.mealType, result.source),
+      ...(opts.loggedAt ? { loggedAt: opts.loggedAt } : {}),
+      captureId: opts.captureId ?? null,
+      ...(opts.actionKey ? { actionKey: opts.actionKey } : {}),
+      ...(opts.captureId ? { resultId: opts.captureId } : {}),
       items,
       autoAdd: result.source === "voice" ? items.filter((i) => !i.food).map((i) => i.key) : [],
       followUp: result.followUp ? { ...result.followUp, answered: null } : null,
@@ -162,7 +204,15 @@ export const draftActions = {
     });
   },
 
-  clear: () => useDraft.setState({ draft: null }),
+  clear: () => {
+    const d = useDraft.getState().draft;
+    if (d?.userId) kv.remove(draftKey(d.userId));
+    useDraft.setState({ draft: null });
+  },
+  setLoggedAt: (loggedAt: string) => {
+    if (!Number.isFinite(Date.parse(loggedAt))) return;
+    set((d) => ({ ...d, loggedAt }));
+  },
   /**
    * UX L5: fills an unmatched voice item with the web's estimate (marked "estimate", still to check). The app did
    * this, not the user, so it doesn't count as a change for "Discard changes?".
@@ -218,7 +268,11 @@ export const draftActions = {
         if (i.key !== key) return i;
         const reasons = i.reasons.filter((r) => r !== "vague_quantity");
         const settled = i.uncertain && !i.estimate && reasons.length === 0;
-        return { ...i, quantity, reasons, uncertain: settled ? false : i.uncertain };
+        const ratio = i.quantity > 0 ? quantity / i.quantity : 1;
+        const snapshot = i.snapshot ? { ...i.snapshot, quantity,
+          grams: i.snapshot.grams * ratio, kcal: i.snapshot.kcal * ratio,
+          proteinG: i.snapshot.proteinG * ratio, carbsG: i.snapshot.carbsG * ratio, fatG: i.snapshot.fatG * ratio } : undefined;
+        return { ...i, ...(snapshot ? { snapshot } : {}), quantity, reasons, uncertain: settled ? false : i.uncertain };
       }),
     })),
 
@@ -295,7 +349,8 @@ export const needsCheck = (d: Draft, promptOn: boolean): boolean =>
 export function saveDraft(userId: string, promptOn: boolean): string {
   const d = useDraft.getState().draft;
   if (!d) throw new Error("Nothing to save");
-  const id = d.mealId ?? randomUUID();
+  if (d.userId !== userId) throw new Error("This draft belongs to another profile");
+  const id = d.mealId ?? d.resultId;
   const loggedAt = new Date(d.loggedAt);
   const items: MealItem[] = d.items
     .filter((i) => i.food || i.snapshot)
@@ -331,5 +386,11 @@ export function saveDraft(userId: string, promptOn: boolean): string {
     photoUri: d.photoUri,
     items,
   });
+  if (d.captureId) {
+    // Meal is durable before the capture leaves the queue. Keep source files for recoverable edits/Undo.
+    getDb().runSync(`DELETE FROM voice_queue WHERE id = ? AND user_id = ?`, d.captureId, userId);
+    kv.remove(captureKey(userId, d.captureId));
+  }
+  if (d.actionKey) completeAction(userId, d.actionKey, { kind: "meal", id });
   return id;
 }

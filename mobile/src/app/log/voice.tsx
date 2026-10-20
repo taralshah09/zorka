@@ -24,7 +24,7 @@ import { draftActions } from "@/features/log/draft";
 import { HoldToTalk } from "@/features/log/HoldToTalk";
 import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parseVoice, VOICE_MIME, VOICE_RECORDING } from "@/features/log/parse";
-import { queueVoice, removeVoice, useVoiceQueue, type VoiceNote } from "@/features/log/voiceQueue";
+import { queueVoice, useVoiceQueue, type VoiceNote } from "@/features/log/voiceQueue";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
@@ -73,20 +73,20 @@ export default function VoiceCapture() {
     async (uri: string, note?: VoiceNote) => {
       if (!userId) return;
       setPhase("reading");
+      if (note && draftActions.resumeCapture(userId, note.id)) { finish("replace"); return; }
+      const capture = note ?? queueVoice(userId, uri, VOICE_MIME, elapsedMs, mealType);
       try {
-        const { result, clientMs } = await parseVoice(userId, uri);
-        if (note) removeVoice(note);
-        else deleteFile(uri);
+        const { result, clientMs } = await parseVoice(userId, capture.uri);
+        if (useActiveUser.getState().userId !== userId) return;
         if (!result.items.length) {
           setPhase("no_speech");
           return;
         }
-        draftActions.startFromParse(result, { mealType: note?.mealType ?? mealType, clientMs });
+        draftActions.startFromParse(result, { mealType: capture.mealType, clientMs, loggedAt: capture.createdAt, captureId: capture.id, userId });
         finish("replace");
       } catch (e) {
         // Lost the connection mid-way: keep the note for later instead of losing it.
         if (!note && e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) {
-          queueVoice(userId, uri, VOICE_MIME, elapsedMs, mealType);
           deleteFile(uri);
           setPhase("queued");
           return;

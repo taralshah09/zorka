@@ -23,7 +23,7 @@ import {
   type Targets,
 } from "@shared/domain/targets";
 import { phaseOn, type Phase } from "./phases";
-import { dayIntake } from "./queries";
+import { completeIntake } from "./queries";
 
 export type CheckinStatus = "accepted" | "kept" | "skipped";
 
@@ -216,12 +216,12 @@ export function pendingCheckin(input: {
 
   const result = weeklyCheckin({
     goal: phase?.goal ?? profile.goal ?? "maintain",
-    loggedKcal: dayIntake(userId, window.start, window.end)
+    loggedKcal: completeIntake(userId, window.start, window.end)
       .filter((d) => d.kcal > 0)
       .map((d) => d.kcal),
     trendStartKg,
     trendEndKg,
-    weighedInWeek: inWeek.length > 0,
+    weighedInWeek: inWeek.length > 0 && !!lastBefore && lastBefore.date >= addDays(window.start, -7),
     currentKcal: current.kcal,
     floorKcal: base.floorKcal,
     adjustmentKcal: plan.adjustmentKcal,

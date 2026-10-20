@@ -44,3 +44,7 @@ docs
 design_ref
 .playwright-mcp
 .temp
+
+# Local session documentation index
+/session_docs.html
+PROJECT_VIDEO.html

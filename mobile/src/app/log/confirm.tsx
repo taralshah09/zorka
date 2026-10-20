@@ -12,7 +12,7 @@ import { Image, StyleSheet, View } from "react-native";
 import { Icon } from "@/core/icons/Icon";
 import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
-import { Badge, Button, Dialog, EmptyState, Header, reactMascot, Screen, Text, useToast } from "@/core/ui";
+import { Badge, Button, Dialog, EmptyState, Header, reactMascot, Screen, Text, TextField, useToast } from "@/core/ui";
 import { FollowUpCard, FoodItemRow, MacroTotals, MealTypeSelector, OilGheePrompt } from "@/features/food/components";
 import { formatKcal, formatPortion, MEAL_LABEL, stepQuantity } from "@/features/food/format";
 import {
@@ -54,7 +54,6 @@ export default function ConfirmSheet() {
       navigation.addListener("beforeRemove", (e) => {
         if (leaving.current) return;
         if (!isDraftDirty()) {
-          draftActions.clear();
           return;
         }
         e.preventDefault();
@@ -128,7 +127,9 @@ export default function ConfirmSheet() {
     setPendingLeave(null);
     leaving.current = true;
     go?.();
+    const previous = draft;
     draftActions.clear();
+    toast({ kind: "info", message: "Draft dismissed", onUndo: () => { useDraft.setState({ draft: previous }); } });
   };
 
   const saveHint =
@@ -162,6 +163,7 @@ export default function ConfirmSheet() {
           ) : null}
         </View>
         <MealTypeSelector value={draft.mealType} onChange={draftActions.setMealType} />
+        <MealDateField key={draft.resultId} at={at} />
       </View>
 
       {draft.photoUri ? (
@@ -200,7 +202,7 @@ export default function ConfirmSheet() {
         const name = item.food?.name ?? item.snapshot?.name ?? item.query;
         const lookingUp = looking.has(item.key);
         const step = (dir: 1 | -1) => {
-          const q = item.food ? stepQuantity(item.quantity, item.unit, dir) : null;
+          const q = item.food || item.snapshot ? stepQuantity(item.quantity, item.unit, dir) : null;
           return q === null ? null : () => draftActions.setQuantity(item.key, q);
         };
         return (
@@ -225,7 +227,7 @@ export default function ConfirmSheet() {
             }
             onPress={() => openItem(item)}
             onRemove={() => removeItem(item, name)}
-            onStep={item.food ? { down: step(-1), up: step(1) } : undefined}
+            onStep={item.food || item.snapshot ? { down: step(-1), up: step(1) } : undefined}
           />
         );
       })}
@@ -271,6 +273,16 @@ export default function ConfirmSheet() {
       />
     </Screen>
   );
+}
+
+function MealDateField({ at }: { at: Date }) {
+  const [value, setValue] = useState(localDate(at));
+  return <TextField label="Meal date (YYYY-MM-DD)" value={value} onChangeText={setValue} onBlur={() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) { setValue(localDate(at)); return; }
+    const next = new Date(`${value}T${at.toTimeString().slice(0, 8)}`);
+    if (Number.isFinite(next.getTime()) && localDate(next) === value) draftActions.setLoggedAt(next.toISOString());
+    else setValue(localDate(at));
+  }} />;
 }
 
 const styles = StyleSheet.create({

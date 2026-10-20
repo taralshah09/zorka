@@ -59,9 +59,9 @@ function ToastView({ toast, onDone }: { toast: ToastState; onDone: () => void })
     Animated.timing(anim, { toValue: 1, duration: motion.sheet, useNativeDriver: true }).start();
     const t = setTimeout(() => {
       Animated.timing(anim, { toValue: 0, duration: motion.sheet, useNativeDriver: true }).start(onDone);
-    }, 3500);
+    }, toast.onUndo || toast.action ? 10000 : 3500);
     return () => clearTimeout(t);
-  }, [anim, motion.sheet, onDone]);
+  }, [anim, motion.sheet, onDone, toast.onUndo, toast.action]);
 
   const kind = toast.kind ?? "success";
   const icon = kind === "success" ? "check_circle" : kind === "error" ? "error" : "info";

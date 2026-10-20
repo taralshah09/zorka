@@ -6,25 +6,22 @@
 // UX F12: nudges are on by default, so the S49 explainer asks for the notification permission once, at the end.
 import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { ApiError, describeError } from "@/core/api/client";
 import type { ProfileUpdate } from "@/core/api/types";
 import { Icon } from "@/core/icons/Icon";
 import { useNetwork } from "@/core/network/network";
 import { useTheme } from "@/core/theme";
-import { BottomSheet, Button, Card, ListItem, NumberStepper, StatTile, Text, useToast } from "@/core/ui";
-import { healthStatus, installHealth, requestSteps, type HealthState } from "@/features/activity/health";
+import { Button, Card, ListItem, NumberStepper, StatTile, Text, useToast } from "@/core/ui";
 import { burstOnce } from "@/features/celebrate/ConfettiBurst";
 import { CoachLine } from "@/features/coach/CoachLine";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { PERSONAS } from "@/features/coach/personas";
-import { requestNotifAccess, useNotifAccess, useNudgeSettings } from "@/features/nudges/settings";
 import { ACTIVITY_LABEL, PACE_LABEL } from "@/features/onboarding/copy";
 import { clearSavedDraft, draftCoach, draftStepGoal, draftTargetInput, useDraft } from "@/features/onboarding/draft";
 import { OnboardingStep } from "@/features/onboarding/OnboardingStep";
-import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { formatInt, formatKg, formatShortDate, formatThousands, formatWeeklyKg } from "@/features/targets/format";
 import { StepGoalField } from "@/features/targets/StepGoalField";
 import { useActiveUser } from "@/features/users/activeUser";
@@ -48,13 +45,10 @@ export default function PlanStep() {
   const queryClient = useQueryClient();
   const online = useNetwork((s) => s.online);
   const toast = useToast();
-  const nudges = useNudgeSettings(userId);
-  const { access, setAccess } = useNotifAccess();
   // False while the typed step goal is invalid; the draft keeps the last valid one.
   const [stepGoalValid, setStepGoalValid] = useState(true);
   const [editGoals, setEditGoals] = useState(false);
   const [coachSheet, setCoachSheet] = useState(false);
-  const [askNudges, setAskNudges] = useState(false);
 
   const input = draftTargetInput(draft);
   const coach = draftCoach(draft);
@@ -82,14 +76,14 @@ export default function PlanStep() {
 
   const leave = () => {
     router.dismissTo("/today");
+    router.push("/quick-log");
     // First finished onboarding on this profile gets the big burst (redoing the plan later doesn't).
     burstOnce(userId, "onboarded", "big");
   };
   const done = (queued: boolean) => {
     clearSavedDraft(userId);
     if (queued) toast({ message: "Plan saved on this phone. It syncs when you're back online." });
-    if (access === "ask" && nudges.enabled && !nudges.promptDismissed) setAskNudges(true);
-    else leave();
+    leave();
   };
 
   const start = () => {
@@ -128,10 +122,10 @@ export default function PlanStep() {
     <OnboardingStep
       id="plan"
       title="Your plan"
-      subtitle="Your daily targets. They adjust each week as you log."
-      cta="Start today"
+      subtitle="Your starting estimates. Weekly changes need sufficiently complete records."
+      cta="Save plan · log something you ate"
       glow
-      canContinue={stepGoalValid && !askNudges}
+      canContinue={stepGoalValid}
       loading={save.isPending}
       onNext={start}
     >
@@ -184,7 +178,7 @@ export default function PlanStep() {
             <Button label="Edit goals" variant="ghost" size="sm" onPress={() => setEditGoals(true)} />
           </View>
         )}
-        <HealthRow />
+        <Text variant="caption" color="textSecondary">Connect steps later from Settings whenever it helps.</Text>
       </Card>
 
       <View style={styles.coach}>
@@ -210,70 +204,8 @@ export default function PlanStep() {
         current={coach}
         onPick={(c) => draft.update({ coach: c })}
       />
-      <BottomSheet visible={askNudges} onClose={leave} size="medium">
-        <View style={{ backgroundColor: colors.surfaceLow }}>
-          <PermissionExplainer
-            kind="notifications"
-            denied={false}
-            perDay={nudges.perDay}
-            onContinue={async () => {
-              setAccess(await requestNotifAccess());
-              setAskNudges(false);
-              leave();
-            }}
-            onNotNow={() => {
-              setAskNudges(false);
-              leave();
-            }}
-          />
-        </View>
-      </BottomSheet>
+
     </OnboardingStep>
-  );
-}
-
-/** UX O3: Health Connect in one row instead of its own step. Only shown when it's connected or can be. */
-function HealthRow() {
-  const [status, setStatus] = useState<HealthState>("loading");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    let active = true;
-    void healthStatus().then((s) => {
-      if (active) setStatus(s);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (status === "ready") return <ListItem icon="check_circle" title="Steps come from Health Connect" />;
-  if (status !== "permission" && status !== "missing") return null;
-  const connect = async () => {
-    setBusy(true);
-    try {
-      setStatus(await requestSteps());
-    } catch {
-      // Left as it was; Settings → Health & activity can connect later.
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <ListItem
-      icon="directions_walk"
-      title="Count steps automatically"
-      subtitle={status === "missing" ? "Needs the Health Connect app" : "Optional. Reads steps from Health Connect"}
-      trailing={
-        <Button
-          label={status === "missing" ? "Install" : "Connect"}
-          size="sm"
-          variant="secondary"
-          loading={busy}
-          onPress={status === "missing" ? () => void installHealth().catch(() => {}) : () => void connect()}
-        />
-      }
-    />
   );
 }
 

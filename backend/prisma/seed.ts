@@ -1,4 +1,5 @@
-// P05 seed: the 3 dummy users (D5). Idempotent — safe to run any number of times.
+// P05 seed: the dummy users (D5): 3 demo personas plus 3 fresh users who have not done setup.
+// Idempotent — safe to run any number of times.
 // Users are upserted by fixed id; profiles are created empty and never overwritten, so a re-run
 // keeps whatever onboarding (P09) has saved. Full demo history arrives at P40.
 // P11: the curated food catalog (prisma/data/foods.ts), upserted by slug with stable ids.
@@ -15,6 +16,10 @@ export const DUMMY_USERS = [
   { id: "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11", displayName: "Riya" },
   { id: "8a2d4b6f-1c3e-4d8b-8f32-6b8c4dae1f22", displayName: "Arjun" },
   { id: "9b3e5c70-2d4f-4e9c-9a43-7c9d5ebf2a33", displayName: "Meera" },
+  // Fresh users for testing onboarding (S01 → setup). Their profiles stay empty until they onboard.
+  { id: "a4c6e8f0-3b5d-4f1a-8b54-8dae6fc03b44", displayName: "Kabir" },
+  { id: "b5d7f901-4c6e-4a2b-9c65-9ebf70d14c55", displayName: "Ananya" },
+  { id: "c6e80a12-5d7f-4b3c-8d76-afc081e25d66", displayName: "Rohan" },
 ] as const;
 
 async function main() {

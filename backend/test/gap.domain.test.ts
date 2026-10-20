@@ -233,10 +233,19 @@ const facts = (over: Partial<NudgeFacts> = {}): NudgeFacts => ({
   allGoalsHit: false,
   deliveredToday: 0,
   praiseSentToday: false,
+  coverageComplete: true,
   ...over,
 });
 
-describe("nudges (P36, D61)", () => {
+// PA: nudges are opt-in, so the rules are tested with them switched on (4 a day, every kind).
+const ON = {
+  ...DEFAULT_NUDGE_SETTINGS,
+  enabled: true,
+  perDay: 4,
+  kinds: { morning: true, protein: true, workout: true, slipping: true, streak: true, praise: true },
+};
+
+describe("nudges (P36, D61; PA defaults and gating)", () => {
   it("quiet hours wrap past midnight", () => {
     const s = DEFAULT_NUDGE_SETTINGS;
     expect(inQuietHours(at(23), s)).toBe(true);
@@ -245,9 +254,9 @@ describe("nudges (P36, D61)", () => {
     expect(inQuietHours(at(21, 59), s)).toBe(false);
   });
 
-  it("caps today at 4 by priority (streak > protein > slipping > workout > morning)", () => {
-    const today = planNudges(facts(), DEFAULT_NUDGE_SETTINGS).filter((n) => n.dayOffset === 0);
-    expect(today.map((n) => n.kind)).toEqual(["protein", "workout", "slipping", "streak"]);
+  it("caps today at 4 by priority (morning > workout > protein > slipping > praise > streak)", () => {
+    const today = planNudges(facts(), ON).filter((n) => n.dayOffset === 0);
+    expect(today.map((n) => n.kind)).toEqual(["morning", "protein", "workout", "slipping"]);
     expect(today.find((n) => n.kind === "protein")!.route).toBe("gap");
     expect(today.find((n) => n.kind === "workout")!.route).toBe("train");
   });
@@ -255,13 +264,13 @@ describe("nudges (P36, D61)", () => {
   it("only future nudges whose condition holds", () => {
     const today = planNudges(
       facts({ minuteOfDay: at(17), proteinLeftShare: 0.1, loggedToday: true, workoutToday: true }),
-      DEFAULT_NUDGE_SETTINGS,
+      ON,
     ).filter((n) => n.dayOffset === 0);
     expect(today.map((n) => n.kind)).toEqual(["slipping"]);
   });
 
   it("delivered nudges count against the cap; praise is immediate and once a day", () => {
-    const s = DEFAULT_NUDGE_SETTINGS;
+    const s = ON;
     const hit = facts({ minuteOfDay: at(19), allGoalsHit: true, loggedToday: true, proteinLeftShare: 0, deliveredToday: 3 });
     const today = planNudges(hit, s).filter((n) => n.dayOffset === 0);
     expect(today).toEqual([{ kind: "praise", route: "today", dayOffset: 0, minute: at(19), immediate: true }]);
@@ -269,14 +278,39 @@ describe("nudges (P36, D61)", () => {
   });
 
   it("tomorrow's morning plan and streak check; settings turn kinds off", () => {
-    const s = { ...DEFAULT_NUDGE_SETTINGS, kinds: { ...DEFAULT_NUDGE_SETTINGS.kinds, streak: false } };
+    const s = { ...ON, kinds: { ...ON.kinds, streak: false } };
     const tomorrow = planNudges(facts({ minuteOfDay: at(21) }), s).filter((n) => n.dayOffset === 1);
     expect(tomorrow.map((n) => n.kind)).toEqual(["morning"]);
-    expect(planNudges(facts(), { ...DEFAULT_NUDGE_SETTINGS, enabled: false })).toEqual([]);
+    expect(planNudges(facts(), { ...ON, enabled: false })).toEqual([]);
+  });
+
+  it("PA: off by default, 1 a day when switched on", () => {
+    expect(DEFAULT_NUDGE_SETTINGS.enabled).toBe(false);
+    expect(Object.values(DEFAULT_NUDGE_SETTINGS.kinds).every((k) => k === false)).toBe(true);
+    expect(planNudges(facts(), DEFAULT_NUDGE_SETTINGS)).toEqual([]);
+    const one = planNudges(facts(), { ...ON, perDay: DEFAULT_NUDGE_SETTINGS.perDay }).filter((n) => n.dayOffset === 0);
+    expect(one.map((n) => n.kind)).toEqual(["morning"]);
+  });
+
+  it("PA: protein, slipping and praise need records confirmed complete; a finished visit stops them", () => {
+    const kinds = (over: Partial<NudgeFacts>) => planNudges(facts(over), ON).filter((n) => n.dayOffset === 0).map((n) => n.kind);
+    expect(kinds({ coverageComplete: false })).toEqual(["morning", "workout", "streak"]);
+    expect(kinds({ visitFinished: true })).toEqual(["morning", "workout", "streak"]);
+    const hit = { minuteOfDay: at(19), allGoalsHit: true, loggedToday: true, proteinLeftShare: 0 };
+    expect(kinds({ ...hit, coverageComplete: false })).toEqual([]);
+  });
+
+  it("PA: custom times; no workout nudge on a rest day or at 21:30 and later", () => {
+    const times = (t: Partial<Record<"morning" | "workout", number>>, over: Partial<NudgeFacts> = {}) =>
+      planNudges(facts({ coverageComplete: false, streakCurrent: 0, ...over }), { ...ON, times: t }).filter((n) => n.dayOffset === 0);
+    expect(times({ workout: at(12) }).find((n) => n.kind === "workout")?.minute).toBe(at(12));
+    expect(times({ workout: at(21, 30) }).map((n) => n.kind)).not.toContain("workout");
+    expect(times({}, { restToday: true }).map((n) => n.kind)).not.toContain("workout");
+    expect(times({ morning: at(9) }).find((n) => n.kind === "morning")?.minute).toBe(at(9));
   });
 
   it("nothing lands in quiet hours", () => {
-    const s = { ...DEFAULT_NUDGE_SETTINGS, quietStart: at(19), quietEnd: at(9) };
+    const s = { ...ON, quietStart: at(19), quietEnd: at(9) };
     const kinds = planNudges(facts(), s).map((n) => n.kind);
     expect(kinds).not.toContain("slipping");
     expect(kinds).not.toContain("streak");

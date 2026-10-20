@@ -34,12 +34,12 @@ export function checkinCopy(p: PendingCheckin, detailed: boolean): CheckinCopy {
     return r.reason === "days"
       ? {
           title: "Not enough data yet",
-          body: `Log ${MIN_LOGGED_DAYS} of 7 days to unlock adjustments. You logged ${r.loggedDays} this week. ${stays}`,
+          body: `We need ${MIN_LOGGED_DAYS} reasonably complete days for an adjustment. ${r.loggedDays} confirmed this week. Partial records still count as effort. ${stays}`,
           notes: [],
         }
       : {
           title: "Not enough data yet",
-          body: `Log your weight at least once a week to unlock adjustments. ${stays}`,
+          body: `We don't have enough recent weigh-ins to recommend an adjustment. ${stays}`,
           notes: [],
         };
   }
@@ -62,7 +62,7 @@ export function checkinCopy(p: PendingCheckin, detailed: boolean): CheckinCopy {
   }
   const scale =
     p.scaleChangeKg != null && Math.abs(p.scaleChangeKg - r.trendChangeKg) >= SCALE_NOTE_KG
-      ? ` The scale says ${signedKg(p.scaleChangeKg)} — daily water swings, not fat.`
+      ? ` The scale says ${signedKg(p.scaleChangeKg)}. Daily changes can have several causes; one reading cannot tell us what changed.`
       : "";
   return {
     title: r.onTrack ? "On track ✓" : "Adjusting your plan",
@@ -99,6 +99,7 @@ export function progressVerdict(input: {
 }): { line: string; sub: string | null } {
   const { latest, weekChange, goal, today } = input;
   if (!latest) return { line: "No weigh-ins yet", sub: "Log your weight to see how you're doing." };
+  if (latest.date < addDays(today, -7)) return { line: `Last weigh-in: ${formatShortDate(latest.date)}`, sub: "We need recent measurements to describe your current trend." };
   const now = latest.trendKg;
   if (weekChange == null)
     return { line: `${formatKg(now)} kg so far`, sub: "Your first weekly change shows after a week of weigh-ins." };

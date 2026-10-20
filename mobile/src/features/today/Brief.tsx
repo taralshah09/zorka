@@ -10,11 +10,12 @@ import { Icon, type IconName } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
 import { Avatar, Button, Card, PressableScale, Text } from "@/core/ui";
 import { PERSONAS } from "@/features/coach/personas";
-import { MEAL_LABEL } from "@/features/food/format";
+import { formatPortion, MEAL_LABEL } from "@/features/food/format";
 import type { NextAction } from "@/features/gap/nextAction";
 import { mealTotals, type Meal } from "@/features/meals/store";
 import { formatInt } from "@/features/targets/format";
-import { MEAL_TYPES, mealTypeForTime } from "@shared/domain/food";
+import { mealTypeForTime } from "@shared/domain/food";
+import { editMeal } from "@/features/log/nav";
 import type { Targets } from "@shared/domain/targets";
 import { AddToMealButton } from "./AddToMeal";
 import type { Consumed } from "./TodayCards";
@@ -87,8 +88,8 @@ export function BriefCard({
         </Text>
       ) : null}
       <View style={styles.briefCta}>
-        <Button label={action.cta} icon={action.icon} onPress={onAction} fullWidth />
-        {persona && onAsk ? (
+        {action.cta ? <Button label={action.cta} icon={action.icon} onPress={onAction} fullWidth /> : null}
+        {action.cta && persona && onAsk ? (
           <Button label={`Ask ${persona.name} about this`} icon="forum" variant="ghost" size="sm" onPress={onAsk} />
         ) : null}
       </View>
@@ -243,7 +244,7 @@ export function TodayMeals({ meals, now }: { meals: readonly Meal[]; now: Date }
   const logged = new Set(meals.map((m) => m.mealType));
   const due = mealTypeForTime(now);
   // The meal due now if it isn't logged yet, else the next unlogged one later in the day.
-  const next = !logged.has(due) ? due : MEAL_TYPES.slice(MEAL_TYPES.indexOf(due) + 1).find((t) => !logged.has(t));
+  const next = !meals.length && !logged.has(due) ? due : null;
   return (
     <Card>
       <Text variant="headline-sm" accessibilityRole="header" style={styles.mealsHead}>
@@ -268,12 +269,13 @@ export function TodayMeals({ meals, now }: { meals: readonly Meal[]; now: Date }
                 {MEAL_LABEL[m.mealType]}
               </Text>
               <Text variant="caption" color="textSecondary" numberOfLines={1} style={styles.flex}>
-                {m.items.map((i) => i.name).join(", ")}
+                {m.items.map((i) => `${formatPortion(i.quantity, i.unit)} ${i.name}`).join(", ")}
               </Text>
               <Text variant="label" color="primaryText" tabular>
                 {`${formatInt(t.kcal)} kcal`}
               </Text>
               <AddToMealButton meal={m} />
+              <Button label="Edit" size="sm" variant="ghost" onPress={() => editMeal(m.userId, m)} />
             </PressableScale>
           );
         })

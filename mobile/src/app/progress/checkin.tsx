@@ -8,7 +8,6 @@ import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
 import { Button, Card, EmptyState, Header, Screen, StatTile, Text, useToast } from "@/core/ui";
-import { burstConfetti } from "@/features/celebrate/ConfettiBurst";
 import { useActivityClock } from "@/features/activity/store";
 import { LineChart } from "@/features/gym/LineChart";
 import { answerCheckin, type CheckinStatus } from "@/features/progress/checkins";
@@ -16,6 +15,7 @@ import { checkinCopy } from "@/features/progress/copy";
 import { useProgress } from "@/features/progress/hooks";
 import { formatInt, formatShortDate } from "@/features/targets/format";
 import { addDays, dayNumber, weekday } from "@shared/domain/progress";
+import { WeeklyLearning } from "@/features/progress/WeeklyLearning";
 
 const BURN_WEEKS = 6;
 
@@ -47,10 +47,8 @@ export default function CheckinScreen() {
   const copy = checkinCopy(pending, detailed);
   const answer = (status: CheckinStatus) => {
     answerCheckin(p.userId!, pending, status);
-    const party = status === "accepted" && r.status === "ready" && r.onTrack;
-    if (party) burstConfetti();
     toast({
-      haptic: party ? "none" : undefined,
+      haptic: "tap",
       kind: "success",
       message:
         r.status === "ready" && status === "accepted" && r.changeKcal !== 0
@@ -76,6 +74,7 @@ export default function CheckinScreen() {
         <Header title="Weekly check-in" eyebrow={`Week of ${formatShortDate(pending.window.start)}`} onBack={back} />
       }
     >
+      <WeeklyLearning key={`${p.userId}:${pending.window.end}`} userId={p.userId} end={pending.window.end} />
       <Card variant={r.status === "ready" && r.onTrack ? "highlighted" : "default"}>
         <Text
           variant="headline-md"
@@ -93,6 +92,7 @@ export default function CheckinScreen() {
           </Text>
         ))}
       </Card>
+      <Button label="Review meal coverage" variant="secondary" onPress={() => router.push({ pathname: "/progress/records", params: { end: pending.window.end } })} />
 
       {r.status === "ready" ? (
         <>
@@ -129,15 +129,15 @@ export default function CheckinScreen() {
 
           {r.changeKcal !== 0 ? (
             <>
-              <Button label="Accept new target" onPress={() => answer("accepted")} fullWidth glow />
-              <Button label="Keep current" variant="ghost" onPress={() => answer("kept")} fullWidth />
+              <Button label="Keep my plan" onPress={() => answer("kept")} fullWidth />
+              <Button label="Choose this target change" variant="secondary" onPress={() => answer("accepted")} fullWidth />
             </>
           ) : (
             <Button label="Got it" onPress={() => answer("accepted")} fullWidth />
           )}
         </>
       ) : (
-        <Button label="Got it" onPress={() => answer("skipped")} fullWidth />
+        <Button label="Keep my plan · finish review" onPress={() => answer("skipped")} fullWidth />
       )}
     </Screen>
   );

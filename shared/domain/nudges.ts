@@ -26,12 +26,12 @@ export const NUDGE_MINUTE: Record<Exclude<NudgeKind, "praise">, number> = {
 };
 /** Lower index wins when the daily cap is reached. */
 export const NUDGE_PRIORITY: readonly NudgeKind[] = [
-  "streak",
+  "morning",
+  "workout",
   "protein",
   "slipping",
-  "workout",
-  "morning",
   "praise",
+  "streak",
 ];
 export const NUDGE_ROUTE: Record<NudgeKind, NudgeRoute> = {
   morning: "today",
@@ -43,11 +43,13 @@ export const NUDGE_ROUTE: Record<NudgeKind, NudgeRoute> = {
 };
 /** Protein warning: more than this share of the protein target still left. */
 export const PROTEIN_WARNING_SHARE = 0.3;
-export const DEFAULT_PER_DAY = 4;
+export const DEFAULT_PER_DAY = 1;
 export const MIN_PER_DAY = 1;
 export const MAX_PER_DAY = 6;
 
 export type NudgeSettings = {
+  times?: Partial<Record<Exclude<NudgeKind, "praise">, number>>;
+  snoozedUntil?: string | null;
   enabled: boolean;
   perDay: number;
   /** Minutes of the day; quiet hours may wrap past midnight (22:00–07:00). */
@@ -57,21 +59,24 @@ export type NudgeSettings = {
 };
 
 export const DEFAULT_NUDGE_SETTINGS: NudgeSettings = {
-  enabled: true,
+  enabled: false,
   perDay: DEFAULT_PER_DAY,
   quietStart: 22 * 60,
   quietEnd: 7 * 60,
   kinds: {
-    morning: true,
-    protein: true,
-    workout: true,
-    slipping: true,
-    streak: true,
-    praise: true,
+    morning: false,
+    protein: false,
+    workout: false,
+    slipping: false,
+    streak: false,
+    praise: false,
   },
 };
 
 export type NudgeFacts = {
+  coverageComplete?: boolean;
+  restToday?: boolean;
+  visitFinished?: boolean;
   minuteOfDay: number;
   /** Share of today's protein target still left (0–1, 0 when hit). */
   proteinLeftShare: number;
@@ -131,6 +136,7 @@ export function planNudges(
   const on = (k: NudgeKind) => settings.kinds[k];
   const now = facts.minuteOfDay;
   const allowedAt = (minute: number) => !inQuietHours(minute, settings);
+  const timeFor = (kind: Exclude<NudgeKind, "praise">) => Math.max(0, Math.min(1439, Math.round(settings.times?.[kind] ?? NUDGE_MINUTE[kind])));
   const timed = (
     kind: Exclude<NudgeKind, "praise">,
     dayOffset: 0 | 1,
@@ -138,13 +144,14 @@ export function planNudges(
     kind,
     route: NUDGE_ROUTE[kind],
     dayOffset,
-    minute: NUDGE_MINUTE[kind],
+    minute: timeFor(kind),
     immediate: false,
   });
 
   const today: PlannedNudge[] = [];
   if (
     on("praise") &&
+    facts.coverageComplete === true &&
     facts.allGoalsHit &&
     !facts.praiseSentToday &&
     allowedAt(now)
@@ -158,24 +165,24 @@ export function planNudges(
     });
   }
   const upcoming = (k: Exclude<NudgeKind, "praise">) =>
-    on(k) && NUDGE_MINUTE[k] > now && allowedAt(NUDGE_MINUTE[k]);
+    on(k) && timeFor(k) > now && allowedAt(timeFor(k));
   if (upcoming("morning")) today.push(timed("morning", 0));
-  if (upcoming("protein") && facts.proteinLeftShare > PROTEIN_WARNING_SHARE)
+  if (upcoming("protein") && facts.coverageComplete === true && !facts.visitFinished && facts.proteinLeftShare > PROTEIN_WARNING_SHARE)
     today.push(timed("protein", 0));
-  if (upcoming("workout") && facts.hasRoutine && !facts.workoutToday)
+  if (upcoming("workout") && facts.hasRoutine && !facts.workoutToday && !facts.restToday && timeFor("workout") < 21 * 60 + 30)
     today.push(timed("workout", 0));
-  if (upcoming("slipping") && facts.underAtSlipping && !facts.allGoalsHit)
+  if (upcoming("slipping") && facts.coverageComplete === true && !facts.visitFinished && facts.underAtSlipping && !facts.allGoalsHit)
     today.push(timed("slipping", 0));
   if (upcoming("streak") && facts.streakCurrent > 0 && !facts.loggedToday)
     today.push(timed("streak", 0));
 
   // Tomorrow: the morning plan, and the streak check (cancelled by the re-plan as soon as something is logged).
   const tomorrow: PlannedNudge[] = [];
-  if (on("morning") && allowedAt(NUDGE_MINUTE.morning))
+  if (on("morning") && allowedAt(timeFor("morning")))
     tomorrow.push(timed("morning", 1));
   if (
     on("streak") &&
-    allowedAt(NUDGE_MINUTE.streak) &&
+    allowedAt(timeFor("streak")) &&
     (facts.streakCurrent > 0 || facts.loggedToday)
   )
     tomorrow.push(timed("streak", 1));

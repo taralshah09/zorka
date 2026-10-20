@@ -9,17 +9,16 @@ import { usePhases } from "@/features/progress/phases";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useProfile } from "@/features/users/api";
 import { localDate } from "@shared/domain/food";
-import { macrosFor, type Targets } from "@shared/domain/targets";
+import type { Targets } from "@shared/domain/targets";
 import { targetsFromProfile } from "./targetInput";
 
 export { targetInputFromProfile, targetsFromProfile } from "./targetInput";
 
 /** Targets with an ease applied: kcal down by `ease` (not under the floor), protein kept, fat/carbs re-split. */
 export function easedTargets(t: Targets, ease: number, weightKg: number): Targets {
-  if (ease <= 0) return t;
-  const kcal = Math.max(t.floorKcal, t.kcal - ease);
-  if (kcal === t.kcal) return t;
-  return { ...t, kcal, ...macrosFor(kcal, t.proteinG, weightKg) };
+  // PA1: legacy compensation schedules no longer lower targets.
+  void ease; void weightKg;
+  return t;
 }
 
 /**

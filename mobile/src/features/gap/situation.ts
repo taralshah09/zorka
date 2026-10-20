@@ -17,7 +17,7 @@ import type { DayGap } from "./gap";
 
 export function movesFor(dg: DayGap): MoveOption[] {
   return moveOptions({
-    remainingKcal: dg.gap.remaining.kcal,
+    remainingKcal: 0,
     weightKg: dg.weightKg,
     minuteOfDay: dg.minute,
     met: MET,
@@ -63,7 +63,7 @@ export function lineFacts(dg: DayGap, streak: Streak | null): LineFacts {
 export function situationFor(dg: DayGap, streak: Streak | null, welcomeBack: boolean): LineSituation {
   const g = dg.gap;
   if (welcomeBack) return "welcome_back";
-  if (streak?.atRisk) return "streak_risk";
+  if (dg.coverage !== "complete") return g.eaten.kcal === 0 ? "morning" : "on_track";
   if (g.state === "over") return isLateNight(dg.minute) ? "over_late" : "over";
   if (g.state === "done") return "done";
   if (g.state === "under") return g.focus === "protein" ? "protein" : "under";

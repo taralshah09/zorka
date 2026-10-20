@@ -5,7 +5,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
-import { BottomSheet, Button, Card, IconButton, reactMascot, Text } from "@/core/ui";
+import { BottomSheet, Button, Card, IconButton, Text } from "@/core/ui";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import {
   nudgeSettings,
@@ -26,9 +26,8 @@ export function WelcomeBackCard({
   hasTrend: boolean;
   onDismiss: () => void;
 }) {
-  const body = hasTrend
-    ? "Your trend held steady. Gaps in your logs don't break it."
-    : "No catching up needed. Start again with today.";
+  void hasTrend;
+  const body = "Your earlier records are still here. Nothing to catch up on. Start with today.";
   return (
     <Card variant="raised" accessibilityLabel={`Welcome back. ${body}`}>
       <View style={styles.row}>
@@ -73,7 +72,6 @@ export function NudgePromptCard({ userId }: { userId: string }) {
   if (access !== "ask" || !settings.enabled || settings.promptDismissed) return null;
   const dismiss = () => {
     saveNudgeSettings(userId, { ...nudgeSettings(userId), promptDismissed: true });
-    reactMascot("eyeroll");
   };
   return (
     <>

@@ -6,29 +6,35 @@
 // cold-started the app is routed here. P39: a streak milestone or all goals hit opens the celebration (S47) once.
 // Welcome back (S48) after 5 days away is the brief's own situation; its action dismisses it. No bell (brand §8).
 import { router, useFocusEffect } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { describeError } from "@/core/api/client";
 import { useNetwork } from "@/core/network/network";
 import { NetworkBanner } from "@/core/network/NetworkBanner";
-import { EmptyState, ErrorState, IconButton, Screen, Skeleton, Text, useToast } from "@/core/ui";
+import { Button, Card, EmptyState, ErrorState, IconButton, Screen, Skeleton, Text, useToast } from "@/core/ui";
 import { cachedSteps, useHealthSteps } from "@/features/activity/health";
-import { dayCredit, useActivityClock } from "@/features/activity/store";
+import { activeActivity, dayCredit, useActivityClock } from "@/features/activity/store";
+import { useActiveWorkout } from "@/features/gym/store";
+import { draftActions, useDraft } from "@/features/log/draft";
+import { getFood } from "@/features/food/catalog";
+import { rankedUsuals, logUsual, useUsualMeals } from "@/features/meals/usual";
+import { logTime } from "@/features/today/selectedDay";
+import { briefPriority } from "@shared/domain/brief";
+import { coverageText } from "@shared/domain/evidence";
 import { useCelebrateOnFocus } from "@/features/celebrate/celebrations";
 import { useTodayReactions } from "@/features/celebrate/todayReactions";
 import { coachLine } from "@/features/coach/lines";
-import { MEAL_LABEL } from "@/features/food/format";
+import { formatPortion, MEAL_LABEL } from "@/features/food/format";
 import { useEatOptions } from "@/features/gap/eat";
 import { useDayGap } from "@/features/gap/gap";
 import { nextAction } from "@/features/gap/nextAction";
 import { lineFacts, situationFor } from "@/features/gap/situation";
-import { useWelcomeBack } from "@/features/gap/welcomeBack";
-import { queuedHref, queuedLabel, removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
-import { useDayMeals } from "@/features/meals/store";
+import { useRecordVisit, useWelcomeBack } from "@/features/gap/welcomeBack";
+import { queuedHref, queuedLabel, removeVoice, restoreVoice, useVoiceQueue } from "@/features/log/voiceQueue";
+import { deleteMeal, useDayMeals, type Meal } from "@/features/meals/store";
 import { consumePendingRoute } from "@/features/nudges/NudgePlanner";
 import { checkinCopy } from "@/features/progress/copy";
-import { StreakChip } from "@/features/progress/components";
 import { useProgress } from "@/features/progress/hooks";
 import { AppHeader } from "@/features/shell/AppHeader";
 import { formatDayLong, greeting } from "@/features/targets/format";
@@ -37,7 +43,7 @@ import { NudgePromptCard } from "@/features/today/FlowBCards";
 import { consumedFrom } from "@/features/today/TodayCards";
 import { useActiveUser } from "@/features/users/activeUser";
 import { logGlass, useGlasses } from "@/features/water/store";
-import { localDate } from "@shared/domain/food";
+import { localDate, mealTypeForTime } from "@shared/domain/food";
 import { clampWaterGoal } from "@shared/domain/water";
 
 export default function Today() {
@@ -48,10 +54,21 @@ export default function Today() {
   const toast = useToast();
   const now = new Date(clock);
   const today = localDate(now);
+  useRecordVisit(userId, today);
   useHealthSteps(userId, today);
   const credit = dayCredit(userId, today);
   const meals = useDayMeals(userId, today);
   const voiceNotes = useVoiceQueue(userId);
+  const draft = useDraft((s) => s.draft);
+  const workout = useActiveWorkout(userId);
+  const activity = activeActivity();
+  const openActivity = activity?.userId === userId ? activity : null;
+  const usuals = useUsualMeals(userId);
+  const mealType = mealTypeForTime(now);
+  const prepared = rankedUsuals(usuals, mealType)[0];
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
+  const loggedSuggestions = useRef(new Set<string>());
+  const suggestionKey = `${userId}:${today}:${mealType}:${prepared?.id}`;
   const consumed = { ...consumedFrom(meals), steps: cachedSteps(userId, today)?.steps ?? null };
   const glasses = useGlasses(userId, today);
   const waterGoal = clampWaterGoal(profile.data?.waterGoalGlasses);
@@ -70,7 +87,13 @@ export default function Today() {
   });
   const situation = dg ? situationFor(dg, streak, welcome.show) : null;
   const facts = dg ? lineFacts(dg, streak) : null;
-  const action = situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
+  let action = situation && facts ? nextAction(situation, facts, eatOptions.length, meals.length) : null;
+  const finished = meals.some((m) => m.mealType === mealType) || dismissedSuggestions.includes(suggestionKey);
+  const priority = briefPriority({ activeSession: !!workout || !!openActivity, chosenDraft: !!draft?.resumeChosen, prepared: !!prepared, optional: !!action?.cta, finished });
+  if (action && priority === "resume") action = { eyebrow: "In progress", title: workout ? `${workout.name} is still open.` : "Your activity is still open.", icon: "play_arrow", tone: "default", cta: "Resume", href: workout ? "/train/workout" : { pathname: "/activity/live", params: { id: openActivity!.id } } };
+  if (action && priority === "continue") action = { eyebrow: "Draft saved", title: `${MEAL_LABEL[draft!.mealType]} · ${localDate(new Date(draft!.loggedAt))} · ready to check`, icon: "restaurant", tone: "default", cta: "Continue draft", href: "/log/confirm" };
+  if (action && priority === "prepared") action = { eyebrow: `Your usual ${MEAL_LABEL[mealType].toLowerCase()}?`, title: prepared.items.map((i) => `${formatPortion(i.quantity, i.unit)} ${i.name}`).join(" + "), icon: "restaurant", tone: "default", cta: "Log this", href: "/quick-log" };
+  if (action && priority === "finished") action = { ...action, eyebrow: "Done for now", title: "Your work is saved. Nothing needs you now.", icon: "check_circle", tone: "success", cta: null, href: "/day" };
   // A notification tap that cold-started the app is routed once Today is showing (P36).
   useFocusEffect(useCallback(() => consumePendingRoute(), []));
   // P39: celebrate a streak milestone reached today, else all goals hit, once each (re-checked on focus, so it fires
@@ -80,7 +103,7 @@ export default function Today() {
     userId,
     milestone
       ? { key: `streak:${today}:${milestone}`, kind: "streak", value: String(milestone) }
-      : dg?.gap.state === "done"
+      : dg?.coverage === "complete" && dg?.gap.state === "done"
         ? { key: `day:${today}`, kind: "day" }
         : null,
   );
@@ -103,7 +126,6 @@ export default function Today() {
             {formatDayLong(now)}
           </Text>
         </View>
-        {targets ? <StreakChip streak={streak} /> : null}
       </View>
 
       {profile.isPending ? (
@@ -130,7 +152,7 @@ export default function Today() {
           {action && situation && facts ? (
             <BriefCard
               coach={coach}
-              line={coach ? coachLine(coach, situation, facts) : null}
+              line={priority === "optional" && coach && dg?.coverage === "complete" ? coachLine(coach, situation, facts) : null}
               action={action}
               note={
                 welcome.show && welcome.freezeUsed
@@ -140,6 +162,13 @@ export default function Today() {
               onNotePress={welcome.show && welcome.freezeUsed ? () => router.push("/progress/streak") : undefined}
               onAction={() => {
                 if (welcome.show) welcome.dismiss();
+                if (priority === "prepared" && prepared && userId) {
+                  if (loggedSuggestions.current.has(suggestionKey)) return;
+                  loggedSuggestions.current.add(suggestionKey);
+                  const saved = logUsual(userId, prepared, mealType, logTime());
+                  toast({ kind: "success", message: `${MEAL_LABEL[mealType]} saved. You're done for now.`, onUndo: () => { deleteMeal(saved); loggedSuggestions.current.delete(suggestionKey); } });
+                  return;
+                }
                 router.push(action.href);
               }}
               onAsk={() =>
@@ -150,6 +179,25 @@ export default function Today() {
               }
             />
           ) : null}
+          {priority === "prepared" && prepared ? <Card>
+            <Text variant="caption">{today} · {MEAL_LABEL[mealType]} · Saved by you</Text>
+            <Button label="Change portion" variant="secondary" onPress={() => {
+              if (!userId) return;
+              draftActions.startFromMeal({ id: "", userId, mealType, source: "repeat", loggedAt: logTime().toISOString(), localDate: today, oilLevel: null, photoUri: null, items: prepared.items, synced: false } as Meal, (id) => getFood(userId, id));
+              draftActions.makeNew();
+              router.push("/log/confirm");
+            }} />
+            <Button label="Not now" variant="ghost" onPress={() => setDismissedSuggestions((list) => [...list, suggestionKey])} />
+          </Card> : null}
+          {draft && !draft.resumeChosen ? <NeedsYouRow icon="restaurant" title={`${MEAL_LABEL[draft.mealType]} draft saved`} subtitle={`${localDate(new Date(draft.loggedAt))} · continue whenever you're ready`} onPress={() => { draftActions.chooseResume(); router.push("/log/confirm"); }} /> : null}
+          {dg ? <Text variant="caption" color="textSecondary">{coverageText(dg.coverage, meals.length)}</Text> : null}
+          {welcome.show && welcome.restart.kind === "refresh" ? <Card>
+            <Text variant="title">Does your old routine still fit?</Text>
+            <Text variant="body">Your earlier records are still here. Nothing to backfill.</Text>
+            <Button label="Keep it · start with today" variant="secondary" onPress={welcome.dismiss} />
+            <Button label="Review routine" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/train/prepare"); }} />
+            <Button label="Review goal" variant="ghost" onPress={() => { welcome.dismiss(); router.push("/settings"); }} />
+          </Card> : null}
 
           {needsYou ? (
             <View style={styles.section}>
@@ -183,7 +231,7 @@ export default function Today() {
                   }
                   onPress={online ? () => router.push(queuedHref(voice)) : undefined}
                   trailing={
-                    <IconButton icon="close" accessibilityLabel="Discard it" onPress={() => removeVoice(voice)} />
+                    <IconButton icon="close" accessibilityLabel="Dismiss capture" onPress={() => { removeVoice(voice, true); toast({ kind: "info", message: "Capture dismissed", onUndo: () => restoreVoice(voice) }); }} />
                   }
                 />
               ) : null}

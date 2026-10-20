@@ -21,6 +21,12 @@ export default function EditItem() {
   const [quantity, setQuantity] = useState(item?.quantity ?? 1);
   const [unit, setUnit] = useState<FoodUnit>(item?.unit ?? "g");
 
+  if (item?.snapshot && !item.food) return <Screen header={<Header title="Change remembered portion" onBack={() => router.back()} />}>
+    <Text variant="title">{item.snapshot.name}</Text>
+    <NumberStepper label={`Amount in ${item.unit}`} value={quantity} onChange={setQuantity} min={0.5} max={2000} step={0.5} />
+    <Text variant="body">Nutrition scales from the saved portion. The original usual stays unchanged.</Text>
+    <Button label="Update portion" onPress={() => { draftActions.setQuantity(item.key, quantity); router.back(); }} />
+  </Screen>;
   if (!item?.food) {
     return (
       <Screen header={<Header title="Edit item" onBack={() => router.back()} />}>

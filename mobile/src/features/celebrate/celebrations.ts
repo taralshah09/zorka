@@ -61,7 +61,7 @@ export function celebrationTitle(kind: CelebrationKind, f: Facts): string {
     case "pr":
       return "New personal record!";
     case "day":
-      return "All goals hit!";
+      return "Food targets recorded";
     case "phase":
       return "Phase complete!";
   }
@@ -70,21 +70,21 @@ export function celebrationTitle(kind: CelebrationKind, f: Facts): string {
 /** Same three characters as the Home lines (D60): clean, never shaming, no emoji in UI chrome. */
 const LINES: Record<CoachId, Record<CelebrationKind, (f: Facts) => string>> = {
   drill_sergeant: {
-    streak: (f) => `${f.value} days. No days off. That's discipline.`,
+    streak: (f) => `${f.value} days on your recording streak. Earlier effort stays with you.`,
     pr: (f) => `${f.detail ?? "New best"}. Heavier than ever. Now recover and do it again.`,
-    day: () => "All targets hit. That's the standard.",
+    day: () => "Food targets recorded. Done for now.",
     phase: () => "Phase done. Mission complete. Next objective.",
   },
   calm_mentor: {
-    streak: (f) => `${f.value} days in a row. Small steps, kept every day. That's how habits form.`,
+    streak: (f) => `${f.value} days on your recording streak, including any freeze-covered days. Your history stays here.`,
     pr: (f) => `${f.detail ?? "A new best"}. Your training is paying off.`,
-    day: () => "Everything done today. Well earned.",
+    day: () => "Food targets recorded. You're done for now.",
     phase: () => "A whole phase, finished. Take a moment to notice how far you've come.",
   },
   desi_legend: {
-    streak: (f) => `${f.value} din, ek bhi miss nahi! Legend behaviour!`,
+    streak: (f) => `${f.value} days on your recording streak, yaar. Every earlier session stays here.`,
     pr: (f) => `${f.detail ?? "New record"}! Kya baat hai, full power!`,
-    day: () => "Every target smashed! That's how legends are made!",
+    day: () => "Food targets recorded, shabash! Done for now.",
     phase: () => "Phase khatam, goal pakka! Chalo, next chapter!",
   },
 };

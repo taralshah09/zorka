@@ -14,12 +14,15 @@ import { Button, Chip, ErrorState, Header, OfflineBanner, Screen, Text, TextFiel
 import { draftActions } from "@/features/log/draft";
 import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parseText } from "@/features/log/parse";
-import { queueText, removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
+import { queueText, useVoiceQueue } from "@/features/log/voiceQueue";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
+import { actionResult } from "@/features/coach/actionState";
+import { getMeal } from "@/features/meals/store";
 
 const phrasesKey = (userId: string) => `zorka.typedMeals.${userId}`;
 const MAX_PHRASES = 6;
+const textKey = (userId: string) => `zorka.unfinishedText.${userId}`;
 
 function readPhrases(userId: string | null): string[] {
   if (!userId) return [];
@@ -31,7 +34,11 @@ function readPhrases(userId: string | null): string[] {
 }
 
 export default function TypeMeal() {
-  const params = useLocalSearchParams<{ mealType?: string; text?: string; auto?: string; queued?: string }>();
+  const userId = useActiveUser((s) => s.userId);
+  return <TypeMealForm key={userId} />;
+}
+function TypeMealForm() {
+  const params = useLocalSearchParams<{ mealType?: string; text?: string; auto?: string; queued?: string; actionKey?: string }>();
   const userId = useActiveUser((s) => s.userId);
   const online = useNetwork((s) => s.online);
   const toast = useToast();
@@ -39,34 +46,46 @@ export default function TypeMeal() {
   const queue = useVoiceQueue(userId);
   const queuedNote = params.queued ? queue.find((n) => n.id === params.queued && n.kind === "text") : undefined;
   const mealType = queuedNote?.mealType ?? mealTypeParam(params);
-  const [text, setText] = useState(params.text ?? queuedNote?.text ?? "");
+  const [text, setText] = useState(params.text ?? queuedNote?.text ?? (userId ? kv.get(textKey(userId)) : null) ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const phrases = readPhrases(userId);
+  const pendingCapture = useRef<ReturnType<typeof queueText> | null>(null);
+  const submitting = useRef(false);
 
   const submit = async (value: string = text) => {
     const t = value.trim();
-    if (!t || !userId) return;
+    if (!t || !userId || submitting.current) return;
+    const completed = params.actionKey ? actionResult(userId, params.actionKey) : null;
+    if (completed?.kind === "meal" && getMeal(completed.id)) { router.replace({ pathname: "/log/meal/[id]", params: { id: completed.id } }); return; }
     setBusy(true);
     setError(null);
+    if (queuedNote && draftActions.resumeCapture(userId, queuedNote.id)) { finish("replace"); setBusy(false); return; }
+    const capture = queuedNote ?? pendingCapture.current ?? queueText(userId, t, mealType ?? mealTypeForTime(new Date()), params.actionKey ? `coach-${userId}-${params.actionKey}` : undefined);
+    if (draftActions.resumeCapture(userId, capture.id)) { finish("replace"); setBusy(false); return; }
+    pendingCapture.current = capture;
+    submitting.current = true;
     try {
       const { result, clientMs } = await parseText(userId, t);
+      if (useActiveUser.getState().userId !== userId) return;
       kv.set(phrasesKey(userId), JSON.stringify([t, ...phrases.filter((p) => p !== t)].slice(0, MAX_PHRASES)));
       if (result.items.length === 0) {
         setError({ title: "No food found in that", body: 'Try naming the dishes, like "2 roti, 1 katori dal".' });
         return;
       }
-      if (queuedNote) removeVoice(queuedNote);
-      draftActions.startFromParse(result, { mealType, clientMs });
+      draftActions.startFromParse(result, { mealType: capture.mealType, clientMs, loggedAt: capture.createdAt, captureId: capture.id, userId, actionKey: params.actionKey });
+      kv.remove(textKey(userId));
       finish("replace");
     } catch (e) {
       // Lost the connection mid-way: keep it for later instead of losing it.
       if (!queuedNote && e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) {
-        saveForLater(t);
+        toast({ kind: "info", message: "Text saved on this phone. Estimate pending." });
+        router.back();
         return;
       }
       setError(describeError(e));
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -97,7 +116,7 @@ export default function TypeMeal() {
         label="What did you eat?"
         placeholder="2 roti, 1 katori dal, paneer bhurji"
         value={text}
-        onChangeText={setText}
+        onChangeText={(value) => { if (userId) kv.set(textKey(userId), value); pendingCapture.current = null; setText(value); }}
         multiline
         autoFocus={!params.auto && !params.queued}
         maxLength={500}

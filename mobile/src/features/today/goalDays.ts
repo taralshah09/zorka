@@ -7,6 +7,7 @@ import { getDb } from "@/core/storage/db";
 import { useSyncStatus } from "@/core/sync/engine";
 import { dayCredit, useActivityVersion } from "@/features/activity/store";
 import { useMealsVersion } from "@/features/meals/store";
+import { coverageFor, useCoverageVersion } from "@/features/meals/coverage";
 import { dayIntake } from "@/features/progress/queries";
 import { glassesBetween, useWaterVersion } from "@/features/water/store";
 import { scoreGoalDay, type GoalDay } from "@shared/domain/gap";
@@ -52,7 +53,7 @@ export function goalMonth(
       date,
       scoreGoalDay(
         {
-          eaten: { kcal: eaten?.kcal ?? 0, proteinG: eaten?.proteinG ?? 0, logged: !!eaten },
+          eaten: { kcal: eaten?.kcal ?? 0, proteinG: eaten?.proteinG ?? 0, logged: !!eaten && coverageFor(userId, date) === "complete" },
           steps: steps.get(date) ?? null,
           glasses: water.get(date) ?? 0,
         },
@@ -76,14 +77,16 @@ export function useGoalMonth(
   waterGoal: number,
 ): Map<string, GoalDay> {
   const meals = useMealsVersion((s) => s.v);
+  const coverageVersion = useCoverageVersion((s) => s.v);
   const water = useWaterVersion((s) => s.v);
   const activity = useActivityVersion();
   const sync = useSyncStatus((s) => s.lastSyncedAt);
   return useMemo(() => {
+    void coverageVersion;
     void meals;
     void water;
     void activity;
     void sync;
     return userId && targets ? goalMonth(userId, month, today, targets, waterGoal) : new Map();
-  }, [userId, month, today, targets, waterGoal, meals, water, activity, sync]);
+  }, [userId, month, today, targets, waterGoal, meals, water, activity, sync, coverageVersion]);
 }

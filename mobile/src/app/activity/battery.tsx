@@ -1,13 +1,22 @@
 import * as Device from "expo-device";
 import * as IntentLauncher from "expo-intent-launcher";
 import { router } from "expo-router";
-import { useState } from "react";
-import { Linking, Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { AppState, Linking, Platform } from "react-native";
 import { Button, Card, Header, Screen, Text } from "@/core/ui";
+import { batteryOptimization, type BatteryOptimization } from "@/features/activity/battery";
 
 export default function BatteryGuide() {
   const brand = (Device.manufacturer ?? Device.brand ?? "Android").toLowerCase();
   const [error, setError] = useState<string | null>(null);
+  const [optimization, setOptimization] = useState<BatteryOptimization | "checking">("checking");
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => { void batteryOptimization().then((result) => { if (mounted) setOptimization(result); }); };
+    refresh();
+    const sub = AppState.addEventListener("change", (state) => { if (state === "active") refresh(); });
+    return () => { mounted = false; sub.remove(); };
+  }, []);
   const advice = /xiaomi|redmi|poco/.test(brand)
     ? [
         "Settings → Apps → Zorka → Battery saver → No restrictions.",
@@ -47,6 +56,8 @@ export default function BatteryGuide() {
   return (
     <Screen header={<Header title="Keep runs recording" onBack={() => router.back()} />}>
       <Text variant="headline-lg">Record with your screen off</Text>
+      <Card><Text variant="title">{optimization === "checking" ? "Checking battery settings…" : optimization === "restricted" ? "Battery optimization is enabled for Zorka" : optimization === "exempt" ? "Zorka is exempt from battery optimization" : "Battery optimization status is unknown"}</Text>
+        <Text variant="body">{optimization === "exempt" ? "Manufacturer restrictions can still interrupt recording. Test a short locked-screen walk." : "Open settings if you want screen-off recording, then return here to check again."}</Text></Card>
       <Text variant="body" color="textSecondary">
         Some phones stop background apps to save power. Give Zorka permission to keep your activity recording, then test
         a short walk with the screen locked.

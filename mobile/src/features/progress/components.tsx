@@ -166,13 +166,13 @@ export function WeekStats({
         <StatTile
           value={avgKcal != null ? formatInt(avgKcal) : "–"}
           unit="kcal / day"
-          label="Avg calories"
+          label="Avg recorded kcal"
           color={colors.dataKcal}
         />
         <StatTile
           value={avgProteinG != null ? formatInt(avgProteinG) : "–"}
           unit="g / day"
-          label="Avg protein"
+          label="Avg recorded protein"
           color={colors.dataProtein}
         />
       </View>

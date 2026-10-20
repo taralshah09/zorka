@@ -10,6 +10,8 @@ import { Notifications } from "./notifications";
 export const NUDGE_CHANNEL = "nudges";
 
 export type StoredNudgeSettings = NudgeSettings & {
+  consentVersion?: 1;
+  adaptive?: boolean;
   /** Home's "Turn on nudges" card was dismissed. */ promptDismissed: boolean;
 };
 
@@ -22,7 +24,7 @@ export function nudgeSettings(userId: string | null): StoredNudgeSettings {
     const raw = kv.get(key(userId));
     if (!raw) return base;
     const s = JSON.parse(raw) as Partial<StoredNudgeSettings>;
-    return { ...base, ...s, kinds: { ...base.kinds, ...s.kinds } };
+    return { ...base, ...s, enabled: s.consentVersion === 1 && !!s.enabled, kinds: { ...base.kinds, ...s.kinds } };
   } catch {
     return base;
   }
@@ -33,7 +35,7 @@ export const useNudgeSettingsVersion = create<{ v: number }>(() => ({ v: 0 }));
 export const bumpNudges = () => useNudgeSettingsVersion.setState((x) => ({ v: x.v + 1 }));
 
 export function saveNudgeSettings(userId: string, s: StoredNudgeSettings) {
-  kv.set(key(userId), JSON.stringify(s));
+  kv.set(key(userId), JSON.stringify({ ...s, consentVersion: 1 }));
   bumpNudges();
 }
 

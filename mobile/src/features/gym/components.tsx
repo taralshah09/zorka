@@ -20,6 +20,7 @@ import {
 } from "@shared/domain/gym";
 import { CATEGORY_TILE, SET_COLUMNS } from "./format";
 import { restTimer, useRestTimer } from "./rest";
+import { readSetText, saveSetText, clearSetText } from "./setDraft";
 import {
   completeSet,
   removeSet,
@@ -196,7 +197,8 @@ function SetRow({
   const toast = useToast();
   const cols = SET_COLUMNS[we.type];
   // Typed text not saved yet; everything else shows the stored value.
-  const [edits, setEdits] = useState<Partial<Record<Field, string>>>({});
+  const [edits, setEdits] = useState<Partial<Record<Field, string>>>(() => readSetText(userId, set.id));
+  const editsRef = useRef(edits);
   const shown = (f: Field) => edits[f] ?? toText(we.type, f, set[f]);
   const hint = (f: Field) =>
     previous
@@ -216,6 +218,8 @@ function SetRow({
   const commit = () => {
     if (!Object.keys(edits).length) return;
     updateSet(userId, we, set.id, current());
+    clearSetText(userId, set.id);
+    editsRef.current = {};
     setEdits({});
   };
 
@@ -246,6 +250,8 @@ function SetRow({
     }
     if (we.type === "weight_reps" && v.weightKg === null && v.reps !== null) v.weightKg = 0;
     const kinds = completeSet(userId, we, set.id, v);
+    clearSetText(userId, set.id);
+    editsRef.current = {};
     setEdits({});
     if (kinds === null) {
       toast({ kind: "info", message: `Add ${cols.map((c) => c.label.toLowerCase()).join(" and ")} first` });
@@ -291,7 +297,13 @@ function SetRow({
           value={shown(c.field)}
           placeholder={hint(c.field)}
           placeholderTextColor={colors.textTertiary}
-          onChangeText={(t) => setEdits((e) => ({ ...e, [c.field]: t }))}
+          onChangeText={(t) => {
+            const next = { ...editsRef.current, [c.field]: t };
+            // Raw text is durable before React renders or the 600 ms numeric-write timer fires.
+            saveSetText(userId, set.id, next);
+            editsRef.current = next;
+            setEdits(next);
+          }}
           onEndEditing={commit}
           keyboardType={
             c.field === "reps" || (c.field === "durationS" && we.type === "time") ? "number-pad" : "decimal-pad"

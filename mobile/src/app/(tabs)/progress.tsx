@@ -34,6 +34,7 @@ import { TrendChart } from "@/features/progress/TrendChart";
 import { deleteWeight, restoreWeight } from "@/features/progress/weights";
 import { AppHeader } from "@/features/shell/AppHeader";
 import { addDays } from "@shared/domain/progress";
+import { WeeklyLearning } from "@/features/progress/WeeklyLearning";
 
 type Range = "7d" | "30d" | "phase";
 
@@ -174,7 +175,7 @@ export default function Progress() {
             onPress={() => router.push({ pathname: "/progress/phase-edit", params: { change: "goal" } })}
           />
 
-          {p.streak ? <StreakCard streak={p.streak} onPress={() => router.push("/progress/streak")} /> : null}
+          <WeeklyLearning key={`${p.userId}:${p.today}`} userId={p.userId} end={p.today} />
 
           <PressableScale
             onPress={toggleDetails}
@@ -213,6 +214,7 @@ export default function Progress() {
                 This week
               </Text>
               <WeekStats {...week} />
+              {p.streak ? <StreakCard streak={p.streak} onPress={() => router.push("/progress/streak")} /> : null}
 
               {recent.length ? (
                 <Card eyebrow="Weigh-ins">

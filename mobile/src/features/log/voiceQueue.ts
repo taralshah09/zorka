@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import { getDb } from "@/core/storage/db";
+import { logTime } from "@/features/today/selectedDay";
 import type { MealType } from "@shared/domain/food";
 
 export type QueuedKind = "voice" | "photo" | "text";
@@ -69,7 +70,7 @@ export function queueVoice(
     durationMs,
     mealType,
     text: null,
-    createdAt: new Date().toISOString(),
+    createdAt: logTime().toISOString(),
   });
 }
 
@@ -84,12 +85,14 @@ export const queuePhoto = (userId: string, photoUri: string, mealType: MealType)
     durationMs: 0,
     mealType,
     text: null,
-    createdAt: new Date().toISOString(),
+    createdAt: logTime().toISOString(),
   });
 
-export const queueText = (userId: string, text: string, mealType: MealType): VoiceNote =>
-  insert({
-    id: randomUUID(),
+export const queueText = (userId: string, text: string, mealType: MealType, captureId?: string): VoiceNote => {
+  const existing = captureId ? getCapture(userId, captureId) : null;
+  if (existing) return existing;
+  return insert({
+    id: captureId ?? randomUUID(),
     userId,
     kind: "text",
     uri: "",
@@ -97,8 +100,14 @@ export const queueText = (userId: string, text: string, mealType: MealType): Voi
     durationMs: 0,
     mealType,
     text,
-    createdAt: new Date().toISOString(),
+    createdAt: logTime().toISOString(),
   });
+};
+export function getCapture(userId: string, id: string): VoiceNote | null {
+  const r = getDb().getFirstSync<Row>(`SELECT * FROM voice_queue WHERE user_id = ? AND id = ?`, userId, id);
+  return r ? { id: r.id, userId: r.user_id, kind: r.kind, uri: r.uri, mimeType: r.mime_type,
+    durationMs: r.duration_ms, mealType: r.meal_type, text: r.text, createdAt: r.created_at } : null;
+}
 
 /**
  * Drops a queued item. Its file goes too, except a photo that was read: that file is now the meal's photo
@@ -115,6 +124,11 @@ export function removeVoice(note: VoiceNote, keepFile = false) {
   }
   getDb().runSync(`DELETE FROM voice_queue WHERE id = ?`, note.id);
   bump();
+}
+
+/** Recoverable dismissal: the source file remains available for Undo. */
+export function restoreVoice(note: VoiceNote) {
+  if (!getDb().getFirstSync(`SELECT id FROM voice_queue WHERE id = ?`, note.id)) insert(note);
 }
 
 /** The screen that reads a queued item. */

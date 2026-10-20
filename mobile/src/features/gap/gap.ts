@@ -13,8 +13,13 @@ import { useActiveUser } from "@/features/users/activeUser";
 import { localDate, mealTypeForTime, sumMacros } from "@shared/domain/food";
 import { computeGap, minuteOfDay, type Gap } from "@shared/domain/gap";
 import type { Targets } from "@shared/domain/targets";
+import { coverageFor, useCoverageVersion } from "@/features/meals/coverage";
+import { useVoiceQueue } from "@/features/log/voiceQueue";
+import { freshness, type IntakeCoverage, type Freshness } from "@shared/domain/evidence";
 
 export type DayGap = {
+  coverage: IntakeCoverage;
+  weightFreshness: Freshness;
   userId: string;
   day: string;
   minute: number;
@@ -37,6 +42,8 @@ export function useDayGap(now: number): DayGap | null {
   const day = localDate(at);
   const minute = minuteOfDay(at);
   const meals = useDayMeals(userId, day);
+  const coverageVersion = useCoverageVersion((s) => s.v);
+  const queue = useVoiceQueue(userId);
   const activities = useActivityVersion();
   const workouts = useWorkoutsVersion((s) => s.v);
 
@@ -54,6 +61,7 @@ export function useDayGap(now: number): DayGap | null {
   }, [userId, day, activities]);
 
   return useMemo(() => {
+    void coverageVersion;
     if (!userId || !targets) return null;
     const eaten = sumMacros(meals.map(mealTotals));
     const gap = computeGap({
@@ -63,6 +71,8 @@ export function useDayGap(now: number): DayGap | null {
       minuteOfDay: minute,
     });
     return {
+      coverage: queue.some((n) => localDate(new Date(n.createdAt)) === day) ? "pending" : coverageFor(userId, day),
+      weightFreshness: freshness(latest ? `${latest.date}T12:00:00` : null, now, 7 * 86400000),
       userId,
       day,
       minute,
@@ -74,7 +84,7 @@ export function useDayGap(now: number): DayGap | null {
       workoutToday,
       mealNames: meals.map((m) => m.items.map((i) => i.name).join(", ")),
     };
-  }, [userId, targets, meals, credit.kcal, minute, day, steps, latest?.trendKg, profile.data?.weightKg, workoutToday]);
+  }, [userId, targets, meals, credit.kcal, minute, day, steps, latest, profile.data?.weightKg, workoutToday, coverageVersion, queue, now]);
 }
 
 export const currentMealType = (now: number) => mealTypeForTime(new Date(now));

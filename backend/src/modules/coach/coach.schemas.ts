@@ -73,6 +73,9 @@ const label = z.string().trim().min(1).max(40);
 export const CoachAction = z.discriminatedUnion("type", [
   /** Logs a meal from plain food words ("2 roti, 1 katori dal"); the phone runs the usual text → food parser. */
   z.object({ type: z.literal("log_meal"), label, text: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ type: z.literal("plan_meal"), label, text: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ type: z.literal("save_idea"), label, text: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ type: z.literal("ate_meal"), label, text: z.string().trim().min(1).max(200) }).strict(),
   z.object({ type: z.literal("open"), label, screen: z.enum(COACH_SCREENS) }).strict(),
   /** Starts the user's next gym routine (the phone knows which; the server doesn't see routines). */
   z.object({ type: z.literal("start_workout"), label }).strict(),

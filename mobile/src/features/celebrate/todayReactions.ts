@@ -4,15 +4,11 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 
-import { reactMascot } from "@/core/ui";
 import type { LineSituation } from "@/features/coach/lines";
 import type { DayGap } from "@/features/gap/gap";
 import { DONE_PROTEIN_SHARE, OVER_TOLERANCE_KCAL } from "@shared/domain/gap";
 import { burstOnce } from "./ConfettiBurst";
 
-const EYEROLL: readonly LineSituation[] = ["over", "over_late", "streak_risk"];
-/** Eye-rolls already played this app session (day + situation), so tab switches don't repeat them. */
-const rolled = new Set<string>();
 
 /** Pass `userId` only while today is on show (not a past day picked on the date strip). */
 export function useTodayReactions(
@@ -32,21 +28,13 @@ export function useTodayReactions(
   useFocusEffect(
     useCallback(() => {
       if (!userId || dgDay !== day) return;
-      if (!allDone) {
+      if (!allDone && dg?.coverage === "complete") {
         // One burst per focus at most; the others fire on the next visit.
         if (proteinHit && burstOnce(userId, `goal:protein:${day}`)) return;
         if (kcalHit && burstOnce(userId, `goal:kcal:${day}`)) return;
         if (stepsHit && burstOnce(userId, `goal:steps:${day}`)) return;
       }
-      if (situation && EYEROLL.includes(situation)) {
-        const key = `${userId}:${day}:${situation}`;
-        if (rolled.has(key)) return;
-        const timer = setTimeout(() => {
-          rolled.add(key);
-          reactMascot("eyeroll");
-        }, 600);
-        return () => clearTimeout(timer);
-      }
-    }, [userId, dgDay, day, allDone, proteinHit, kcalHit, stepsHit, situation]),
+    }, [userId, dgDay, day, allDone, proteinHit, kcalHit, stepsHit, dg?.coverage]),
   );
+  void situation;
 }

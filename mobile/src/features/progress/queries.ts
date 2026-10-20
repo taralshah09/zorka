@@ -4,6 +4,12 @@ import { getDb } from "@/core/storage/db";
 import { routePoints } from "@/features/activity/store";
 import { routeStats } from "@shared/domain/activity";
 import type { DayIntake } from "@shared/domain/progress";
+import { coverageFor } from "@/features/meals/coverage";
+
+export function completeIntake(userId: string, start: string, end: string): DayIntake[] {
+  return dayIntake(userId, start, end).filter((d) => coverageFor(userId, d.date) === "complete" && !getDb().getFirstSync(
+    `SELECT id FROM voice_queue WHERE user_id = ? AND date(created_at, 'localtime') = ? LIMIT 1`, userId, d.date));
+}
 
 /** kcal and protein eaten per day, for days with at least one logged food item. Oldest first. */
 export function dayIntake(userId: string, start: string, end: string): DayIntake[] {

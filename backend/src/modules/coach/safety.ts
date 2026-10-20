@@ -33,9 +33,9 @@ const UNSAFE_ADVICE =
 
 /** A safe line in the persona's voice, used when the AI's reply fails the filter. */
 export const FALLBACK_REPLY: Record<CoachId, string> = {
-  drill_sergeant: "Let's keep it simple. Check today's numbers on Home and close the biggest gap first.",
-  calm_mentor: "Let's take this one step at a time. Your numbers for today are on Home; start with the biggest gap.",
-  desi_legend: "Chalo, one step at a time! Today's numbers are on Home. Pick the biggest gap and smash it!",
+  drill_sergeant: "Your records are on Home. They may be incomplete. Choose what helps you today.",
+  calm_mentor: "Your records are on Home. They may be incomplete. Continue whenever you're ready.",
+  desi_legend: "Chalo, start with today! Your earlier effort is still here. Pick what helps, yaar.",
 };
 
 export const MAX_REPLY_WORDS = 80;
@@ -67,7 +67,7 @@ export function checkActions(raw: readonly unknown[] | undefined, localTime: str
     const parsed = CoachAction.safeParse(item);
     if (!parsed.success) continue;
     const a = parsed.data;
-    const words = a.type === "log_meal" ? `${a.label} ${a.text}` : a.label;
+    const words = "text" in a ? `${a.label} ${a.text}` : a.label;
     if (PROFANITY.test(words) || UNSAFE_ADVICE.test(words)) continue;
     if (localTime >= LATE_NIGHT && (a.type === "start_workout" || (a.type === "open" && a.screen === "record_walk")))
       continue;
@@ -82,7 +82,7 @@ export function checkActions(raw: readonly unknown[] | undefined, localTime: str
 
 /** The reply to send, or null when it must be replaced by FALLBACK_REPLY. */
 export function checkReply(text: string): string | null {
-  if (PROFANITY.test(text) || UNSAFE_ADVICE.test(text)) return null;
+  if (PROFANITY.test(text) || UNSAFE_ADVICE.test(text) || /\b(no excuses|walk it off|burn (it|the meal) off|earn (your |the )?food|compensate|target (drops|eases)|water,? not fat)\b/i.test(text)) return null;
   const trimmed = trimReply(text.replace(/[*_#`]/g, ""));
   return trimmed || null;
 }

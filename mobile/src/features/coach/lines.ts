@@ -42,18 +42,12 @@ const LINES: Record<CoachId, Lines> = {
   drill_sergeant: {
     morning: (f) => `${n(f.targetKcal)} kcal. ${n(f.targetProteinG)} g protein. That's the mission. Log breakfast.`,
     on_track: () => "On track. Hold the line.",
-    protein: (f) => `${n(f.proteinLeftG)} g protein short. No excuses. Fix it.`,
+    protein: (f) => `${n(f.proteinLeftG)} g protein below your plan in the records. Want food ideas?`,
     under: (f) => `${n(f.kcalLeft)} kcal and ${n(f.proteinLeftG)} g protein left. Eat a real dinner.`,
-    over: (f) =>
-      f.walkMinutes
-        ? `${n(f.overKcal)} over. Walk it off: ${f.walkMinutes} minutes, tonight.`
-        : `${n(f.overKcal)} over. Tomorrow we tighten up.`,
-    over_late: (f) =>
-      f.easeKcal
-        ? `${n(f.overKcal)} over. No midnight runs. Tomorrow's target drops ${n(f.easeKcal)}. Sleep.`
-        : `${n(f.overKcal)} over. No midnight runs. Sleep, then back on plan tomorrow.`,
-    done: () => "All targets hit. That's the standard.",
-    streak_risk: (f) => `${f.streak}-day streak on the line. One log. Now.`,
+    over: () => "Meal recorded. No need to compensate. Continue your usual plan.",
+    over_late: () => "Rest tonight. Your usual target stays unchanged.",
+    done: () => "Food targets recorded. Done for now.",
+    streak_risk: () => "Your earlier work is still here. Start with today when you're ready.",
     welcome_back: () => "You're back. Good. We start again today.",
     steps: (f) => `${n(f.stepsLeft)} steps to go. ${f.walkForSteps} minutes, brisk. Move.`,
   },
@@ -63,17 +57,11 @@ const LINES: Record<CoachId, Lines> = {
     on_track: () => "You're right on track. Nothing to change.",
     protein: (f) => `You're ${n(f.proteinLeftG)} g short on protein. An easy dinner can close most of it.`,
     under: (f) => `${n(f.kcalLeft)} kcal and ${n(f.proteinLeftG)} g protein left. A calm, balanced dinner covers it.`,
-    over: (f) =>
-      f.walkMinutes
-        ? `One meal doesn't define a phase. A ${f.walkMinutes}-minute walk tonight burns about ${n(f.walkKcal)}.`
-        : "One meal doesn't define a phase. Tomorrow is a fresh page.",
-    over_late: (f) =>
-      f.easeKcal
-        ? `One meal doesn't define a phase. Rest tonight; tomorrow's target eases by ${n(f.easeKcal)}.`
-        : "One meal doesn't define a phase. Rest tonight; tomorrow is a fresh page.",
-    done: () => "Everything done today. Well earned.",
-    streak_risk: (f) => `Your ${f.streak}-day streak is still yours. One small log keeps it going.`,
-    welcome_back: () => "Welcome back. Your trend held steady. Let's pick up from here.",
+    over: () => "One meal doesn't define the week. No need to compensate for it.",
+    over_late: () => "Rest tonight. Your usual target stays unchanged.",
+    done: () => "Food targets recorded. You're done for now.",
+    streak_risk: () => "Your earlier work is still here. Continue whenever you're ready.",
+    welcome_back: () => "Welcome back. Nothing to catch up on. Start with today.",
     steps: (f) => `${n(f.stepsLeft)} steps left. A ${f.walkForSteps}-minute walk gets you there.`,
   },
   desi_legend: {
@@ -81,17 +69,11 @@ const LINES: Record<CoachId, Lines> = {
     on_track: () => "Bilkul on track! Keep this energy going!",
     protein: (f) => `${n(f.proteinLeftG)} g protein baaki hai! Paneer, dal, eggs — chalo, finish strong tonight!`,
     under: (f) => `${n(f.kcalLeft)} kcal and ${n(f.proteinLeftG)} g protein still baaki! A proper dinner, yaar!`,
-    over: (f) =>
-      f.walkMinutes
-        ? `Shaadi ka khana, no regrets! A ${f.walkMinutes}-minute walk tonight and we're right back on track.`
-        : "Big meal, big heart! Tomorrow we come back stronger!",
-    over_late: (f) =>
-      f.easeKcal
-        ? `No late-night runs, legend! Sleep well; tomorrow's target eases by ${n(f.easeKcal)}.`
-        : "No late-night runs, legend! Sleep well; kal phir se on track!",
-    done: () => "Every target smashed! That's how legends are made!",
-    streak_risk: (f) => `${f.streak} days strong! Don't let it slip tonight. One log, bas!`,
-    welcome_back: () => "Arre, welcome back! Your trend held steady. Let's roll!",
+    over: () => "Meal saved, yaar. No need to earn it back. Carry on with your usual plan.",
+    over_late: () => "Rest well, legend. Tomorrow's usual target stays the same.",
+    done: () => "Food targets recorded, shabash! Done for now.",
+    streak_risk: () => "Your earlier effort is still here, yaar. Start whenever you're ready.",
+    welcome_back: () => "Arre, welcome back! Nothing to catch up on. Start with today.",
     steps: (f) => `${n(f.stepsLeft)} steps baaki! ${f.walkForSteps} minutes of brisk walking, chalo!`,
   },
 };
@@ -99,12 +81,12 @@ const LINES: Record<CoachId, Lines> = {
 export const coachLine = (coach: CoachId, situation: LineSituation, facts: LineFacts) => LINES[coach][situation](facts);
 
 const TITLE: Record<NudgeKind, (f: LineFacts) => string> = {
-  morning: (f) => `${n(f.targetKcal)} kcal · ${n(f.targetProteinG)} g protein today`,
-  protein: (f) => `${n(f.proteinLeftG)} g protein to go`,
+  morning: () => "Your chosen meal reminder",
+  protein: () => "Food ideas when useful",
   workout: () => "Workout time",
-  slipping: (f) => `${n(f.kcalLeft)} kcal left today`,
-  streak: (f) => `${f.streak}-day streak at risk`,
-  praise: () => "All goals hit today",
+  slipping: () => "Your chosen record review",
+  streak: () => "Your recording history",
+  praise: () => "Food targets recorded",
 };
 
 const WORKOUT_BODY: Record<CoachId, string> = {
@@ -125,6 +107,7 @@ const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, ma
 
 /** Notification copy in the coach's voice: title ≤ 40, body ≤ 90 characters (DESIGN.md §8.3). */
 export function nudgeCopy(coach: CoachId, kind: NudgeKind, facts: LineFacts): { title: string; body: string } {
-  const body = kind === "workout" ? WORKOUT_BODY[coach] : coachLine(coach, SITUATION[kind], facts);
+  void SITUATION; void facts;
+  const body = kind === "workout" ? WORKOUT_BODY[coach] : kind === "morning" ? "Save something you ate when it suits you. Your records will be here." : "Your records may have changed. Open Zorka if a review would help.";
   return { title: clip(TITLE[kind](facts), 40), body: clip(body, 90) };
 }

@@ -140,6 +140,7 @@ export type CoachScreen =
 /** UX N1 · A button under a coach reply. */
 export type CoachAction =
   | { type: "log_meal"; label: string; text: string }
+  | { type: "plan_meal" | "save_idea" | "ate_meal"; label: string; text: string }
   | { type: "open"; label: string; screen: CoachScreen }
   | { type: "start_workout"; label: string };
 export type CoachChatResult = {

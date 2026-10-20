@@ -114,7 +114,7 @@ export function dayContext(
     goal: profile?.goal ?? null,
     diet: profile?.diet ?? null,
     localTime: hhmm(now),
-    state: g.state,
+    state: dg.coverage === "complete" ? g.state : "on_track",
     targetKcal: dg.targets.kcal,
     floorKcal: dg.targets.floorKcal,
     kcalLeft: g.remaining.kcal,
@@ -128,7 +128,7 @@ export function dayContext(
     stepGoal: dg.targets.steps,
     streakDays: streak?.current ?? 0,
     workoutToday: dg.workoutToday,
-    mealsToday: dg.mealNames.slice(0, 12).map((m) => m.slice(0, 120)),
+    mealsToday: [`Record coverage: ${dg.coverage}; weight freshness: ${dg.weightFreshness}. Totals are recorded estimates.`, ...dg.mealNames].slice(0, 12).map((m) => m.slice(0, 120)),
   };
 }
 

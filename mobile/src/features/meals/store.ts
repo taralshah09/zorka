@@ -9,6 +9,8 @@ import { getDb } from "@/core/storage/db";
 import { notifyLocalWrite, onAcknowledged, useSyncStatus } from "@/core/sync/engine";
 import { enqueue } from "@/core/sync/outbox";
 import { onPulled } from "@/core/sync/pull";
+import { setCoverage } from "./coverage";
+import { completeUsefulAction } from "@/features/nudges/events";
 import { localDate, sumMacros, type FoodUnit, type Macros, type MealType, type OilLevel } from "@shared/domain/food";
 
 export type MealSource = "search" | "text" | "voice" | "photo" | "repeat";
@@ -146,6 +148,7 @@ export function mealsBetween(userId: string, start: string, end: string): Meal[]
 /** Creates or replaces a meal (with all its items) and queues it for sync. */
 export function saveMeal(meal: Omit<Meal, "synced">): void {
   const db = getDb();
+  const previous = getMeal(meal.id);
   const now = new Date().toISOString();
   db.withTransactionSync(() => {
     db.runSync(
@@ -200,6 +203,9 @@ export function saveMeal(meal: Omit<Meal, "synced">): void {
       client_updated_at: now,
     });
   });
+  setCoverage(meal.userId, meal.localDate, "partial");
+  if (!previous) completeUsefulAction(meal.userId, "meal");
+  if (previous && previous.localDate !== meal.localDate) setCoverage(meal.userId, previous.localDate, "partial");
   bump();
   notifyLocalWrite();
 }
@@ -219,6 +225,7 @@ export function deleteMeal(meal: Meal): void {
       client_updated_at: now,
     });
   });
+  setCoverage(meal.userId, meal.localDate, "partial");
   bump();
   notifyLocalWrite();
 }

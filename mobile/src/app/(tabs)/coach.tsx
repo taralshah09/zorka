@@ -17,6 +17,8 @@ import type { CoachAction } from "@/core/api/types";
 import { Avatar, Button, Chip, EmptyState, ErrorState, IconButton, Screen, Skeleton, Text } from "@/core/ui";
 import { useActivityClock } from "@/features/activity/store";
 import { actionIcon, useCoachAction } from "@/features/coach/actions";
+import { actionResult } from "@/features/coach/actionState";
+import { getMeal, useMealsVersion } from "@/features/meals/store";
 import { dayContext, sendToCoach, useChat } from "@/features/coach/chat";
 import { CoachPickerSheet } from "@/features/coach/CoachPickerSheet";
 import { coachLine } from "@/features/coach/lines";
@@ -177,7 +179,8 @@ export default function Coach() {
               text={m.text}
               accent={PERSONAS[m.coach].accent}
               actions={m.actions}
-              onAction={runAction}
+              onAction={(a, index) => runAction(a, `${m.id}:${index}`)}
+              messageId={m.id}
             />
           ))}
           {typing ? (
@@ -264,13 +267,17 @@ function Bubble({
   accent,
   actions = [],
   onAction,
+  messageId,
 }: {
   role: "user" | "coach";
   text: string;
   accent: "lime" | "lilac" | "orchid";
   actions?: CoachAction[];
-  onAction?: (a: CoachAction) => void;
+  onAction?: (a: CoachAction, index: number) => void;
+  messageId?: string;
 }) {
+  const userId = useActiveUser((s) => s.userId);
+  useMealsVersion((s) => s.v);
   const { colors, radius } = useTheme();
   const coach = role === "coach";
   return (
@@ -294,16 +301,19 @@ function Bubble({
       </Text>
       {coach && actions.length && onAction ? (
         <View style={styles.actions}>
-          {actions.map((a, i) => (
+          {actions.map((a, i) => {
+            const result = messageId ? actionResult(userId, `${messageId}:${i}`) : null;
+            const done = result?.kind === "idea" || (result?.kind === "meal" && !!getMeal(result.id));
+            return (
             <Button
               key={`${a.type}-${i}`}
-              label={a.label}
+              label={done ? (result?.kind === "idea" ? "Idea saved · view" : "Meal saved · view") : a.type === "log_meal" ? "Review meal idea" : a.label}
               icon={actionIcon(a)}
               size="sm"
               variant={i === 0 ? "secondary" : "ghost"}
-              onPress={() => onAction(a)}
+              onPress={() => onAction(a, i)}
             />
-          ))}
+          ); })}
         </View>
       ) : null}
     </View>

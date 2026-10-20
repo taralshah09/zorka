@@ -9,9 +9,8 @@ import { kv, KV_KEYS } from "@/core/storage/kv";
 import { localDate, type MealType } from "@shared/domain/food";
 import { mealKey, saveMeal, type Meal, type MealItem } from "./store";
 
-export type UsualMeal = { id: string; mealType: MealType; items: MealItem[]; savedAt: string };
+export type UsualMeal = { id: string; mealType: MealType; items: MealItem[]; savedAt: string; pinned?: boolean; order?: number };
 
-const MAX_USUALS = 8;
 const key = (userId: string) => `${KV_KEYS.usualMeals}.${userId}`;
 
 const useUsualVersion = create<{ v: number }>(() => ({ v: 0 }));
@@ -26,9 +25,25 @@ export function usualMeals(userId: string): UsualMeal[] {
 }
 
 const write = (userId: string, list: UsualMeal[]) => {
-  kv.set(key(userId), JSON.stringify(list.slice(0, MAX_USUALS)));
+  kv.set(key(userId), JSON.stringify(list));
   bump();
 };
+
+export function rankedUsuals(list: readonly UsualMeal[], mealType: MealType): UsualMeal[] {
+  return list.filter((u) => u.mealType === mealType).sort((a, b) =>
+    Number(!!b.pinned) - Number(!!a.pinned) || (a.order ?? 999) - (b.order ?? 999) || b.savedAt.localeCompare(a.savedAt));
+}
+export function pinUsual(userId: string, id: string, pinned: boolean) {
+  write(userId, usualMeals(userId).map((u) => u.id === id ? { ...u, pinned } : u));
+}
+export function moveUsual(userId: string, id: string, direction: -1 | 1) {
+  const list = [...usualMeals(userId)].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  const index = list.findIndex((u) => u.id === id);
+  const next = index + direction;
+  if (index < 0 || next < 0 || next >= list.length) return;
+  [list[index], list[next]] = [list[next]!, list[index]!];
+  write(userId, list.map((u, order) => ({ ...u, order })));
+}
 
 export function saveUsual(userId: string, meal: Meal): UsualMeal {
   const usual: UsualMeal = {

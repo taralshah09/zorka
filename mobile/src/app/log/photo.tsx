@@ -17,7 +17,7 @@ import { Button, ErrorState, Header, OfflineBanner, Screen, Skeleton, Text, useT
 import { draftActions } from "@/features/log/draft";
 import { mealTypeParam, useFinishDraft } from "@/features/log/nav";
 import { parsePhoto, preparePhoto } from "@/features/log/parse";
-import { queuePhoto, removeVoice, useVoiceQueue } from "@/features/log/voiceQueue";
+import { queuePhoto, useVoiceQueue } from "@/features/log/voiceQueue";
 import { PermissionExplainer } from "@/features/permissions/PermissionExplainer";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime } from "@shared/domain/food";
@@ -38,6 +38,7 @@ export default function PhotoCapture() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const [cameraAsked, setCameraAsked] = useState<boolean | null>(null);
+  const pendingCapture = useRef<ReturnType<typeof queuePhoto> | null>(null);
 
   useEffect(() => {
     ImagePicker.getCameraPermissionsAsync().then((p) => setCameraAsked(p.granted || !p.canAskAgain));
@@ -54,19 +55,22 @@ export default function PhotoCapture() {
     if (!userId) return;
     setPhase("recognising");
     setPhotoUri(photo.uri);
+    if (queuedNote && draftActions.resumeCapture(userId, queuedNote.id)) { finish("replace"); return; }
+    const capture = queuedNote ?? (pendingCapture.current?.uri === photo.uri ? pendingCapture.current : null) ?? queuePhoto(userId, photo.uri, mealType ?? mealTypeForTime(new Date()));
+    pendingCapture.current = capture;
     try {
       const { result, clientMs } = await parsePhoto(userId, photo.base64);
-      // The file is now the meal's photo, so the queue keeps it.
-      if (queuedNote) removeVoice(queuedNote, true);
+      if (useActiveUser.getState().userId !== userId) return;
       if (!result.items.length) {
         setPhase("not_recognised");
         return;
       }
-      draftActions.startFromParse(result, { mealType, photoUri: photo.uri, clientMs });
+      draftActions.startFromParse(result, { mealType: capture.mealType, photoUri: photo.uri, clientMs, loggedAt: capture.createdAt, captureId: capture.id, userId });
       finish("replace");
     } catch (e) {
       if (!queuedNote && e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) {
-        saveForLater(photo.uri);
+        toast({ kind: "info", message: "Photo saved on this phone. Estimate pending." });
+        router.back();
         return;
       }
       setError(describeError(e));

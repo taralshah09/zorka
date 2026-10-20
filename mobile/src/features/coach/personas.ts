@@ -20,8 +20,8 @@ export const PERSONAS: Record<CoachId, Persona> = {
     name: "Drill Sergeant",
     accent: "lime",
     vibe: "Firm and direct",
-    sample: "62 g protein short. No excuses. Fix it.",
-    planLine: "Plan's set. Now we execute.",
+    sample: "Your records show protein below the plan. Want food ideas?",
+    planLine: "Plan ready. Choose what fits today.",
   },
   calm_mentor: {
     id: "calm_mentor",

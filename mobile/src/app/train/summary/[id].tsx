@@ -54,12 +54,13 @@ export default function WorkoutSummary() {
     <Screen header={<Header title={justFinished ? "Workout complete" : workout.name} onBack={() => router.back()} />}>
       <View>
         <Text variant="headline-lg" accessibilityRole="header">
-          {justFinished ? "Nice work." : workout.name}
+          {justFinished ? `Workout saved. ${stats.sets} sets completed.` : workout.name}
         </Text>
         <Text variant="body" color="textSecondary">
           {`${justFinished ? `${workout.name} · ` : ""}${formatDay(workout.startedAt)}${workout.synced ? "" : " · saved on this phone"}`}
         </Text>
       </View>
+      {justFinished ? <Text variant="body">{"Your previous numbers will be ready next time. You're done for now."}</Text> : null}
 
       <View style={styles.tiles}>
         <StatTile
@@ -77,12 +78,12 @@ export default function WorkoutSummary() {
       </View>
       <View style={styles.tiles}>
         <StatTile value={String(stats.sets)} unit="sets" label="Sets" color={colors.dataFat} />
-        <StatTile
+        {stats.prs.length ? <StatTile
           value={String(stats.prs.length)}
           unit={stats.prs.length === 1 ? "PR" : "PRs"}
           label="Records"
           color={colors.dataProtein}
-        />
+        /> : null}
       </View>
 
       {stats.prs.length ? (
@@ -120,7 +121,7 @@ export default function WorkoutSummary() {
               {e.name}
             </Text>
           </View>
-          {e.sets.map((s, i) => (
+          {e.sets.filter((s) => s.done).map((s, i) => (
             <View key={s.id} style={styles.setRow}>
               <Text variant="label" color="textSecondary" style={styles.setNo}>
                 {String(i + 1)}
@@ -147,7 +148,7 @@ export default function WorkoutSummary() {
           </View>
         ) : null}
         <View style={styles.flex}>
-          <Button label="Done" icon="check" fullWidth onPress={() => router.back()} />
+          <Button label="Done" icon="check" fullWidth onPress={() => router.dismissTo("/(tabs)/train")} />
         </View>
       </View>
       <Button label="Delete workout" variant="ghost" icon="delete" onPress={() => setConfirmDelete(true)} />

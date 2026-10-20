@@ -20,6 +20,9 @@ import { startWorkout, useActiveWorkout, useWorkoutsBetween, workoutStats } from
 import { useActiveUser } from "@/features/users/activeUser";
 import { CATEGORY_LABEL } from "@shared/domain/gym";
 import { ACTIVITY_LABEL } from "@shared/domain/activity";
+import { chooseRest, restChosen, useRestChoiceVersion } from "@/features/gym/prepared";
+import { preferencesFor, usePreferencesVersion } from "@/features/meals/preferences";
+import { localDate } from "@shared/domain/food";
 
 const ACTIVITIES: { icon: IconName; kind: "run" | "walk" | "ride"; label: string; hint: string }[] = [
   { icon: "directions_run", kind: "run", label: "Run", hint: "Pace · splits" },
@@ -43,6 +46,8 @@ export default function Train() {
   const { colors, radius, layout } = useTheme();
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
+  useRestChoiceVersion((s) => s.v);
+  usePreferencesVersion((s) => s.v);
   const active = useActiveWorkout(userId);
   const clock = useActivityClock();
   const recording = activeActivity();
@@ -54,7 +59,8 @@ export default function Train() {
   const days = weekDays(now);
   const week = useWorkoutsBetween(userId, days[0]!, days[6]!);
   const weekVolume = week.reduce((sum, w) => sum + workoutStats(w).volumeKg, 0);
-  const upNext = nextRoutine(routines, lastDone);
+  const upNext = routines.find((r) => r.id === preferencesFor(userId).routineId) ?? nextRoutine(routines, lastDone);
+  const resting = restChosen(userId, localDate(now));
 
   const openEmpty = () => {
     if (!userId) return;
@@ -94,6 +100,8 @@ export default function Train() {
           label: `Resume ${ACTIVITY_LABEL[openActivity.kind].toLowerCase()}`,
           onPress: () => router.push({ pathname: "/activity/live", params: { id: openActivity.id } }),
         }
+      : resting
+        ? { eyebrow: "Rest chosen", title: "Rest today", body: "Your earlier sessions are still here. No workout is recorded for a rest choice.", pill: "Rest", fab: "bedtime", label: "Change today's training choice", onPress: () => router.push("/train/prepare") }
       : upNext
         ? {
             eyebrow: "Up next",
@@ -102,16 +110,16 @@ export default function Train() {
             pill: "Rest timer ready",
             fab: "play_arrow",
             label: `Start ${upNext.name}`,
-            onPress: () => start(upNext),
+            onPress: () => router.push({ pathname: "/train/prepare", params: { routineId: upNext.id } }),
           }
         : {
             eyebrow: "Workout",
-            title: "Start empty workout",
-            body: "Log sets as you go. Last session's numbers are filled in for you.",
+            title: "Choose a starter session",
+            body: "See a prepared set list for your equipment, or start an empty workout.",
             pill: "Rest timer ready",
             fab: "add",
-            label: "Start empty workout",
-            onPress: openEmpty,
+            label: "Choose a starter session",
+            onPress: () => router.push("/train/prepare"),
           };
 
   return (
@@ -157,6 +165,11 @@ export default function Train() {
           </View>
         </View>
       </Card>
+      {!active && !openActivity ? <Card>
+        <Text variant="body">{resting ? "Rest chosen for today. No workout has been recorded." : "Rest is an available choice."}</Text>
+        <Button label={resting ? "Change rest choice" : "Rest today"} variant="ghost" onPress={() => userId && chooseRest(userId, localDate(now), !resting)} />
+        {upNext ? <Button label="See shorter session" variant="secondary" onPress={() => router.push({ pathname: "/train/prepare", params: { routineId: upNext.id } })} /> : null}
+      </Card> : null}
       {!active && !openActivity && upNext ? (
         <Button label="Start empty workout" icon="add" variant="ghost" onPress={openEmpty} />
       ) : null}

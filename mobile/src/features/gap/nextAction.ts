@@ -4,6 +4,7 @@
 import type { IconName } from "@/core/icons/Icon";
 import type { LineFacts, LineSituation } from "@/features/coach/lines";
 import { formatInt } from "@/features/targets/format";
+import type { Href } from "expo-router";
 
 export type NextAction = {
   eyebrow: string;
@@ -11,117 +12,17 @@ export type NextAction = {
   icon: IconName;
   tone: "default" | "warning" | "success";
   /** The button on Home's brief: the one thing to tap. */
-  cta: string;
-  href: "/gap" | "/gap?tab=move" | "/quick-log" | "/share?card=day";
+  cta: string | null;
+  href: Href;
 };
 
-const ways = (n: number, cta = false) =>
-  cta
-    ? n > 0
-      ? `Show me ${n === 1 ? "1 option" : `${n} options`}`
-      : "See your options"
-    : n > 1
-      ? `${n} ways to close it`
-      : n === 1
-        ? "1 way to close it"
-        : "see your options";
-
 export function nextAction(situation: LineSituation, f: LineFacts, eatOptions: number, mealsToday: number): NextAction {
-  switch (situation) {
-    case "streak_risk":
-      return {
-        eyebrow: "Streak at risk",
-        title: `Log anything to keep your ${f.streak}-day streak`,
-        icon: "local_fire_department",
-        tone: "warning",
-        cta: "Log anything now",
-        href: "/quick-log",
-      };
-    case "over":
-      return {
-        eyebrow: "Close the gap · balance it",
-        title: f.walkMinutes
-          ? `${formatInt(f.overKcal)} kcal over · a ${f.walkMinutes}-minute walk helps`
-          : `${formatInt(f.overKcal)} kcal over · calm ways to balance it`,
-        icon: "directions_walk",
-        tone: "warning",
-        cta: "See ways to balance",
-        href: "/gap?tab=move",
-      };
-    case "over_late":
-      return {
-        eyebrow: "Close the gap · balance it",
-        title: f.easeKcal
-          ? `${formatInt(f.overKcal)} kcal over · tomorrow can ease by ${formatInt(f.easeKcal)}`
-          : `${formatInt(f.overKcal)} kcal over · rest tonight, back on plan tomorrow`,
-        icon: "bedtime",
-        tone: "warning",
-        cta: "See ways to balance",
-        href: "/gap?tab=move",
-      };
-    case "done":
-      return {
-        eyebrow: "All goals hit",
-        title: "Every target done today. Share your day",
-        icon: "trophy",
-        tone: "success",
-        cta: "Share your day",
-        href: "/share?card=day",
-      };
-    case "protein":
-      return {
-        eyebrow: "Close the gap",
-        title: `${formatInt(f.proteinLeftG)} g protein left · ${ways(eatOptions)}`,
-        icon: "egg",
-        tone: "default",
-        cta: ways(eatOptions, true),
-        href: "/gap",
-      };
-    case "under":
-      return {
-        eyebrow: "Close the gap",
-        title: `${formatInt(f.kcalLeft)} kcal left · ${ways(eatOptions)}`,
-        icon: "restaurant",
-        tone: "default",
-        cta: ways(eatOptions, true),
-        href: "/gap",
-      };
-    case "steps":
-      return {
-        eyebrow: "Move a little",
-        title: `${formatInt(f.stepsLeft)} steps to go · a ${f.walkForSteps}-minute walk`,
-        icon: "directions_walk",
-        tone: "default",
-        cta: "Plan a walk",
-        href: "/gap?tab=move",
-      };
-    case "on_track":
-      return mealsToday
-        ? {
-            eyebrow: "On track ✓",
-            title: "Nothing to fix. Log your next meal when you eat",
-            icon: "check_circle",
-            tone: "success",
-            cta: "Log your next meal",
-            href: "/quick-log",
-          }
-        : {
-            eyebrow: "Next action",
-            title: "Log your first meal of the day",
-            icon: "restaurant",
-            tone: "default",
-            cta: "Log a meal",
-            href: "/quick-log",
-          };
-    case "morning":
-    case "welcome_back":
-      return {
-        eyebrow: "Next action",
-        title: "Log your first meal of the day",
-        icon: "restaurant",
-        tone: "default",
-        cta: "Log a meal",
-        href: "/quick-log",
-      };
-  }
+  void eatOptions;
+  const quiet: NextAction = { eyebrow: "Done for now", title: "Nothing needs you now. Your records are here whenever you need them.", icon: "check_circle", tone: "success", cta: null, href: "/day" };
+  if (situation === "over" || situation === "over_late") return { ...quiet, title: "Meal recorded. Continue your usual plan; no need to compensate." };
+  if (situation === "done") return { ...quiet, title: "Food targets recorded. You're done for now." };
+  if (situation === "protein" || situation === "under") return { eyebrow: "Optional food ideas", title: `Recorded totals are ${formatInt(situation === "protein" ? f.proteinLeftG : f.kcalLeft)} ${situation === "protein" ? "g protein" : "kcal"} below your plan. Want ideas?`, icon: "restaurant", tone: "default", cta: "See food ideas", href: "/gap" };
+  if (situation === "steps") return { eyebrow: "Optional", title: "A walk is available if it fits your day.", icon: "directions_walk", tone: "default", cta: "Plan a walk", href: "/activity/record?kind=walk" };
+  if (mealsToday) return quiet;
+  return { eyebrow: situation === "welcome_back" ? "Welcome back" : "When you're ready", title: "Save something you ate. Nothing to catch up on.", icon: "restaurant", tone: "default", cta: "Log a meal", href: "/quick-log" };
 }
