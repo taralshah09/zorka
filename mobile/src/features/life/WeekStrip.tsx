@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useTheme } from "@/core/theme";
 import { Card, Text } from "@/core/ui";
 import type { WeekPlan } from "@shared/domain/week";
-import { forgivenLines, weekdayShort, whyText } from "./copy";
+import { ADJUST_CODES, adjustLines, forgivenLines, weekdayShort, whyText } from "./copy";
 
 type DotKind = "done" | "planned" | "moved" | "event";
 
@@ -57,7 +57,10 @@ export function WeekStrip({ week, today }: { week: WeekPlan; today: string }) {
       {selected ? (
         <View style={styles.detail}>
           <Text variant="label">{`${weekdayShort(selected.date)} · ${selected.kcal} kcal · ${selected.proteinG} g protein${selected.steps != null ? ` · ${selected.steps.toLocaleString("en-IN")} steps` : ""}${selected.train ? " · workout" : ""}`}</Text>
-          {(selected.past ? ["Counted as logged (or on target if not logged)."] : whyText(selected.why)).map((t) => (
+          {(selected.past
+            ? ["Counted as logged (or on target if not logged)."]
+            : [...adjustLines(selected, today), ...whyText(selected.why.filter((w) => !(selected.adjust && ADJUST_CODES.includes(w))))]
+          ).map((t) => (
             <Text key={t} variant="caption" color="textSecondary">
               {t}
             </Text>

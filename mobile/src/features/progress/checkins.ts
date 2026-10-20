@@ -22,6 +22,7 @@ import {
   type CheckinResult,
   type Targets,
 } from "@shared/domain/targets";
+import type { WeekReport } from "@shared/domain/report";
 import { phaseOn, type Phase } from "./phases";
 import { completeIntake } from "./queries";
 
@@ -44,6 +45,8 @@ export type Checkin = {
   trendStartKg: number | null;
   trendEndKg: number | null;
   capped: boolean;
+  /** D87: the week's report card, made when the check-in was answered. null before D87. */
+  report?: WeekReport | null;
   /** When the user answered it. */
   answeredAt: string;
   synced: boolean;
@@ -238,8 +241,8 @@ export function pendingCheckin(input: {
   };
 }
 
-/** S35 "Accept new target" / "Keep current" / "Got it" (not enough data). */
-export function answerCheckin(userId: string, pending: PendingCheckin, status: CheckinStatus) {
+/** S35 "Accept new target" / "Keep current" / "Got it" (not enough data). The week's report card is stored with it. */
+export function answerCheckin(userId: string, pending: PendingCheckin, status: CheckinStatus, report: WeekReport | null = null) {
   const r = pending.result;
   const ready = r.status === "ready" ? r : null;
   write(userId, randomUUID(), {
@@ -257,6 +260,7 @@ export function answerCheckin(userId: string, pending: PendingCheckin, status: C
     trendStartKg: ready ? pending.trendStartKg : null,
     trendEndKg: ready ? pending.trendEndKg : null,
     capped: ready?.capped ?? false,
+    report,
   });
 }
 

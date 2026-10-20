@@ -38,6 +38,8 @@ const store = localEntity<StoredPlan>({
   }),
 });
 
+export const usePlansVersion = store.useVersion;
+
 export function planFor(userId: string, date: string): StoredPlan | null {
   const row = store.rows(`user_id = ? AND local_date = ? AND deleted = 0 ORDER BY client_updated_at DESC LIMIT 1`, userId, date)[0];
   return row?.plan ? row : null;

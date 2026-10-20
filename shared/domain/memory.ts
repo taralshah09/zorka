@@ -34,6 +34,8 @@ export const FACT_KEYS = {
   proteinShortfall: "protein:shortfall",
   wakeTime: "wake:time",
   waterTypical: "water:typical",
+  /** "Start fresh": the week's earlier gaps were let go from `value.from` (valid for that Mon–Sun week only). */
+  freshStart: "week:fresh_start",
   /** A fact the user asked the coach to remember (LA6 remember_fact). */
   note: (slug: string) => `note:${slug}`,
 } as const;
@@ -244,6 +246,8 @@ export type ActiveFacts = {
   firstMealMinute: number | null;
   waterGlasses: number | null;
   proteinShortG: number | null;
+  /** This week was started fresh: days before this date count as on target (week.ts `freshLedger`). */
+  freshFrom: string | null;
   /** Short texts for the coach (≤ 8 in DayContext), newest first. */
   texts: string[];
 };
@@ -255,6 +259,7 @@ export const NO_FACTS: ActiveFacts = {
   firstMealMinute: null,
   waterGlasses: null,
   proteinShortG: null,
+  freshFrom: null,
   texts: [],
 };
 
@@ -278,6 +283,7 @@ export function activeFacts(facts: readonly MemoryFact[], today: string): Active
     else if (f.key === FACT_KEYS.wakeTime) out.firstMealMinute = num(v.firstMealMinute);
     else if (f.key === FACT_KEYS.waterTypical) out.waterGlasses = num(v.glasses);
     else if (f.key === FACT_KEYS.proteinShortfall) out.proteinShortG = num(v.typicalShortG);
+    else if (f.key === FACT_KEYS.freshStart && typeof v.from === "string") out.freshFrom = v.from;
   }
   return out;
 }

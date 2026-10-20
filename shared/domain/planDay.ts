@@ -28,14 +28,17 @@ import {
   type Standing,
   type Window,
 } from "./life.js";
+import { applyGuarded, guardAiWeek, type AiWeek, type GuardedWeek } from "./aiPlan.js";
 import { dayKindOf, weekdayOf, type ActiveFacts } from "./memory.js";
 import type { Goal } from "./targets.js";
 import {
+  dayOptions,
   defaultCapacity,
   eventAllowance,
   LEDGER_RULES,
   planWeek,
   type DayLedgerInput,
+  type DayOptions,
   type WeekPlan,
   type WhyCode,
 } from "./week.js";
@@ -59,12 +62,18 @@ export type DayPlan = {
   /** No brief: an assumed usual day (D79). */
   assumed: boolean;
   targets: { kcal: number; kcalRange?: [number, number]; proteinG: number; steps: number | null; waterGlasses: number };
-  /** Realistic protein for this day's meal access, and the cheap step up when that's under base. */
+  /** Realistic protein for this day's meal access, and the cheap step up when that's under the day's target. */
   protein: { achievableG: number; stepUp: ProteinStepUp | null };
+  /** The numbers the user can pick for this day (usual, keep the week even, catch up faster), made without their pick. */
+  options: DayOptions;
   /** Sorted by time; every item that takes time is inside a free window and nothing moves after 21:30. */
   items: PlanItem[];
   why: PlanWhy[];
   week: WeekPlan;
+  /** D85: "ai" when the model's week (guarded) set the numbers, "code" for the rules-only plan (no AI, or offline). */
+  source: "ai" | "code";
+  /** The guard's report when the AI planned: metrics that fell back to the code plan, and the model's summary. */
+  ai?: { fellBack: GuardedWeek["fellBack"]; summary: string | null };
 };
 
 export type RoutineSummary = { id: string; name: string; minutes: number };
@@ -90,6 +99,8 @@ export type PlanDayInput = {
   sessionsTarget: number;
   /** Event allowance from the brief (a wedding), kcal for the day; default base + 500. */
   allowanceKcal?: number;
+  /** D85: the model's proposed week (raw); guarded here every time. null/undefined = the code plan. */
+  ai?: AiWeek | null;
 };
 
 /** Default meal times when there's no learned usual time. */
@@ -183,7 +194,6 @@ export function planDay(input: PlanDayInput): DayPlan {
   const why: PlanWhy[] = assumed ? ["assumed_day"] : [];
 
   const achievableG = achievableProteinG({ standing, facts, staples: input.staples, diet: input.diet });
-  const stepUp = achievableG < base.proteinG ? proteinStepUp({ standing, facts, staples: input.staples, diet: input.diet, gapG: base.proteinG - achievableG }) : null;
 
   // This day's ledger row: its type, what it can absorb, whether there's time to train, its event allowance.
   const routine = input.routines[0] ?? null;
@@ -205,9 +215,26 @@ export function planDay(input: PlanDayInput): DayPlan {
     if (dayType === "feast" || input.allowanceKcal != null) row.allowanceKcal = eventAllowance(d.baseKcal, input.allowanceKcal ?? d.allowanceKcal);
     if (base.maintenanceKcal != null) row.maintenanceKcal = base.maintenanceKcal;
     if (isPattern != null) row.patternDay = isPattern;
+    // Numbers the user picked for this day (brief screen) stay put; the rest of the week moves around them.
+    if (input.facts?.targets) row.chosen = input.facts.targets;
+    else delete row.chosen;
     return row;
   });
-  const week = planWeek(ledger, input.today, base.floorKcal, input.sessionsTarget, { goal: base.goal });
+  const weekOf = (rows: DayLedgerInput[]) => {
+    const code = planWeek(rows, input.today, base.floorKcal, input.sessionsTarget, { goal: base.goal });
+    // D85: the model decides the remaining days; the guard keeps every number inside the limits and the week adding up.
+    const g = input.ai?.days?.length
+      ? guardAiWeek(input.ai, { ledger: rows, today: input.today, floorKcal: base.floorKcal, goal: base.goal, sessionsTarget: input.sessionsTarget, code })
+      : null;
+    return { guarded: g, week: g ? applyGuarded(code, g) : code };
+  };
+  const { guarded, week } = weekOf(ledger);
+  const row = ledger.find((d) => d.date === date);
+  // The options are made as if nothing was picked for this day, so picking one doesn't move the others.
+  const auto = row?.chosen ? weekOf(ledger.map((d) => (d.date === date ? { ...d, chosen: undefined } : d))).week : week;
+  const options = row
+    ? dayOptions(auto, row, base.floorKcal, base.goal)
+    : { usual: { kcal: base.kcal, proteinG: base.proteinG, steps: base.steps }, even: { kcal: base.kcal, proteinG: base.proteinG, steps: base.steps }, faster: null };
   const wd = week.days.find((d) => d.date === date);
   for (const c of wd?.why ?? []) if (!why.includes(c)) why.push(c);
 
@@ -220,6 +247,8 @@ export function planDay(input: PlanDayInput): DayPlan {
     steps,
     waterGlasses: base.waterGlasses + (rule.water === "raised" ? SICK_EXTRA_GLASSES : 0),
   };
+  // The target may be past what this day's meals give (a pick, or protein moved in): the step-up covers the gap.
+  const stepUp = achievableG < proteinG ? proteinStepUp({ standing, facts, staples: input.staples, diet: input.diet, gapG: proteinG - achievableG }) : null;
   if (rule.maintenance && base.maintenanceKcal != null && base.maintenanceKcal !== kcal)
     targets.kcalRange = [Math.min(kcal, base.maintenanceKcal), Math.max(kcal, base.maintenanceKcal)];
   else if (rule.kcalRange) targets.kcalRange = [kcal - rule.kcalRange, kcal + rule.kcalRange];
@@ -296,7 +325,9 @@ export function planDay(input: PlanDayInput): DayPlan {
   const sorted = items
     .filter((i) => (i.kind === "prep" && i.dayOffset === -1) || i.at >= input.now)
     .sort((a, b) => (a.kind === "prep" && a.dayOffset === -1 ? -1 : 0) - (b.kind === "prep" && b.dayOffset === -1 ? -1 : 0) || a.at - b.at);
-  return { date, dayType, assumed, targets, protein: { achievableG, stepUp }, items: sorted, why, week };
+  const plan: DayPlan = { date, dayType, assumed, targets, protein: { achievableG, stepUp }, options, items: sorted, why, week, source: guarded ? "ai" : "code" };
+  if (guarded) plan.ai = { fellBack: guarded.fellBack, summary: guarded.summary };
+  return plan;
 }
 
 /** FNV-1a over a stable JSON of the inputs: the plan is recomputed (and saved) only when this changes. */

@@ -26,7 +26,7 @@ import {
 } from "@/features/meals/store";
 import { logUsual, rankedUsuals, useUsualMeals, type UsualMeal } from "@/features/meals/usual";
 import { formatDayLong } from "@/features/targets/format";
-import { dateOf, logTime, useViewedDay } from "@/features/today/selectedDay";
+import { dateOf, logTime, useLogDay } from "@/features/today/selectedDay";
 import { useActiveUser } from "@/features/users/activeUser";
 import { mealTypeForTime, type MealType } from "@shared/domain/food";
 
@@ -59,7 +59,7 @@ export default function QuickLog() {
   const slot = mealTypeParam(params);
   const mealType = slot ?? mealTypeForTime(new Date());
   // On a past day (picked on Today), meals are logged to that day and "the past week" counts back from it.
-  const { day, isToday } = useViewedDay(new Date());
+  const { day, isToday } = useLogDay(new Date());
   const last = useLastMealOfType(userId, mealType, day);
   const usuals = useUsualMeals(userId);
   const recent = useRecentMeals(userId, 6);

@@ -1,5 +1,7 @@
 // LA2/LA3 · Brief a day (D73): say or type what's coming up for any of the next 7 days → the parsed day as editable chips
-// (blocks, whereabouts, meal access, flags) → the one optional question → the plan and the "this week" strip → Accept.
+// (blocks, whereabouts, meal access, flags) → the one optional question → pick the day's numbers (Plan A keeps the week
+// even, Plan B catches up faster, the usual numbers, or your own) with how they're counted and "Start fresh" → the plan
+// and the "this week" strip → Accept.
 // Parsing needs the network; when it fails the chips start empty so the day can be set by hand, never by a guess.
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from "expo-audio";
 import { router, useLocalSearchParams } from "expo-router";
@@ -11,8 +13,9 @@ import { useNetwork } from "@/core/network/network";
 import { Button, Card, Chip, Header, IconButton, ListItem, NumberStepper, Screen, Text, TextField, useToast } from "@/core/ui";
 import { parseBriefText, parseBriefVoice } from "@/features/life/api";
 import { briefFor, saveBrief } from "@/features/life/briefs";
-import { ACCESS_LABEL, BLOCK_LABEL, DAY_TYPE_LABEL, FLAG_LABEL, itemTime, itemTitle, weekdayShort, WHEREABOUTS_LABEL, whyText } from "@/features/life/copy";
-import { useActiveFacts } from "@/features/life/memory";
+import { clearAiWeek } from "@/features/life/aiPlanner";
+import { ACCESS_LABEL, ADJUST_CODES, adjustLines, BLOCK_LABEL, breakdownLines, DAY_TYPE_LABEL, FLAG_LABEL, itemTime, itemTitle, stepUpLine, weekdayShort, WHEREABOUTS_LABEL, whyText } from "@/features/life/copy";
+import { clearFreshStart, startFresh, useActiveFacts } from "@/features/life/memory";
 import { useDayPlan } from "@/features/life/planner";
 import { minuteLabel } from "@/features/life/standing";
 import { WeekStrip } from "@/features/life/WeekStrip";
@@ -22,7 +25,23 @@ import { useProfile } from "@/features/users/api";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate, MEAL_TYPES } from "@shared/domain/food";
 import { BLOCK_KINDS, DAY_FLAGS, MEAL_ACCESS, validateDayFacts, WHEREABOUTS, type Block, type BlockKind, type DayFacts } from "@shared/domain/life";
+import { planDay } from "@shared/domain/planDay";
 import { addDays } from "@shared/domain/progress";
+import { chosenLimits, weekDates, type DayOption } from "@shared/domain/week";
+
+type Pick = "even" | "faster" | "usual" | "custom";
+const asTargets = (o: DayOption): NonNullable<DayFacts["targets"]> => ({ kcal: o.kcal, proteinG: o.proteinG, ...(o.steps != null ? { steps: o.steps } : {}) });
+const sameAs = (t: DayFacts["targets"], o: DayOption) => !!t && t.kcal === o.kcal && t.proteinG === o.proteinG && (t.steps ?? null) === o.steps;
+const optionLine = (o: DayOption, usual: DayOption) => {
+  const d = (v: number, u: number, unit: string) => (v === u ? "" : ` (${v > u ? "+" : "−"}${Math.abs(v - u).toLocaleString("en-IN")}${unit})`);
+  return [
+    `${o.proteinG} g protein${d(o.proteinG, usual.proteinG, " g")}`,
+    `${o.kcal.toLocaleString("en-IN")} kcal${d(o.kcal, usual.kcal, "")}`,
+    o.steps != null ? `${o.steps.toLocaleString("en-IN")} steps${d(o.steps, usual.steps ?? o.steps, "")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+};
 
 const EMPTY: DayFacts = { blocks: [], whereabouts: "home", mealAccess: {}, flags: [] };
 
@@ -44,7 +63,8 @@ export default function BriefDay() {
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [adding, setAdding] = useState<{ kind: BlockKind; from: number; to: number } | null>(null);
-  const known = useActiveFacts(userId, date).texts;
+  const active = useActiveFacts(userId, date);
+  const known = active.texts;
   const preview = useDayPlan(date, { save: "never", facts: facts ?? undefined });
   const recorder = useAudioRecorder(VOICE_RECORDING);
   const autoParsed = useRef(false);
@@ -64,7 +84,8 @@ export default function BriefDay() {
     try {
       const res = await fn();
       if (res.transcript) setText(res.transcript);
-      setFacts(res.facts);
+      // Numbers already picked for the day survive a re-read.
+      setFacts((prev) => (prev?.targets ? { ...res.facts, targets: prev.targets } : res.facts));
       setQuestion(res.question);
     } catch (e) {
       // D72/LA2: no guessing. Start from empty chips the user can set.
@@ -110,10 +131,46 @@ export default function BriefDay() {
     if (!userId || !f) return;
     saveBrief(userId, date, text, f, "confirmed");
     preview.accept();
+    // D85: the AI re-plans the week around the new brief; the guarded plan replaces this one when it arrives.
+    void preview.replan();
     toast({ kind: "success", message: `${date === today ? "Today" : weekdayShort(date)} is planned.` });
     router.back();
   };
   const plan = preview.plan;
+  const input = preview.input;
+  const options = plan?.options ?? null;
+
+  // The choices, and each one's meals (the usual meals and suggestions planned for that day's numbers).
+  const choices = useMemo(() => {
+    if (!options || !input || !f) return [];
+    const list: { key: Pick; label: string; value: DayOption }[] = [{ key: "even", label: "Plan A · keep the week even", value: options.even }];
+    if (options.faster) list.push({ key: "faster", label: "Plan B · catch up faster", value: options.faster });
+    if (!list.some((c) => c.value.kcal === options.usual.kcal && c.value.proteinG === options.usual.proteinG && c.value.steps === options.usual.steps))
+      list.push({ key: "usual", label: "My usual numbers", value: options.usual });
+    return list.map((c) => {
+      const p = planDay({ ...input, facts: { ...f, targets: c.key === "even" ? undefined : asTargets(c.value) } });
+      const meals = p.items.flatMap((i) =>
+        i.kind === "meal" ? [`${itemTitle(i)}${i.options[0] ? ` → ${i.options[0].name} (${Math.round(i.options[0].macros.proteinG)} g)` : ""}`] : [],
+      );
+      return { ...c, meals, stepUp: stepUpLine(p) };
+    });
+  }, [options, input, f]);
+  const picked: Pick = !f?.targets ? "even" : (choices.find((c) => c.key !== "even" && sameAs(f.targets, c.value))?.key ?? "custom");
+  const [ownOpen, setOwnOpen] = useState(false);
+  const row = input?.ledger.find((r) => r.date === date);
+  const limits = row && plan ? chosenLimits({ ...row, dayType: plan.dayType }, input!.base.floorKcal, input!.base.goal) : null;
+  const own = f?.targets ?? (options ? asTargets(options.even) : null);
+  const setOwn = (patch: NonNullable<DayFacts["targets"]>) => own && set({ targets: { ...own, ...patch } });
+  const breakdown = plan && input ? breakdownLines(plan.week, input.ledger, date, today) : [];
+  const owes = !!plan && (plan.week.owed.proteinG > 0 || plan.week.owed.steps > 0 || plan.week.owed.kcal !== 0);
+  const week = weekDates(date);
+  const fresh = () => {
+    if (!userId) return;
+    startFresh(userId, date, { monday: week[0]!, sunday: week[6]!, label: date === today ? "today" : weekdayShort(date) });
+    // The AI's week was planned around the old gaps; the rules plan takes over until the next re-plan.
+    clearAiWeek(userId, date);
+    toast({ kind: "success", message: "Fresh start: earlier gaps this week are let go." });
+  };
 
   return (
     <Screen header={<Header title="Plan a day" onBack={() => router.back()} />}>
@@ -225,6 +282,81 @@ export default function BriefDay() {
         </Card>
       ) : null}
 
+      {f && plan && options ? (
+        <Card>
+          <Text variant="eyebrow" color="textSecondary">
+            {`${date === today ? "Today's" : date === addDays(today, 1) ? "Tomorrow's" : `${weekdayShort(date)}'s`} numbers`}
+          </Text>
+          <Text variant="caption" color="textSecondary">
+            {`Usually ${optionLine(options.usual, options.usual)}.`}
+          </Text>
+          {choices.map((c) => (
+            <View key={c.key} style={styles.choice}>
+              <ListItem
+                title={c.label}
+                subtitle={optionLine(c.value, options.usual)}
+                trailing={<Chip kind="choice" label={picked === c.key ? "Picked" : "Pick"} selected={picked === c.key} onPress={() => set({ targets: c.key === "even" ? undefined : asTargets(c.value) })} />}
+                onPress={() => set({ targets: c.key === "even" ? undefined : asTargets(c.value) })}
+              />
+              {c.meals.map((m) => (
+                <Text key={m} variant="caption" color="textSecondary">
+                  {m}
+                </Text>
+              ))}
+              {c.stepUp ? (
+                <Text variant="caption" color="textSecondary">
+                  {c.stepUp}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+          <Button label={picked === "custom" ? "My own numbers (picked)" : "Set my own numbers"} variant="ghost" onPress={() => setOwnOpen((o) => !o)} />
+          {ownOpen && own && limits ? (
+            <View style={styles.add}>
+              <NumberStepper label="Protein" unit="g" value={own.proteinG ?? options.even.proteinG} min={limits.protein[0]} max={limits.protein[1]} step={5} onChange={(proteinG) => setOwn({ proteinG })} />
+              <NumberStepper label="Calories" unit="kcal" value={own.kcal ?? options.even.kcal} min={limits.kcal[0]} max={limits.kcal[1]} step={50} onChange={(kcal) => setOwn({ kcal })} />
+              {limits.steps && options.even.steps != null ? (
+                <NumberStepper label="Steps" value={own.steps ?? options.even.steps} min={limits.steps[0]} max={limits.steps[1]} step={500} onChange={(steps) => setOwn({ steps })} />
+              ) : null}
+              <Text variant="caption" color="textSecondary">
+                Kept inside safe limits. Whatever this day leaves or takes moves to the other days this week.
+              </Text>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {f && plan && breakdown.length ? (
+        <Card>
+          <Text variant="eyebrow" color="textSecondary">
+            How this is counted
+          </Text>
+          {breakdown.map((b) => (
+            <View key={b.metric} style={styles.slot}>
+              <Text variant="label">{b.title}</Text>
+              {b.lines.map((l) => (
+                <Text key={l} variant="caption" color="textSecondary">
+                  {l}
+                </Text>
+              ))}
+            </View>
+          ))}
+          <Text variant="caption" color="textSecondary">
+            {"Nothing carries into next week: what doesn't fit by Sunday is let go."}
+          </Text>
+          {active.freshFrom ? (
+            <View style={styles.actions}>
+              <Text variant="caption" color="textSecondary">
+                {`Started fresh from ${active.freshFrom === today ? "today" : weekdayShort(active.freshFrom)}: earlier gaps this week are let go.`}
+              </Text>
+              <Button label="Undo" variant="ghost" onPress={() => userId && clearFreshStart(userId)} />
+            </View>
+          ) : owes ? (
+            <Button label="Start fresh: back to my usual numbers" variant="secondary" onPress={fresh} />
+          ) : null}
+        </Card>
+      ) : null}
+
       {f && plan ? (
         <>
           <Card>
@@ -234,11 +366,27 @@ export default function BriefDay() {
             <Text variant="title">
               {`${plan.targets.kcalRange ? `${plan.targets.kcalRange[0]}–${plan.targets.kcalRange[1]}` : plan.targets.kcal} kcal · ${plan.targets.proteinG} g protein${plan.targets.steps != null ? ` · ${plan.targets.steps.toLocaleString("en-IN")} steps` : ""}`}
             </Text>
-            {whyText(plan.why).map((w) => (
-              <Text key={w} variant="caption" color="textSecondary">
-                {w}
+            {(() => {
+              const wd = plan.week.days.find((d) => d.date === date);
+              const moved = wd ? adjustLines(wd, today) : [];
+              return [
+                ...moved.map((m) => (
+                  <Text key={m} variant="body">
+                    {m}
+                  </Text>
+                )),
+                ...whyText(plan.why.filter((w) => !(moved.length && ADJUST_CODES.includes(w)))).map((w) => (
+                  <Text key={w} variant="caption" color="textSecondary">
+                    {w}
+                  </Text>
+                )),
+              ];
+            })()}
+            {stepUpLine(plan) ? (
+              <Text variant="caption" color="textSecondary">
+                {stepUpLine(plan)}
               </Text>
-            ))}
+            ) : null}
             {plan.items.map((item, i) => (
               <ListItem key={`${item.kind}-${item.at}-${i}`} title={itemTitle(item)} subtitle={itemTime(item)} />
             ))}
@@ -256,4 +404,5 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   add: { gap: 8 },
   slot: { gap: 6 },
+  choice: { gap: 2 },
 });

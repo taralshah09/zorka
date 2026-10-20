@@ -9,6 +9,7 @@ import { mealTotals, useDayMeals } from "@/features/meals/store";
 import { workoutCounts } from "@/features/progress/queries";
 import { useTrend } from "@/features/progress/weights";
 import { useTargets } from "@/features/targets/targets";
+import { useDayTargets } from "@/features/life/dayTargets";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate, mealTypeForTime, sumMacros } from "@shared/domain/food";
 import { computeGap, minuteOfDay, type Gap } from "@shared/domain/gap";
@@ -36,10 +37,12 @@ export type DayGap = {
 /** Pass a ticking clock (useActivityClock) so the state follows the time of day. null until targets exist. */
 export function useDayGap(now: number): DayGap | null {
   const userId = useActiveUser((s) => s.userId);
-  const { profile, targets } = useTargets();
+  const { profile, targets: base } = useTargets();
   const { latest } = useTrend(userId, profile.data);
   const at = new Date(now);
   const day = localDate(at);
+  // LA3: the day is tracked against its plan (realistic protein, the ledger's kcal, a busy day's steps).
+  const targets = useDayTargets(userId, day, base);
   const minute = minuteOfDay(at);
   const meals = useDayMeals(userId, day);
   const coverageVersion = useCoverageVersion((s) => s.v);

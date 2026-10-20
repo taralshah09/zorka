@@ -13,8 +13,13 @@ export const WEEK_KCAL_MAX_SHIFT = 200;
 export const WEEK_KCAL_MAX_SHIFT_UP_LOSE_FAT = 150;
 /** Protein shortfalls add at most this share of the day's protein base. */
 export const WEEK_PROTEIN_MAX_ADD_SHARE = 0.2;
+/** D86: a sick day asks for at least this share of base protein. Reaching it lets the rest go; only a shortfall
+ *  below it moves to the coming days. */
+export const SICK_PROTEIN_SHARE = 0.6;
 /** Step shortfalls add at most this many steps a day. */
 export const WEEK_STEPS_MAX_ADD = 3000;
+/** A number the user picks for a day (`chosen`) can go down to this share of base for protein and steps. */
+export const CHOSEN_MIN_SHARE = 0.5;
 /** An event (feast) day's default allowance over base, and the most it may be over. */
 export const EVENT_ALLOWANCE_KCAL = 500;
 export const EVENT_ALLOWANCE_MAX_KCAL = 800;
@@ -52,6 +57,8 @@ export type WhyCode =
   | "under_spread" // a little more because of an under earlier this week
   | "missed_protein_spread"
   | "achievable_protein" // protein set to what this day can realistically reach
+  | "chosen_target" // the user picked this day's number
+  | "chosen_spread" // moved because the user picked another day's number
   | "missed_steps_spread"
   | "busy_steps_flex"
   | "away_no_steps" // goal stays, no step nudge
@@ -88,7 +95,27 @@ export type DayLedgerInput = {
   maintenanceKcal?: number;
   /** The user usually trains on this weekday (the learned `trains:days` fact). */
   patternDay?: boolean;
+  /** Future days: numbers the user picked for this day (`chosenLimits` keeps them safe). They stay put; the rest of
+   *  the week moves around them. */
+  chosen?: ChosenTargets;
 };
+
+export type ChosenTargets = { kcal?: number; proteinG?: number; steps?: number };
+
+/** Why a day's number moved: the day that caused it, and how. */
+export type CauseKind =
+  | "over" // a past day went over (kcal)
+  | "under" // a past day came in under (kcal)
+  | "event" // an event day later this week (kcal pre-banked)
+  | "short" // a past day fell short (protein, steps)
+  | "limited" // a day's meals can't realistically reach the target (protein)
+  | "busy" // a day with less room for steps (busy, travel)
+  | "missed" // a usual workout day passed without one
+  | "no_room" // a usual workout day this week can't hold one
+  | "chosen"; // the user picked this day's number
+export type Cause = { date: string; kind: CauseKind };
+/** One metric's change on a day: the usual number, the planned one, what caused it, and (for a cut) where it went. */
+export type Adjust = { from: number; to: number; causes: Cause[]; movedTo?: string[] };
 
 export type WeekDay = {
   date: string;
@@ -100,6 +127,12 @@ export type WeekDay = {
   steps: number | null;
   train: boolean;
   why: WhyCode[];
+  /** Future days whose numbers moved, for the "since Tuesday..." lines. */
+  adjust?: { kcal?: Adjust; proteinG?: Adjust; steps?: Adjust; train?: { movedFrom: string[]; missed: boolean } };
+  /** D85: the AI planned this day; its reason (words only), and what the guard had to change. */
+  ai?: { reason: string | null; guarded: Array<"kcal" | "proteinG" | "steps" | "train"> };
+  /** D86: a sick day's gentle protein minimum and the usual target. Reaching `minG` keeps the week on track. */
+  sick?: { minG: number; baseG: number };
 };
 
 export type WeekPlan = {
@@ -109,6 +142,14 @@ export type WeekPlan = {
    * kcal > 0 is an under not made up, kcal < 0 an over let go. Protein, steps and sessions are shortfalls (≥ 0).
    */
   forgiven: { kcal: number; proteinG: number; steps: number; sessions: number };
+  /**
+   * The part of `forgiven` that is a realistic limit, not a miss: protein a day's meals can't reach that no other day
+   * could take either, and a sick day's protein and steps. Let go quietly (no "can't fit" line).
+   */
+  limits: { proteinG: number; steps: number };
+  /** What the days left had to make up before it was spread: kcal signed (+ eat more, − eat less), protein and steps
+   *  shortfalls (≥ 0). `dayOptions` reads it for "catch up faster". */
+  owed: { kcal: number; proteinG: number; steps: number };
   sessionsTarget: number;
   sessionsDone: number;
   why: WhyCode[];
@@ -192,17 +233,58 @@ export function spread(amount: number, slots: ReadonlyArray<{ cap: number; weigh
   return out;
 }
 
-type Day = DayLedgerInput & { n: number; past: boolean; event: boolean; pBase: number };
+/** The range a picked number may take on a day: kcal as far as the ledger would move it (an event or sick day keeps its
+ *  own range), protein and steps from half of base up to what the ledger could add. null = no step goal that day. */
+export function chosenLimits(d: DayLedgerInput, floorKcal: number, goal?: Goal | null) {
+  const base = Math.round(d.baseKcal);
+  const up = goal === "lose_fat" ? WEEK_KCAL_MAX_SHIFT_UP_LOSE_FAT : WEEK_KCAL_MAX_SHIFT;
+  let kcal: [number, number];
+  if (d.allowanceKcal != null || d.dayType === "feast") kcal = [base, eventAllowance(base, base + EVENT_ALLOWANCE_MAX_KCAL)];
+  else if (d.dayType === "sick") {
+    const m = Math.max(base, Math.round(d.maintenanceKcal ?? base));
+    kcal = [m, m + WEEK_KCAL_MAX_SHIFT];
+  } else kcal = [Math.max(floorKcal, base - WEEK_KCAL_MAX_SHIFT), base + up];
+  if (kcal[0] > kcal[1]) kcal = [kcal[1], kcal[1]];
+  const p = Math.round(d.baseProteinG);
+  const protein: [number, number] = [Math.round(p * CHOSEN_MIN_SHARE), Math.round(p * (1 + WEEK_PROTEIN_MAX_ADD_SHARE))];
+  const s = Math.round(d.baseSteps);
+  const steps: [number, number] | null =
+    LEDGER_RULES[d.dayType].stepsFactor == null ? null : [Math.round(s * CHOSEN_MIN_SHARE), s + WEEK_STEPS_MAX_ADD];
+  return { kcal, protein, steps };
+}
+
+const clampTo = (v: number, [lo, hi]: [number, number]) => Math.min(hi, Math.max(lo, Math.round(v)));
+
+/** The picked numbers, made whole and kept inside `chosenLimits`; missing or broken ones are dropped. */
+export function clampChosen(d: DayLedgerInput, floorKcal: number, goal?: Goal | null): ChosenTargets {
+  const c = d.chosen;
+  if (!c) return {};
+  const lim = chosenLimits(d, floorKcal, goal);
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  const out: ChosenTargets = {};
+  if (ok(c.kcal)) out.kcal = clampTo(c.kcal, lim.kcal);
+  if (ok(c.proteinG)) out.proteinG = clampTo(c.proteinG, lim.protein);
+  if (ok(c.steps) && lim.steps) out.steps = clampTo(c.steps, lim.steps);
+  return out;
+}
+
+/** "Start fresh" (the user let go of this week's earlier gaps): days before `freshFrom` count as on target. Workouts
+ *  done still count. */
+export function freshLedger(input: readonly DayLedgerInput[], freshFrom: string | null | undefined): DayLedgerInput[] {
+  if (!freshFrom) return [...input];
+  return input.map((d) => (d.date < freshFrom && d.actual ? { ...d, actual: { kcal: null, proteinG: null, steps: null, trained: d.actual.trained } } : d));
+}
+
+type Day = DayLedgerInput & { n: number; past: boolean; event: boolean; pBase: number; pick: ChosenTargets };
 
 /** Training days: the most sessions that fit (≤ MAX_TRAINING_STREAK in a row), then pattern days, then moves. */
-function chooseSessions(days: Day[], today: number, remaining: number): Set<number> {
+function chooseSessions(days: Day[], today: number, remaining: number): { chosen: Set<number>; displaced: number[] } {
   const trainedDays = new Set(days.filter((d) => d.n <= today && d.actual?.trained).map((d) => d.n));
   const pool = days.filter(
     (d) => !d.past && !trainedDays.has(d.n) && LEDGER_RULES[d.dayType].canTrain && d.capacity.canTrain,
   );
-  const displaced = days
-    .filter((d) => !d.past && d.patternDay && !trainedDays.has(d.n) && !pool.includes(d))
-    .map((d) => d.n);
+  // Usual workout days that can't hold one: earlier this week without a session, or later with no room.
+  const displaced = days.filter((d) => d.patternDay && !trainedDays.has(d.n) && !pool.includes(d)).map((d) => d.n);
 
   // Only runs that include a newly planned day count: a streak the user already trained is history, not a plan.
   const streakOk = (all: Set<number>, picked: Set<number>) => {
@@ -244,7 +326,7 @@ function chooseSessions(days: Day[], today: number, remaining: number): Set<numb
     };
     if (!best || better(pick, best)) best = pick;
   }
-  return new Set(best?.set ?? []);
+  return { chosen: new Set(best?.set ?? []), displaced };
 }
 
 /**
@@ -253,8 +335,9 @@ function chooseSessions(days: Day[], today: number, remaining: number): Set<numb
  *    target: base, or its allowance on an event day (D77).
  * 2. delta = remaining − Σ base (future non-event days).
  * 3. spread it by capacity over the days that absorb; away, travel, sick and exam days don't.
- * 4. clamp: kcal ± 200 (+150 up when losing fat) and ≥ the floor; protein never under min(base, achievable) and adds
- *    ≤ 20% within what the day can reach; steps add ≤ 3,000.
+ * 4. clamp: kcal ± 200 (+150 up when losing fat) and ≥ the floor; protein starts at min(base, achievable) and adds
+ *    ≤ 20% of that (it may go past what the meals give: the plan's step-up covers the rest); steps add ≤ 3,000.
+ * A number the user picked for a day (`chosen`) stays put, like an event: what it leaves or takes moves to the others.
  * 5. forgive what's left. A sick day's maintenance is forgiven outright: being ill never makes other days lighter.
  * Workouts: the remaining sessions go to trainable days (see `chooseSessions`); what doesn't fit is forgiven.
  */
@@ -270,19 +353,23 @@ export function planWeek(
     .map((d) => {
       const baseKcal = Math.round(d.baseKcal);
       const baseProteinG = Math.round(d.baseProteinG);
-      const pBase =
+      const reach =
         d.achievableProteinG != null && Number.isFinite(d.achievableProteinG)
           ? Math.max(0, Math.min(baseProteinG, Math.round(d.achievableProteinG)))
           : baseProteinG;
+      // D86: unwell, the day asks only for a gentle minimum.
+      const pBase = d.dayType === "sick" ? Math.min(reach, sickMinProtein(baseProteinG)) : reach;
+      const past = dayNumber(d.date) < t;
       return {
         ...d,
         baseKcal,
         baseProteinG,
         baseSteps: Math.round(d.baseSteps),
         n: dayNumber(d.date),
-        past: dayNumber(d.date) < t,
+        past,
         event: d.allowanceKcal != null || d.dayType === "feast",
         pBase,
+        pick: past ? {} : clampChosen(d, floorKcal, opts.goal),
       };
     })
     .sort((a, b) => a.n - b.n);
@@ -303,10 +390,15 @@ export function planWeek(
 
   const pastPart = past.reduce((s, d) => s + d.baseKcal - countedKcal(d), 0);
   let eventPart = 0;
+  let chosenPart = 0;
   let sickExcess = 0;
   const absorbKcal: Day[] = [];
   for (const d of future) {
-    if (d.event) {
+    if (d.pick.kcal != null) {
+      kcal.set(d.n, d.pick.kcal);
+      chosenPart += d.pick.kcal - d.baseKcal;
+      tag(d, "chosen_target");
+    } else if (d.event) {
       kcal.set(d.n, allowance(d));
       eventPart += allowance(d) - d.baseKcal;
       tag(d, "event_allowance");
@@ -320,7 +412,7 @@ export function planWeek(
       if (LEDGER_RULES[d.dayType].absorbs) absorbKcal.push(d);
     }
   }
-  const delta = pastPart - eventPart;
+  const delta = pastPart - eventPart - chosenPart;
   const upCap = opts.goal === "lose_fat" ? WEEK_KCAL_MAX_SHIFT_UP_LOSE_FAT : WEEK_KCAL_MAX_SHIFT;
   const placed = spread(
     Math.abs(delta),
@@ -333,42 +425,94 @@ export function planWeek(
         : { cap: Math.min(upCap, d.capacity.kcalUp), weight: nonNeg(d.capacity.kcalUp) },
     ),
   );
+  const adjust = new Map<number, NonNullable<WeekDay["adjust"]>>();
+  const adj = (d: Day) => {
+    if (!adjust.has(d.n)) adjust.set(d.n, {});
+    return adjust.get(d.n)!;
+  };
+  const chosenKcal = (sign: 1 | -1) =>
+    future.filter((d) => d.pick.kcal != null && sign * (d.pick.kcal - d.baseKcal) > 0).map((d) => ({ date: d.date, kind: "chosen" as const }));
+  const kcalCauses: Cause[] =
+    delta > 0
+      ? [...past.filter((d) => countedKcal(d) < d.baseKcal).map((d) => ({ date: d.date, kind: "under" as const })), ...chosenKcal(-1)]
+      : [
+          ...(eventPart > 0 ? future.filter((d) => d.event && d.pick.kcal == null).map((d) => ({ date: d.date, kind: "event" as const })) : []),
+          ...(pastPart < 0 ? past.filter((d) => countedKcal(d) > d.baseKcal).map((d) => ({ date: d.date, kind: "over" as const })) : []),
+          ...chosenKcal(1),
+        ];
   absorbKcal.forEach((d, i) => {
     const p = placed[i]!;
     if (!p) return;
     kcal.set(d.n, d.baseKcal + (delta < 0 ? -p : p));
-    if (delta > 0) tag(d, "under_spread");
+    adj(d).kcal = { from: d.baseKcal, to: kcal.get(d.n)!, causes: kcalCauses };
+    if (delta > 0) tag(d, pastPart > 0 ? "under_spread" : "chosen_spread");
     else {
       if (eventPart > 0) tag(d, "event_prebank");
       if (pastPart < 0) tag(d, "over_spread");
+      if (chosenPart > 0) tag(d, "chosen_spread");
     }
   });
+  const kcalTo = absorbKcal.filter((_, i) => placed[i]).map((d) => d.date);
+  for (const d of future)
+    if (d.pick.kcal != null && d.pick.kcal !== d.baseKcal)
+      adj(d).kcal = { from: d.baseKcal, to: d.pick.kcal, causes: [{ date: d.date, kind: "chosen" }], movedTo: kcalTo };
 
   // ── Protein ──
   const protein = new Map<number, number>();
   const countedProtein = (d: Day) => Math.round(d.actual?.proteinG ?? d.pBase);
   for (const d of past) protein.set(d.n, countedProtein(d));
+  // A future day's starting protein: the user's pick, else what its meals can reach.
+  const pStart = (d: Day) => d.pick.proteinG ?? d.pBase;
   for (const d of future) {
-    protein.set(d.n, d.pBase);
-    if (d.pBase < d.baseProteinG) tag(d, "achievable_protein");
+    protein.set(d.n, pStart(d));
+    if (d.pick.proteinG != null) tag(d, "chosen_target");
+    else if (d.pBase < d.baseProteinG && d.dayType !== "sick") tag(d, "achievable_protein");
   }
-  const proteinShort = Math.max(0, past.reduce((s, d) => s + d.pBase - countedProtein(d), 0));
-  const absorbProtein = future.filter((d) => LEDGER_RULES[d.dayType].absorbs);
+  // The week is short of: past days under base, protein a day's meals can't reach (a long session, the mess), and days
+  // the user set lower. They move to days that can take more (a day set higher pays some of it back); a sick day's
+  // gentle minimum is let go outright (D86): only what a past sick day fell short of that minimum moves on.
+  const sickDay = (d: Day) => d.dayType === "sick" && d.pick.proteinG == null;
+  const sickProtein = days.filter(sickDay).reduce((s, d) => s + d.baseProteinG - d.pBase, 0);
+  const owedBase = (d: Day) => (sickDay(d) ? d.pBase : d.baseProteinG);
+  const limitedDays = days.filter((d) => d.dayType !== "sick" && d.pick.proteinG == null && d.pBase < d.baseProteinG);
+  const structural = limitedDays.reduce((s, d) => s + d.baseProteinG - d.pBase, 0);
+  const proteinShort = Math.max(
+    0,
+    past.reduce((s, d) => s + owedBase(d) - countedProtein(d), 0) +
+      future
+        .filter((d) => d.dayType !== "sick" || d.pick.proteinG != null)
+        .reduce((s, d) => s + d.baseProteinG - pStart(d), 0),
+  );
+  const absorbProtein = future.filter((d) => LEDGER_RULES[d.dayType].absorbs && d.pick.proteinG == null);
   const proteinAdds = spread(
     proteinShort,
-    absorbProtein.map((d) => {
-      const reach = d.achievableProteinG != null ? Math.round(d.achievableProteinG) - d.pBase : Infinity;
-      return {
-        cap: Math.min(Math.floor(d.pBase * WEEK_PROTEIN_MAX_ADD_SHARE), d.capacity.proteinUp, reach),
-        weight: nonNeg(d.capacity.proteinUp),
-      };
-    }),
+    absorbProtein.map((d) => ({
+      cap: Math.min(Math.floor(d.pBase * WEEK_PROTEIN_MAX_ADD_SHARE), d.capacity.proteinUp),
+      weight: nonNeg(d.capacity.proteinUp),
+    })),
   );
+  const proteinCauses: Cause[] = [
+    ...past.filter((d) => countedProtein(d) < d.pBase).map((d) => ({ date: d.date, kind: "short" as const })),
+    ...limitedDays.map((d) => ({ date: d.date, kind: "limited" as const })),
+    ...future
+      .filter((d) => d.pick.proteinG != null && d.pick.proteinG < d.baseProteinG)
+      .map((d) => ({ date: d.date, kind: "chosen" as const })),
+  ];
+  const proteinTo: string[] = [];
   absorbProtein.forEach((d, i) => {
     if (!proteinAdds[i]) return;
     protein.set(d.n, d.pBase + proteinAdds[i]!);
+    // A day short of base by its own meals keeps that cause: it's taking back part of its own gap (the step-up covers it).
+    adj(d).proteinG = { from: d.pBase, to: d.pBase + proteinAdds[i]!, causes: proteinCauses.filter((c) => c.date !== d.date || c.kind === "limited") };
+    proteinTo.push(d.date);
     tag(d, "missed_protein_spread");
   });
+  for (const d of future)
+    if (d.pick.proteinG != null) {
+      if (d.pick.proteinG !== d.baseProteinG)
+        adj(d).proteinG = { from: d.baseProteinG, to: d.pick.proteinG, causes: [{ date: d.date, kind: "chosen" }], movedTo: proteinTo };
+    } else if (d.pBase < d.baseProteinG && !sickDay(d) && !adjust.get(d.n)?.proteinG)
+      adj(d).proteinG = { from: d.baseProteinG, to: d.pBase, causes: [{ date: d.date, kind: "limited" }], movedTo: proteinTo };
   const proteinPlaced = proteinAdds.reduce((a, b) => a + b, 0);
 
   // ── Steps ──
@@ -380,6 +524,12 @@ export function planWeek(
   const absorbSteps: Day[] = [];
   for (const d of future) {
     const factor = LEDGER_RULES[d.dayType].stepsFactor;
+    if (d.pick.steps != null) {
+      steps.set(d.n, d.pick.steps);
+      stepsShort += d.baseSteps - d.pick.steps;
+      tag(d, "chosen_target");
+      continue;
+    }
     const target = factor == null ? 0 : Math.round(d.baseSteps * factor);
     steps.set(d.n, factor == null ? null : target);
     if (d.dayType === "sick") sickSteps += d.baseSteps - target;
@@ -397,33 +547,66 @@ export function planWeek(
       weight: nonNeg(d.capacity.stepsUp),
     })),
   );
+  const stepCauses: Cause[] = [
+    ...past.filter((d) => countedSteps(d) < d.baseSteps).map((d) => ({ date: d.date, kind: "short" as const })),
+    ...future
+      .filter((d) => d.pick.steps != null && d.pick.steps < d.baseSteps)
+      .map((d) => ({ date: d.date, kind: "chosen" as const })),
+    ...future
+      .filter((d) => d.dayType !== "sick" && LEDGER_RULES[d.dayType].stepsFactor !== 1)
+      .map((d) => ({ date: d.date, kind: "busy" as const })),
+  ];
+  const stepsTo: string[] = [];
   absorbSteps.forEach((d, i) => {
     if (!stepAdds[i]) return;
     steps.set(d.n, (steps.get(d.n) ?? 0) + stepAdds[i]!);
+    adj(d).steps = { from: d.baseSteps, to: steps.get(d.n)!, causes: stepCauses };
+    stepsTo.push(d.date);
     tag(d, "missed_steps_spread");
   });
+  for (const d of future) {
+    const s = steps.get(d.n);
+    if (d.pick.steps != null) {
+      if (d.pick.steps !== d.baseSteps)
+        adj(d).steps = { from: d.baseSteps, to: d.pick.steps, causes: [{ date: d.date, kind: "chosen" }], movedTo: stepsTo };
+    } else if (d.dayType !== "sick" && s != null && s < d.baseSteps)
+      adj(d).steps = { from: d.baseSteps, to: s, causes: [{ date: d.date, kind: "busy" }], movedTo: stepsTo };
+  }
   const stepsPlaced = stepAdds.reduce((a, b) => a + b, 0);
 
   // ── Workouts ──
   const sessionsDone = days.filter((d) => d.n <= t && d.actual?.trained).length;
   const remaining = Math.max(0, sessionsTarget - sessionsDone);
-  const chosen = chooseSessions(days, t, remaining);
-  const anyDisplaced = future.some((d) => d.patternDay && !d.actual?.trained && !chosen.has(d.n));
-  for (const d of future)
-    if (chosen.has(d.n)) tag(d, !d.patternDay && anyDisplaced ? "session_moved" : "session_planned");
+  const { chosen, displaced } = chooseSessions(days, t, remaining);
+  const byN = new Map(days.map((d) => [d.n, d]));
+  const usedFrom = new Set<number>();
+  for (const d of future) {
+    if (!chosen.has(d.n)) continue;
+    // A session on a day that isn't a usual one stands in for the nearest usual day that couldn't hold it.
+    const from = d.patternDay
+      ? undefined
+      : displaced.filter((m) => !usedFrom.has(m)).sort((a, b) => Math.abs(a - d.n) - Math.abs(b - d.n))[0];
+    if (from != null) {
+      usedFrom.add(from);
+      adj(d).train = { movedFrom: [byN.get(from)!.date], missed: from < t };
+      tag(d, "session_moved");
+    } else tag(d, "session_planned");
+  }
 
   // ── Forgiven ──
   const budgetKcal = days.reduce((s, d) => s + d.baseKcal, 0);
   const plannedKcal = days.reduce((s, d) => s + kcal.get(d.n)!, 0);
+  const proteinUnplaced = proteinShort - proteinPlaced;
   const forgiven = {
     kcal: budgetKcal - plannedKcal,
-    proteinG: proteinShort - proteinPlaced,
+    proteinG: proteinUnplaced + sickProtein,
     steps: stepsShort - stepsPlaced + sickSteps,
     sessions: remaining - chosen.size,
   };
+  const limits = { proteinG: Math.min(proteinUnplaced, structural) + sickProtein, steps: sickSteps };
   // A sick day's maintenance is in forgiven.kcal too, but it's care, not something that "couldn't fit".
   if (forgiven.kcal + sickExcess !== 0) weekWhy.push("forgiven_kcal");
-  if (forgiven.proteinG > 0) weekWhy.push("forgiven_protein");
+  if (forgiven.proteinG - limits.proteinG > 0) weekWhy.push("forgiven_protein");
   if (stepsShort - stepsPlaced > 0) weekWhy.push("forgiven_steps");
   if (forgiven.sessions > 0) weekWhy.push("forgiven_sessions");
 
@@ -436,10 +619,59 @@ export function planWeek(
       steps: steps.get(d.n) ?? null,
       train: d.past || (d.n === t && d.actual?.trained) ? Boolean(d.actual?.trained) : chosen.has(d.n),
       why: why.get(d.n)!,
+      ...(adjust.get(d.n) && !d.past ? { adjust: adjust.get(d.n)! } : {}),
+      ...(sickDay(d) ? { sick: { minG: d.pBase, baseG: d.baseProteinG } } : {}),
     })),
     forgiven,
+    limits,
+    owed: { kcal: delta, proteinG: proteinShort, steps: stepsShort },
     sessionsTarget,
     sessionsDone,
     why: weekWhy,
   };
+}
+
+/** D86: a sick day's protein minimum, before what its meals can reach. */
+export const sickMinProtein = (baseProteinG: number) => Math.round(baseProteinG * SICK_PROTEIN_SHARE);
+
+/** One way to set a day's numbers. null steps = no step goal that day. */
+export type DayOption = { kcal: number; proteinG: number; steps: number | null };
+export type DayOptions = {
+  /** The usual numbers (base), as if nothing earlier needed making up. */
+  usual: DayOption;
+  /** Keep the week's average, shared over the days left: the plan's own numbers. */
+  even: DayOption;
+  /** Catch up faster: this day takes as much of what's owed as a picked number may. null when it's no different. */
+  faster: DayOption | null;
+};
+
+/**
+ * The choices offered when planning a day ("Usual 135 g · Plan A 144 g · Plan B 150 g"). `week` is the plan made
+ * without a pick for this day; `row` is this day's ledger row.
+ */
+export function dayOptions(week: WeekPlan, row: DayLedgerInput, floorKcal: number, goal?: Goal | null): DayOptions {
+  const wd = week.days.find((d) => d.date === row.date);
+  const factor = LEDGER_RULES[row.dayType].stepsFactor;
+  const base = { kcal: Math.round(row.baseKcal), proteinG: Math.round(row.baseProteinG), steps: Math.round(row.baseSteps) };
+  const usual: DayOption = { kcal: base.kcal, proteinG: base.proteinG, steps: factor == null ? null : base.steps };
+  const even: DayOption = wd ? { kcal: wd.kcal, proteinG: wd.proteinG, steps: wd.steps } : usual;
+  const event = row.allowanceKcal != null || row.dayType === "feast";
+  if (!wd || wd.past || !LEDGER_RULES[row.dayType].absorbs) return { usual, even, faster: null };
+
+  const lim = chosenLimits(row, floorKcal, goal);
+  const { owed } = week;
+  const kcal = event
+    ? even.kcal
+    : owed.kcal > 0
+      ? Math.max(even.kcal, Math.min(lim.kcal[1], base.kcal + owed.kcal))
+      : owed.kcal < 0
+        ? Math.min(even.kcal, Math.max(lim.kcal[0], base.kcal + owed.kcal))
+        : even.kcal;
+  const pBase = Math.min(base.proteinG, Math.round(row.achievableProteinG ?? Infinity));
+  const proteinG = Math.max(even.proteinG, Math.min(lim.protein[1], pBase + owed.proteinG));
+  const steps =
+    even.steps != null && factor === 1 && lim.steps ? Math.max(even.steps, Math.min(lim.steps[1], base.steps + owed.steps)) : even.steps;
+  const faster: DayOption = { kcal, proteinG, steps };
+  const same = faster.kcal === even.kcal && faster.proteinG === even.proteinG && faster.steps === even.steps;
+  return { usual, even, faster: same ? null : faster };
 }

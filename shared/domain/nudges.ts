@@ -221,7 +221,7 @@ function fitDay(list: PlannedNudge[], facts: NudgeFacts, settings: NudgeSettings
   const keep = DAY_NUDGE_KINDS[tactic];
   const blocks = facts.blocks ?? [];
   const lateStart =
-    tactic === "none_after_work" ? Math.min(...blocks.filter((b) => b.kind === "work" && b.to > 21 * 60).map((b) => b.from)) : Infinity;
+    tactic === "none_after_work" ? Math.min(...blocks.filter((b) => (b.kind === "work" || b.kind === "study") && b.to > 21 * 60).map((b) => b.from)) : Infinity;
   // Meetings, events, travel and the like hold nudges back; an ordinary work or study block only when it says it's busy.
   const holds = (b: Block) => !(b.kind === "work" || b.kind === "study") || b.canMove === false;
   const inBlock = (m: number) => blocks.find((b) => holds(b) && m >= b.from && m < b.to);

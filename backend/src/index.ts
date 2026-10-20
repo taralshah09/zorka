@@ -39,6 +39,7 @@ import { briefsService } from "./modules/briefs/briefs.service.js";
 import { prismaLifeRepositories } from "./modules/life/life.repository.js";
 import { lifeService } from "./modules/life/life.service.js";
 import { menuService } from "./modules/menu/menu.service.js";
+import { aiPlanService } from "./modules/aiPlan/aiPlan.service.js";
 import { workoutsService } from "./modules/workouts/workouts.service.js";
 
 const env = loadEnv();
@@ -113,6 +114,7 @@ const app = createApp({
   coach: coachService(ai, foodsRepo.userExists),
   briefs: briefsService(ai, foodsRepo.userExists),
   menu: menuService(ai, foodsRepo.userExists),
+  aiPlan: aiPlanService(ai, foodsRepo.userExists),
   ai,
   search,
   devRoutes: env.NODE_ENV !== "production",

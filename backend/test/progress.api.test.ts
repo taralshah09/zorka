@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 
+import { weekReport } from "../../shared/domain/report.js";
 import { ARJUN, RIYA, testApp } from "./fakes.js";
 
 const op = (entity: string, data: unknown, over: Record<string, unknown> = {}) => ({
@@ -129,6 +130,31 @@ describe("checkin sync", () => {
     const results = (await sync(app, RIYA, ops)).body.results;
     expect(results.map((r: { status: string }) => r.status)).toEqual(["applied", "applied", "applied"]);
     expect(checkins.rows.get(ops[0]!.id)).toMatchObject({ newKcal: 1950, status: "accepted", userId: RIYA });
+  });
+
+  it("D87 stores the week's report card with the check-in; a broken card is rejected", async () => {
+    const { app, checkins } = testApp();
+    const report = weekReport(
+      ["2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10"].map((date) => ({
+        date,
+        dayType: null,
+        logged: true,
+        kcal: 2000,
+        proteinG: 120,
+        steps: 9000,
+        trained: date === "2026-10-06",
+        target: { kcal: 2000, proteinG: 130, steps: 8000, train: false },
+        hit: { calories: true, protein: false, steps: true },
+      })),
+      "2026-10-04",
+      "2026-10-10",
+      3,
+    );
+    const good = op("checkin", checkin({ report }));
+    const bad = op("checkin", checkin({ checkinDate: "2026-10-04", report: { ...report, grade: "F" } }));
+    const results = (await sync(app, RIYA, [good, bad])).body.results;
+    expect(results.map((r: { status: string }) => r.status)).toEqual(["applied", "rejected"]);
+    expect(checkins.rows.get(good.id)).toMatchObject({ report: { grade: report.grade, protein: { avg: 120 } } });
   });
 
   it("needs the offered targets unless the week was skipped", async () => {

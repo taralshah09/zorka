@@ -10,6 +10,7 @@ import { workoutsBetween } from "@/features/gym/store";
 import { glassesBetween } from "@/features/water/store";
 import {
   activeFacts,
+  FACT_KEYS,
   inferFacts,
   mergeFacts,
   MEMORY_WINDOW_DAYS,
@@ -96,6 +97,34 @@ export function rememberFact(userId: string, text: string, source: "chat" | "use
   };
   store.write(userId, fact);
   return fact;
+}
+
+/**
+ * "Start fresh": let go of this week's earlier gaps, so the days from `from` plan at the usual numbers again. Lasts
+ * for that Mon–Sun week only (the ledger never carries into the next one anyway). Undo = `clearFreshStart`.
+ */
+export function startFresh(userId: string, from: string, week: { monday: string; sunday: string; label: string }): MemoryFact {
+  const existing = factsFor(userId).find((f) => f.key === FACT_KEYS.freshStart);
+  const fact: MemoryFact = {
+    id: existing?.id ?? newId(),
+    key: FACT_KEYS.freshStart,
+    kind: "event",
+    value: { from },
+    text: `Started this week fresh from ${week.label}: earlier gaps were let go.`,
+    source: "user",
+    confidence: 1,
+    evidence: null,
+    status: "active",
+    validFrom: week.monday,
+    validUntil: week.sunday,
+  };
+  store.write(userId, fact);
+  return fact;
+}
+
+export function clearFreshStart(userId: string) {
+  const existing = factsFor(userId).find((f) => f.key === FACT_KEYS.freshStart);
+  if (existing) store.remove(userId, existing);
 }
 
 const jobKey = (userId: string) => `zorka.memoryJob.${userId}`;

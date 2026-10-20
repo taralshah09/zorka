@@ -29,6 +29,7 @@ import {
 import { useAutoEstimates } from "@/features/log/estimates";
 import { formatDayLong } from "@/features/targets/format";
 import { useTargets } from "@/features/targets/targets";
+import { useDayTargets } from "@/features/life/dayTargets";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
 
@@ -39,7 +40,8 @@ export default function ConfirmSheet() {
   const toast = useToast();
   const userId = useActiveUser((s) => s.userId);
   const draft = useDraft((s) => s.draft);
-  const { profile, targets } = useTargets();
+  const { profile, targets: base } = useTargets();
+  const targets = useDayTargets(useActiveUser((s) => s.userId), localDate(new Date()), base);
   const promptOn = !!profile.data?.oilGheePrompt;
   const params = useLocalSearchParams<{ add?: string }>();
   const navigation = useNavigation();

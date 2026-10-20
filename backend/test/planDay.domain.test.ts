@@ -134,8 +134,9 @@ describe("planDay · scenario 3 (hostel, tight, veg, mess for every meal)", () =
     }),
   );
 
-  it("targets 75 g with a soya step-up at about ₹10", () => {
-    expect(plan.targets.proteinG).toBe(75);
+  it("starts at the realistic 75 g, may take ≤ 20% more for the week, with a soya step-up at about ₹10", () => {
+    expect(plan.targets.proteinG).toBeGreaterThanOrEqual(75);
+    expect(plan.targets.proteinG).toBeLessThanOrEqual(75 + 15);
     expect(plan.protein).toMatchObject({ achievableG: 75, stepUp: { costInr: 10, staple: { id: "soya_30" } } });
   });
 

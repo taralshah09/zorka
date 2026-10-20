@@ -28,6 +28,8 @@ import { healthRoutes, type DbPing } from "./modules/health/health.routes.js";
 import { BRIEF_LARGE_BODY_PATH, briefsRoutes } from "./modules/briefs/briefs.routes.js";
 import type { BriefsService } from "./modules/briefs/briefs.service.js";
 import { MENU_LARGE_BODY_PATH, menuRoutes } from "./modules/menu/menu.routes.js";
+import { aiPlanRoutes } from "./modules/aiPlan/aiPlan.routes.js";
+import type { AiPlanService } from "./modules/aiPlan/aiPlan.service.js";
 import type { MenuService } from "./modules/menu/menu.service.js";
 import { routinesRoutes } from "./modules/routines/routines.routes.js";
 import type { RoutinesService } from "./modules/routines/routines.service.js";
@@ -59,6 +61,8 @@ export type AppDeps = {
   briefs: BriefsService;
   /** LA7: menu page reading. */
   menu: MenuService;
+  /** D85: the AI week planner. */
+  aiPlan: AiPlanService;
   ai: AiClient;
   search: SearchClient;
   /** Mounts /v1/dev/* (never in production). */
@@ -95,6 +99,7 @@ export function createApp(deps: AppDeps) {
     coach,
     briefs,
     menu,
+    aiPlan,
     ai,
     search,
     devRoutes,
@@ -144,6 +149,7 @@ export function createApp(deps: AppDeps) {
   v1.use(coachRoutes(coach));
   v1.use(briefsRoutes(briefs));
   v1.use(menuRoutes(menu));
+  v1.use(aiPlanRoutes(aiPlan));
   if (devRoutes) {
     v1.use(aiDevRoutes(ai));
     // Which search services have keys (names only) and which are cooling down.

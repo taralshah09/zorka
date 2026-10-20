@@ -19,6 +19,9 @@ import { WeeklyLearning } from "@/features/progress/WeeklyLearning";
 import { useDayPlan } from "@/features/life/planner";
 import { WeekStrip } from "@/features/life/WeekStrip";
 import { localDate } from "@shared/domain/food";
+import { ReportCard } from "@/features/progress/ReportCard";
+import { useWeekReport } from "@/features/progress/report";
+import { DEFAULT_SESSIONS_PER_WEEK } from "@shared/domain/week";
 
 const BURN_WEEKS = 6;
 
@@ -29,6 +32,14 @@ export default function CheckinScreen() {
   // LA4: this week's ledger strip (the same Mon–Sun week as the plan, D75).
   const weekPlan = useDayPlan(localDate(new Date()), { save: "never" });
   const [showBurn, setShowBurn] = useState(false);
+  // D87: the week's report card, stored with the answer.
+  const report = useWeekReport(
+    p.userId,
+    p.pending?.window.start ?? p.today,
+    p.pending?.window.end ?? p.today,
+    p.targets,
+    weekPlan.input?.sessionsTarget ?? DEFAULT_SESSIONS_PER_WEEK,
+  );
   const detailed = !!p.profile.data?.checkinDetailed;
   const back = () => router.back();
 
@@ -40,8 +51,8 @@ export default function CheckinScreen() {
           icon="check_circle"
           title="You're all caught up"
           body={`Your next check-in is on Sunday, ${formatShortDate(next)}.`}
-          actionLabel="Back"
-          onAction={back}
+          actionLabel="Weekly reports"
+          onAction={() => router.replace("/progress/reports")}
         />
       </Screen>
     );
@@ -51,7 +62,7 @@ export default function CheckinScreen() {
   const r = pending.result;
   const copy = checkinCopy(pending, detailed);
   const answer = (status: CheckinStatus) => {
-    answerCheckin(p.userId!, pending, status);
+    answerCheckin(p.userId!, pending, status, report);
     toast({
       haptic: "tap",
       kind: "success",
@@ -79,6 +90,7 @@ export default function CheckinScreen() {
         <Header title="Weekly check-in" eyebrow={`Week of ${formatShortDate(pending.window.start)}`} onBack={back} />
       }
     >
+      {report ? <ReportCard report={report} /> : null}
       <WeeklyLearning key={`${p.userId}:${pending.window.end}`} userId={p.userId} end={pending.window.end} />
       <Card variant={r.status === "ready" && r.onTrack ? "highlighted" : "default"}>
         <Text

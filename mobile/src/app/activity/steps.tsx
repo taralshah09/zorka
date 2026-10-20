@@ -13,13 +13,15 @@ import {
 import { dayCredit, useActivityClock } from "@/features/activity/store";
 import { useActiveUser } from "@/features/users/activeUser";
 import { useTargets } from "@/features/targets/targets";
+import { useDayTargets } from "@/features/life/dayTargets";
 import { localDate } from "@shared/domain/food";
 
 export default function StepsScreen() {
   const userId = useActiveUser((s) => s.userId);
   const now = useActivityClock();
   const day = localDate(new Date(now));
-  const { targets } = useTargets();
+  const { targets: base } = useTargets();
+  const targets = useDayTargets(userId, day, base);
   const health = useHealthSteps(userId, day, true);
   const cache = cachedSteps(userId, day);
   const credit = dayCredit(userId, day);

@@ -560,6 +560,8 @@ model Checkin {
   trendStartKg      Float?        @map("trend_start_kg")
   trendEndKg        Float?        @map("trend_end_kg")
   capped            Boolean       @default(false)
+  /// D87: the week's report card (shared/domain/report.ts), made on the phone when the check-in is answered.
+  report            Json?
   clientUpdatedAt   DateTime      @map("client_updated_at") @db.Timestamptz(3)
   deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(3)
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)

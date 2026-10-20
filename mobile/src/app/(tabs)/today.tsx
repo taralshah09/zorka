@@ -44,9 +44,12 @@ import { consumedFrom } from "@/features/today/TodayCards";
 import { useActiveUser } from "@/features/users/activeUser";
 import { logGlass, useGlasses } from "@/features/water/store";
 import { runMemoryJob } from "@/features/life/memory";
+import { dueForDailyReplan } from "@/features/life/aiPlanner";
 import { PlanCard } from "@/features/life/PlanCard";
 import { useDayPlan } from "@/features/life/planner";
+import { useStoredPlan } from "@/features/life/plans";
 import { WeekStrip } from "@/features/life/WeekStrip";
+import { useDayTargets, waterFor } from "@/features/life/dayTargets";
 import { minuteOfDay } from "@shared/domain/gap";
 import { localDate, mealTypeForTime } from "@shared/domain/food";
 import { clampWaterGoal } from "@shared/domain/water";
@@ -76,7 +79,10 @@ export default function Today() {
   const suggestionKey = `${userId}:${today}:${mealType}:${prepared?.id}`;
   const consumed = { ...consumedFrom(meals), steps: cachedSteps(userId, today)?.steps ?? null };
   const glasses = useGlasses(userId, today);
-  const waterGoal = clampWaterGoal(profile.data?.waterGoalGlasses);
+  // LA3: today's tracker follows today's plan; the planner itself reads the base targets.
+  const dayTargets = useDayTargets(userId, today, targets);
+  const dayPlanStored = useStoredPlan(userId, today);
+  const waterGoal = waterFor(dayPlanStored, clampWaterGoal(profile.data?.waterGoalGlasses));
   const name = profile.data?.displayName;
   const coach = profile.data?.coach ?? null;
   const dg = useDayGap(clock);
@@ -86,6 +92,14 @@ export default function Today() {
   useEffect(() => {
     if (userId && targets) runMemoryJob(userId, today, targets.proteinG);
   }, [userId, today, targets]);
+  // D85: the AI re-plans the week once a day, on the first open with a network.
+  const replanToday = dayPlan.replan;
+  const canPlan = !!dayPlan.input;
+  useEffect(() => {
+    if (userId && canPlan && online && dueForDailyReplan(userId, today)) void replanToday();
+    // Once per day; replanToday changes identity every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, today, canPlan, online]);
   const eatOptions = useEatOptions({
     userId,
     today,
@@ -190,7 +204,22 @@ export default function Today() {
             />
           ) : null}
           {dayPlan.plan ? (
-            <PlanCard plan={dayPlan.plan} nowMinute={minuteOfDay(now)} accepted={!!dayPlan.stored?.acceptedAt} onAccept={dayPlan.accept} />
+            <PlanCard
+              plan={dayPlan.plan}
+              nowMinute={minuteOfDay(now)}
+              accepted={!!dayPlan.stored?.acceptedAt}
+              onAccept={dayPlan.accept}
+              replanning={dayPlan.replanning}
+              eatenProteinG={consumed.proteinG}
+              onReplan={
+                online
+                  ? () =>
+                      void dayPlan.replan().then((ok) =>
+                        toast(ok ? { kind: "success", message: "Re-planned by AI." } : { kind: "info", message: "AI couldn't re-plan right now. Keeping the current plan." }),
+                      )
+                  : undefined
+              }
+            />
           ) : null}
           {priority === "prepared" && prepared ? <Card>
             <Text variant="caption">{today} · {MEAL_LABEL[mealType]} · Saved by you</Text>
@@ -252,7 +281,7 @@ export default function Today() {
           ) : null}
 
           <GlanceCard
-            targets={{ ...targets, kcal: targets.kcal + credit.kcal }}
+            targets={{ ...(dayTargets ?? targets), kcal: (dayTargets ?? targets).kcal + credit.kcal }}
             consumed={consumed}
             glasses={glasses}
             waterGoal={waterGoal}

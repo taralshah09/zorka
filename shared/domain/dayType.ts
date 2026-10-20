@@ -16,6 +16,8 @@ export const TRAVEL_MINUTES = 3 * 60;
 export const LATE_WORK_MINUTE = 21 * 60;
 /** Busy: less free time than this between wake and sleep. */
 export const BUSY_FREE_MINUTES = 3 * 60;
+/** Busy: this much time in blocks outside the routine (not work or study: a long session, errands, social). */
+export const BUSY_BLOCK_MINUTES = 5 * 60;
 
 // Same defaults as life.ts (DEFAULT_WAKE_MINUTE / DEFAULT_SLEEP_MINUTE); kept local so this file has no runtime imports.
 const WAKE = 7 * 60;
@@ -47,7 +49,8 @@ const slotAt = (m: number) => (m < 660 ? "breakfast" : m < 930 ? "lunch" : m < 1
 /**
  * First match wins: sick flag → sick; travelling (or ≥ 3 h of travel blocks) → travel; feast flag, or a social block
  * where you eat and that slot's access is event food → feast; another city, or ≥ 5 h of event/travel blocks → away; a
- * work block ending after 21:00 → late_work; exam flag → exam; rest_day flag → rest; under 3 h free → busy; else normal.
+ * work or study block ending after 21:00 → late_work; exam flag → exam; rest_day flag → rest; under 3 h free, or ≥ 5 h
+ * of non-routine blocks → busy; else normal.
  *
  * A client dinner (social, eat_out) is not a feast, so "expo 1–7, client dinner at 8" stays an away day (LA2 exit).
  * `standing` is part of the contract for later rules (e.g. shift work); the v1 rules don't read it.
@@ -63,10 +66,10 @@ export function classifyDay(f: DayFacts, standing: Standing): DayType {
   )
     return "feast";
   if (f.whereabouts === "other_city" || blockMinutes(f, ["event", "travel"]) >= AWAY_MINUTES) return "away";
-  if (f.blocks.some((b) => b.kind === "work" && b.to > LATE_WORK_MINUTE)) return "late_work";
+  if (f.blocks.some((b) => (b.kind === "work" || b.kind === "study") && b.to > LATE_WORK_MINUTE)) return "late_work";
   if (has("exam")) return "exam";
   if (has("rest_day")) return "rest";
-  if (freeTime(f) < BUSY_FREE_MINUTES) return "busy";
+  if (freeTime(f) < BUSY_FREE_MINUTES || blockMinutes(f, ["other", "social"]) >= BUSY_BLOCK_MINUTES) return "busy";
   return "normal";
 }
 

@@ -50,6 +50,9 @@ export type DayFacts = {
   wakeMinute?: number;
   sleepMinute?: number;
   flags: DayFlag[];
+  /** Numbers the user picked for the day when planning it (Plan A/B or their own). Absent = follow the week. The
+   *  planner keeps them inside safe limits (week.ts `chosenLimits`). */
+  targets?: { kcal?: number; proteinG?: number; steps?: number };
 };
 
 export type Window = { from: number; to: number };
@@ -136,6 +139,14 @@ export function validateDayFacts(f: unknown): DayFacts {
     // "Sleep at 1" means 01:00 after midnight.
     if (sleep <= wake) sleep += DAY_MINUTES;
     if (sleep > wake && sleep <= MAX_MINUTE) out.sleepMinute = sleep;
+  }
+  if (isObj(o.targets)) {
+    const t: NonNullable<DayFacts["targets"]> = {};
+    for (const k of ["kcal", "proteinG", "steps"] as const) {
+      const v = o.targets[k];
+      if (isNum(v) && v > 0) t[k] = Math.round(v);
+    }
+    if (Object.keys(t).length) out.targets = t;
   }
   return out;
 }

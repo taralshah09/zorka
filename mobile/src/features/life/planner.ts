@@ -17,9 +17,10 @@ import { localDate } from "@shared/domain/food";
 import type { DayFacts, Standing } from "@shared/domain/life";
 import { planDay, planInputsHash, type DayPlan, type PlanDayInput, type RoutineSummary } from "@shared/domain/planDay";
 import { clampWaterGoal } from "@shared/domain/water";
-import { defaultCapacity, eventAllowance, sessionsTargetFor, weekDates, type DayLedgerInput } from "@shared/domain/week";
+import { defaultCapacity, eventAllowance, freshLedger, sessionsTargetFor, weekDates, type DayLedgerInput } from "@shared/domain/week";
 import { useBriefsBetween, type Brief } from "./briefs";
 import { useActiveFacts } from "./memory";
+import { aiWeekFor, requestAiWeek, useAiWeekVersion } from "./aiPlanner";
 import { planFor, savePlan, useStoredPlan, type StoredPlan } from "./plans";
 import { standingFrom } from "./standing";
 
@@ -70,11 +71,16 @@ export type DayPlanState = {
   brief: Brief | null;
   /** What the plan was made from (the menu scan spreads a treat over this week's ledger). */
   input: PlanDayInput | null;
+  /** D85: asks the AI to re-plan this week. Resolves true when a new plan arrived. */
+  replan(): Promise<boolean>;
+  /** An AI re-plan is on its way. */
+  replanning: boolean;
   /** Saves the plan as accepted (Accept on plan/tomorrow, or on the Today card). */
   accept(): void;
 };
 
-/** The week ledger rows: same daily base, each day's type from its brief, logged days from the phone (D77). */
+/** The week ledger rows: same daily base, each day's type and any picked numbers from its brief, logged days from the
+ *  phone (D77). After "Start fresh", days before `freshFrom` count as on target. */
 function ledgerFor(
   userId: string,
   date: string,
@@ -83,10 +89,11 @@ function ledgerFor(
   briefs: Map<string, Brief>,
   standing: Standing,
   trainedDays: Set<string>,
+  freshFrom: string | null,
 ): DayLedgerInput[] {
   const dates = weekDates(date);
   const meals = mealsBetween(userId, dates[0]!, dates[6]!);
-  return dates.map((d) => {
+  const rows = dates.map((d) => {
     const brief = briefs.get(d);
     const dayType = brief ? classifyDay(brief.facts, standing) : "normal";
     const row: DayLedgerInput = {
@@ -99,6 +106,7 @@ function ledgerFor(
       actual: null,
     };
     if (dayType === "feast") row.allowanceKcal = eventAllowance(base.kcal);
+    if (brief?.facts.targets) row.chosen = brief.facts.targets;
     if (d <= today) {
       const covered = coverageFor(userId, d);
       const dayMeals = meals.filter((m) => m.localDate === d);
@@ -113,6 +121,7 @@ function ledgerFor(
     }
     return row;
   });
+  return freshLedger(rows, freshFrom);
 }
 
 /** The plan for `date` (today or one of the next 7 days). null until the profile has targets. */
@@ -132,12 +141,15 @@ export function useDayPlan(
   const mealsV = useMealsVersion((s) => s.v);
   const coverageV = useCoverageVersion((s) => s.v);
   const stored = useStoredPlan(userId, date);
+  const aiVersion = useAiWeekVersion((s) => s.v);
+  const replanning = useAiWeekVersion((s) => s.busy);
   const brief = briefs.get(date) ?? null;
   const facts = opts.facts !== undefined ? opts.facts : (brief?.facts ?? null);
 
   const input = useMemo((): PlanDayInput | null => {
     void mealsV;
     void coverageV;
+    void aiVersion;
     const p = profile.data;
     if (!userId || !p || !targets) return null;
     const standing = standingFrom(p);
@@ -160,14 +172,16 @@ export function useDayPlan(
       standing,
       facts,
       patterns,
-      ledger: ledgerFor(userId, date, today, base, briefs, standing, trained),
+      ledger: ledgerFor(userId, date, today, base, briefs, standing, trained, patterns.freshFrom),
       routines: routineList,
       candidates: [...usualCandidates(usuals), ...staplesAsCandidates(PROTEIN_STAPLES)],
       diet: p.diet ?? "non_veg",
       staples: PROTEIN_STAPLES,
       sessionsTarget: sessionsTargetFor(p.sessionsPerWeek ?? null, patterns.trainDays?.length ?? null),
+      // D85: the model's latest week, guarded inside planDay. Without one, the rules plan.
+      ai: aiWeekFor(userId, date),
     };
-  }, [userId, profile.data, targets, date, today, facts, briefs, patterns, routines, lastDone, usuals, workouts, mealsV, coverageV]);
+  }, [userId, profile.data, targets, date, today, facts, briefs, patterns, routines, lastDone, usuals, workouts, mealsV, coverageV, aiVersion]);
 
   const plan = useMemo(() => (input ? planDay(input) : null), [input]);
   const hash = useMemo(() => (input ? planInputsHash(input) : null), [input]);
@@ -185,6 +199,11 @@ export function useDayPlan(
     stored,
     brief,
     input,
+    replanning,
+    replan: async () => {
+      if (!userId || !input) return false;
+      return requestAiWeek(userId, input, { profile: profile.data, briefs, facts: patterns.texts });
+    },
     accept: () => {
       if (userId && plan && hash) savePlan(userId, date, plan, hash, true);
     },

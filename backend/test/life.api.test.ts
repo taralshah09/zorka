@@ -293,3 +293,75 @@ describe("coach knows the plan (LA6)", () => {
     expect(res.body.actions).toEqual([actions[1], actions[2]]);
   });
 });
+
+describe("POST /plan/week (D85)", () => {
+  const day = (date: string, over: Record<string, unknown> = {}) => ({
+    date,
+    dayType: "normal",
+    brief: null,
+    base: { kcal: 2000, proteinG: 130, steps: 8000 },
+    actual: null,
+    achievableProteinG: null,
+    canTrain: true,
+    code: { kcal: 2000, proteinG: 130, steps: 8000, train: false },
+    ...over,
+  });
+  const body = {
+    today: "2026-10-20",
+    focusDate: "2026-10-20",
+    goal: "maintain",
+    floorKcal: 1500,
+    sessionsTarget: 3,
+    standing: { mealSource: "mess", budget: "tight" },
+    facts: ["Lunch is at the mess"],
+    days: [
+      day("2026-10-19", { actual: { kcal: 2000, proteinG: 90, steps: 6000, trained: true } }),
+      day("2026-10-20", { brief: "session 2 to 11 pm", dayType: "late_work", achievableProteinG: 68, canTrain: false }),
+      day("2026-10-21"),
+    ],
+  };
+
+  it("passes on today-onward days from the model, drops past/unknown/duplicate days, filters reasons; the prompt has the week", async () => {
+    const calls = { bodies: [] as string[] };
+    const { app } = testApp({
+      ai: fakeAi(
+        [GROQ],
+        replying(
+          {
+            days: [
+              { date: "2026-10-19", kcal: 1, proteinG: 1, steps: 1, train: true },
+              { date: "2026-10-20", kcal: 2000, proteinG: 68, steps: 6000, train: false, reason: "A long session: protein early, a short walk at lunch." },
+              { date: "2026-10-21", kcal: "2100", proteinG: 155, steps: 9000, train: true, reason: "Skip dinner tonight." },
+              { date: "2026-10-21", kcal: 9, proteinG: 9, steps: 9, train: false },
+              { date: "2027-01-01", kcal: 9, proteinG: 9, steps: 9, train: false },
+              { nope: true },
+            ],
+            summary: "Tuesday is a long day; Wednesday picks up the protein.",
+          },
+          calls,
+        ),
+      ),
+    });
+    const res = await request(app).post(`/v1/users/${RIYA}/plan/week`).send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.days).toEqual([
+      { date: "2026-10-20", kcal: 2000, proteinG: 68, steps: 6000, train: false, reason: "A long session: protein early, a short walk at lunch." },
+      { date: "2026-10-21", kcal: 2100, proteinG: 155, steps: 9000, train: true },
+    ]);
+    expect(res.body.summary).toBe("Tuesday is a long day; Wednesday picks up the protein.");
+    const sent = calls.bodies[0]!;
+    expect(sent).toContain("session 2 to 11 pm");
+    expect(sent).toContain("realistic protein 68");
+    expect(sent).toContain("logged 2000 kcal/90 g/6000 steps, trained");
+    expect(sent).toContain("never below the floor");
+  });
+
+  it("no AI means an error (the phone keeps the code plan); bad bodies are rejected", async () => {
+    const none = testApp();
+    const res = await request(none.app).post(`/v1/users/${RIYA}/plan/week`).send(body);
+    expect(res.status).toBe(503);
+    const { app } = testApp({ ai: fakeAi([GROQ], replying({ days: [] })) });
+    for (const bad of [{ ...body, days: [] }, { ...body, sessionsTarget: 9 }, { ...body, today: "today" }])
+      expect((await request(app).post(`/v1/users/${RIYA}/plan/week`).send(bad)).status).toBe(422);
+  });
+});

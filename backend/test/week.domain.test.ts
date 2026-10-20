@@ -7,13 +7,17 @@ import { classifyDay, DAY_RULES, DAY_TYPES, type DayType } from "../../shared/do
 import { achievableProteinG, PROTEIN_STAPLES, proteinStepUp } from "../../shared/domain/eatOptions.js";
 import { dayBounds, freeWindows, trainingWindow } from "../../shared/domain/life.js";
 import {
+  chosenLimits,
+  dayOptions,
   DEFAULT_SESSIONS_PER_WEEK,
   defaultCapacity,
+  freshLedger,
   eventAllowance,
   LEDGER_RULES,
   MAX_TRAINING_STREAK,
   planWeek,
   sessionsTargetFor,
+  sickMinProtein,
   spread,
   WEEK_KCAL_MAX_SHIFT,
   WEEK_KCAL_MAX_SHIFT_UP_LOSE_FAT,
@@ -120,7 +124,7 @@ describe("scenarios (LIFE_PLAN.md)", () => {
     expect(LEDGER_RULES.late_work.absorbs).toBe(true);
   });
 
-  it("3 · hostel, tight, veg, mess: achievable 75 of 110, + soya at dinner ≈ ₹10, the ledger never goes above 75", () => {
+  it("3 · hostel, tight, veg, mess: achievable 75 of 110, + soya at dinner ≈ ₹10, the ledger adds ≤ 20% over 75", () => {
     const input = { standing: HOSTEL, facts: HOSTEL_DAY, staples: PROTEIN_STAPLES, diet: "veg" as const };
     const achievable = achievableProteinG(input);
     expect(achievable).toBe(75);
@@ -134,12 +138,15 @@ describe("scenarios (LIFE_PLAN.md)", () => {
       FLOOR,
       3,
     );
+    // Short: Monday (110 − 50) + six days × 35 = 270 g. Each day left takes its 15 g (20% of 75), the step-up covers it.
     for (const d of p.days.filter((x) => !x.past)) {
-      expect(d.proteinG).toBe(75);
+      expect(d.proteinG).toBe(90);
       expect(d.why).toContain("achievable_protein");
     }
-    expect(p.forgiven.proteinG).toBe(25); // 75 − 50 on Monday, no room to make it up
-    expect(p.why).toContain("forgiven_protein");
+    // What's left (270 − 90) is under the mess's daily limit (7 × 35 g), so it's let go quietly.
+    expect(p.forgiven.proteinG).toBe(180);
+    expect(p.limits.proteinG).toBe(180);
+    expect(p.why).not.toContain("forgiven_protein");
   });
 
   it("4 · wedding Sat, losing fat, base 1,800, briefed Monday: Sat 2,300, the other 6 days ≈ 85 lighter", () => {
@@ -399,7 +406,10 @@ function randomCase(seed: number): Case {
 
 const RUNS = 1500;
 const isEvent = (d: DayLedgerInput) => d.allowanceKcal != null || d.dayType === "feast";
-const pBase = (d: DayLedgerInput) => Math.min(d.baseProteinG, d.achievableProteinG ?? Infinity);
+const pBase = (d: DayLedgerInput) => {
+  const reach = Math.max(0, Math.min(d.baseProteinG, d.achievableProteinG ?? Infinity));
+  return d.dayType === "sick" ? Math.min(reach, sickMinProtein(d.baseProteinG)) : reach;
+};
 const planned = (c: Case) => planWeek(c.days, c.today, c.floor, c.sessions, { goal: c.goal });
 
 function eachCase(check: (c: Case, p: WeekPlan, seed: number) => void) {
@@ -435,14 +445,13 @@ describe(`planWeek properties (${RUNS} seeded weeks)`, () => {
     });
   });
 
-  it("protein never below the day's protein base, adds ≤ 20%, never above what the day can reach", () => {
+  it("protein never below the day's protein base and adds ≤ 20% of it", () => {
     eachCase((c, p, seed) => {
       for (const d of p.days.filter((x) => !x.past)) {
         const src = c.days.find((x) => x.date === d.date)!;
         const b = pBase(src);
         expect(d.proteinG, `seed ${seed}`).toBeGreaterThanOrEqual(b);
         expect(d.proteinG - b, `seed ${seed}`).toBeLessThanOrEqual(Math.floor(b * WEEK_PROTEIN_MAX_ADD_SHARE));
-        if (src.achievableProteinG != null) expect(d.proteinG).toBeLessThanOrEqual(Math.max(b, src.achievableProteinG));
       }
     });
   });
@@ -461,10 +470,15 @@ describe(`planWeek properties (${RUNS} seeded weeks)`, () => {
       const sum = (f: (d: WeekPlan["days"][number]) => number) => p.days.reduce((s, d) => s + f(d), 0);
       expect(sum((d) => d.kcal) + p.forgiven.kcal, `seed ${seed}`).toBe(c.days.reduce((s, d) => s + d.baseKcal, 0));
 
-      const proteinBudget = c.days.reduce((s, d) => s + pBase(d), 0);
-      const pastProteinNet = p.days.filter((d) => d.past).reduce((s, d) => s + pBase(c.days.find((x) => x.date === d.date)!) - d.proteinG, 0);
-      if (pastProteinNet >= 0) expect(sum((d) => d.proteinG) + p.forgiven.proteinG, `seed ${seed}`).toBe(proteinBudget);
-      else expect(p.forgiven.proteinG).toBe(0);
+      // Protein's budget is the real base; what a day can't reach moves on (or is a quiet limit), like a past miss.
+      const proteinBudget = c.days.reduce((s, d) => s + d.baseProteinG, 0);
+      const src = (date: string) => c.days.find((x) => x.date === date)!;
+      const net =
+        // D86: a past sick day owes only up to its gentle minimum.
+        p.days.filter((d) => d.past).reduce((s, d) => s + (src(d.date).dayType === "sick" ? pBase(src(d.date)) : src(d.date).baseProteinG) - d.proteinG, 0) +
+        p.days.filter((d) => !d.past && src(d.date).dayType !== "sick").reduce((s, d) => s + src(d.date).baseProteinG - pBase(src(d.date)), 0);
+      if (net >= 0) expect(sum((d) => d.proteinG) + p.forgiven.proteinG, `seed ${seed}`).toBe(proteinBudget);
+      expect(p.limits.proteinG).toBeLessThanOrEqual(p.forgiven.proteinG);
 
       expect(p.forgiven.proteinG).toBeGreaterThanOrEqual(0);
       expect(p.forgiven.steps).toBeGreaterThanOrEqual(0);
@@ -543,5 +557,145 @@ describe(`planWeek properties (${RUNS} seeded weeks)`, () => {
         if (src.actual?.kcal != null) expect(d.kcal).toBe(src.actual.kcal);
       }
     });
+  });
+});
+
+describe("what moved and why (adjust)", () => {
+  const kabir = { kcal: 2750, proteinG: 135, steps: 10000 };
+
+  it("Kabir: today's 68 g realistic protein is shared by today (≤ +13) and Wed–Sun, each day says where it came from", () => {
+    const p = planWeek(week({ [TUE]: { achievableProteinG: 68 } }, { base: kabir }), TUE, FLOOR, 3);
+    const tue = day(p, TUE);
+    expect(tue.proteinG).toBeGreaterThan(68);
+    expect(tue.proteinG).toBeLessThanOrEqual(68 + 13);
+    expect(tue.adjust?.proteinG).toMatchObject({ from: 68, to: tue.proteinG, causes: [{ date: TUE, kind: "limited" }] });
+    const later = [WED, THU, FRI, SAT, SUN].map((d) => day(p, d));
+    expect(tue.proteinG - 68 + later.reduce((s, d) => s + d.proteinG - 135, 0)).toBe(67);
+    for (const d of later) {
+      expect(d.proteinG).toBeLessThanOrEqual(135 + 27);
+      expect(d.adjust?.proteinG).toMatchObject({ from: 135, causes: [{ date: TUE, kind: "limited" }] });
+    }
+    expect(p.forgiven.proteinG).toBe(0);
+  });
+
+  it("D86 Kabir, fever Tuesday: aim for at least 81 of 135 g; the other 54 g is let go, nothing moves to later days", () => {
+    const p = planWeek(week({ [TUE]: { dayType: "sick", maintenanceKcal: 2750 } }, { base: kabir }), TUE, FLOOR, 3);
+    const tue = day(p, TUE);
+    expect(tue.proteinG).toBe(81);
+    expect(tue.sick).toEqual({ minG: 81, baseG: 135 });
+    expect(tue.adjust?.proteinG).toBeUndefined();
+    for (const d of [WED, THU, FRI, SAT, SUN]) expect(day(p, d).proteinG).toBe(135);
+    expect(p.forgiven.proteinG).toBe(54);
+    expect(p.why).not.toContain("forgiven_protein");
+  });
+
+  it("D86 a sick Tuesday that reached its 81 g minimum moves nothing; one at 50 g moves only the 31 g below it", () => {
+    const sick = (proteinG: number) => week({ [TUE]: { dayType: "sick", actual: onTarget(2750, proteinG, 2000) } }, { base: kabir });
+    const ok = planWeek(sick(81), THU, FLOOR, 0);
+    for (const d of [THU, FRI, SAT, SUN]) expect(day(ok, d).proteinG).toBe(135);
+    expect(day(ok, TUE).sick).toEqual({ minG: 81, baseG: 135 });
+    const short = planWeek(sick(50), THU, FLOOR, 0);
+    const later = [THU, FRI, SAT, SUN].map((d) => day(short, d));
+    expect(later.reduce((s, d) => s + d.proteinG - 135, 0)).toBe(31);
+    expect(later.find((d) => d.adjust?.proteinG)?.adjust?.proteinG?.causes).toEqual([{ date: TUE, kind: "short" }]);
+  });
+
+  it("Kabir, home veg Wednesday (109 g realistic): Wednesday takes moved protein past 109, up to +21", () => {
+    const p = planWeek(week({ [MON]: { actual: onTarget(2750, 100, 10000) }, [WED]: { achievableProteinG: 109 } }, { base: kabir }), TUE, FLOOR, 3);
+    const wed = day(p, WED);
+    expect(wed.proteinG).toBeGreaterThan(109);
+    expect(wed.proteinG).toBeLessThanOrEqual(109 + 21);
+    expect(wed.adjust?.proteinG?.causes).toEqual(expect.arrayContaining([{ date: MON, kind: "short" }, { date: WED, kind: "limited" }]));
+  });
+
+  it("a short Tuesday (logged) raises Sunday's protein, naming Tuesday", () => {
+    const p = planWeek(week({ [TUE]: { actual: onTarget(2750, 100, 10000) } }, { base: kabir }), SUN, FLOOR, 0);
+    expect(day(p, SUN).adjust?.proteinG).toEqual({ from: 135, to: 162, causes: [{ date: TUE, kind: "short" }] });
+    expect(p.forgiven.proteinG).toBe(35 - 27);
+  });
+
+  it("an over on Tuesday makes later days lighter, naming Tuesday; an event names the event day", () => {
+    const over = planWeek(week({ [TUE]: { actual: onTarget(3250) } }), THU, FLOOR, 0);
+    expect(day(over, THU).adjust?.kcal).toMatchObject({ from: 2000, causes: [{ date: TUE, kind: "over" }] });
+    expect(day(over, THU).adjust!.kcal!.to).toBeLessThan(2000);
+    const wedding = planWeek(week({ [SAT]: { dayType: "feast", allowanceKcal: 2500 } }), MON, FLOOR, 0);
+    expect(day(wedding, MON).adjust?.kcal?.causes).toEqual([{ date: SAT, kind: "event" }]);
+  });
+
+  it("a busy day's steps say where the rest went; the receiving days name the busy day", () => {
+    const p = planWeek(week({ [WED]: { dayType: "busy" } }), TUE, FLOOR, 0);
+    expect(day(p, WED).adjust?.steps).toMatchObject({ from: 8000, to: 5600, causes: [{ date: WED, kind: "busy" }] });
+    expect(day(p, WED).adjust!.steps!.movedTo!.length).toBeGreaterThan(0);
+    expect(day(p, THU).adjust?.steps?.causes).toEqual([{ date: WED, kind: "busy" }]);
+  });
+
+  it("a usual Wednesday workout that didn't happen moves to the next free day and says it was missed", () => {
+    const pattern = new Set([MON, WED, FRI]);
+    const days = week({ [MON]: { actual: onTarget(2000, 130, 8000, true) }, [WED]: { actual: onTarget() } }).map((d) => ({ ...d, patternDay: pattern.has(d.date) }));
+    const p = planWeek(days, THU, FLOOR, 3);
+    const moved = p.days.find((d) => d.adjust?.train);
+    expect(moved?.date).toBe(THU);
+    expect(moved?.adjust?.train).toEqual({ movedFrom: [WED], missed: true });
+    expect(day(p, FRI).train).toBe(true);
+  });
+});
+
+describe("picked numbers, Plan A/B and starting fresh", () => {
+  const kabir = { kcal: 2750, proteinG: 135, steps: 10000 };
+  // Monday came in 35 g, 400 kcal and 3,000 steps short; today is Tuesday.
+  const shortMon = { [MON]: { actual: onTarget(2350, 100, 7000) } };
+
+  it("a picked number stays put; the rest of the week moves around it and names the day", () => {
+    const p = planWeek(week({ ...shortMon, [WED]: { chosen: { proteinG: 150, kcal: 2900, steps: 12000 } } }, { base: kabir }), TUE, FLOOR, 3);
+    const wed = day(p, WED);
+    expect(wed).toMatchObject({ proteinG: 150, kcal: 2900, steps: 12000 });
+    expect(wed.why).toContain("chosen_target");
+    expect(wed.adjust?.proteinG).toMatchObject({ from: 135, to: 150, causes: [{ date: WED, kind: "chosen" }] });
+    // Wednesday paid back 15 g of Monday's 35 g; the other days share the last 20 g.
+    const others = [TUE, THU, FRI, SAT, SUN].reduce((s, d) => s + day(p, d).proteinG - 135, 0);
+    expect(others).toBe(20);
+    // Wednesday took 150 kcal of Monday's 400 under and 2,000 of its 3,000 steps.
+    expect([TUE, THU, FRI, SAT, SUN].reduce((s, d) => s + day(p, d).kcal - 2750, 0)).toBe(250);
+    expect([TUE, THU, FRI, SAT, SUN].reduce((s, d) => s + (day(p, d).steps ?? 0) - 10000, 0)).toBe(1000);
+  });
+
+  it("a day picked lower moves its gap to the others, naming it", () => {
+    const p = planWeek(week({ [WED]: { chosen: { proteinG: 110 } } }, { base: kabir }), TUE, FLOOR, 3);
+    expect(day(p, WED).proteinG).toBe(110);
+    expect(day(p, WED).adjust?.proteinG?.movedTo?.length).toBeGreaterThan(0);
+    expect(day(p, THU).adjust?.proteinG?.causes).toContainEqual({ date: WED, kind: "chosen" });
+    expect([TUE, THU, FRI, SAT, SUN].reduce((s, d) => s + day(p, d).proteinG - 135, 0)).toBe(25);
+  });
+
+  it("picked numbers are kept inside safe limits; a past day's pick is ignored", () => {
+    const row = week({}, { base: kabir }).find((d) => d.date === WED)!;
+    expect(chosenLimits(row, FLOOR)).toEqual({ kcal: [2550, 2950], protein: [68, 162], steps: [5000, 13000] });
+    const p = planWeek(week({ [MON]: { chosen: { proteinG: 10 } }, [WED]: { chosen: { proteinG: 400, kcal: 900, steps: 99999 } } }, { base: kabir }), TUE, FLOOR, 3);
+    expect(day(p, WED)).toMatchObject({ proteinG: 162, kcal: 2550, steps: 13000 });
+    expect(day(p, MON).proteinG).toBe(135);
+  });
+
+  it("Plan A keeps the week even, Plan B catches up faster, and the usual is base", () => {
+    const ledger = week({ ...shortMon, [WED]: { achievableProteinG: 109 } }, { base: kabir });
+    const p = planWeek(ledger, TUE, FLOOR, 3);
+    const o = dayOptions(p, ledger.find((d) => d.date === WED)!, FLOOR);
+    expect(o.usual).toEqual({ kcal: 2750, proteinG: 135, steps: 10000 });
+    expect(o.even).toEqual({ kcal: day(p, WED).kcal, proteinG: day(p, WED).proteinG, steps: day(p, WED).steps });
+    // Plan B: Wednesday's own 26 g plus Monday's 35 g, from 109 → 162 (the most a pick may be).
+    expect(o.faster).toEqual({ kcal: 2950, proteinG: 162, steps: 13000 });
+    // Nothing owed: Plan A is the usual, no Plan B.
+    const calm = week({}, { base: kabir });
+    const q = dayOptions(planWeek(calm, TUE, FLOOR, 3), calm.find((d) => d.date === WED)!, FLOOR);
+    expect(q.even).toEqual(q.usual);
+    expect(q.faster).toBeNull();
+  });
+
+  it("start fresh: earlier days count as on target, workouts done still count", () => {
+    const ledger = week({ [MON]: { actual: onTarget(2350, 100, 7000, true) } }, { base: kabir });
+    const fresh = planWeek(freshLedger(ledger, WED), TUE, FLOOR, 3);
+    expect(fresh.owed).toEqual({ kcal: 0, proteinG: 0, steps: 0 });
+    for (const d of fresh.days.filter((x) => !x.past)) expect(d).toMatchObject({ kcal: 2750, proteinG: 135, steps: 10000 });
+    expect(fresh.sessionsDone).toBe(1);
+    expect(planWeek(freshLedger(ledger, null), TUE, FLOOR, 3).owed.proteinG).toBe(35);
   });
 });

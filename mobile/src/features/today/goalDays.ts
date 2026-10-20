@@ -13,6 +13,8 @@ import { glassesBetween, useWaterVersion } from "@/features/water/store";
 import { scoreGoalDay, type GoalDay } from "@shared/domain/gap";
 import { datesBetween } from "@shared/domain/progress";
 import type { Targets } from "@shared/domain/targets";
+import { targetsOn, waterFor } from "@/features/life/dayTargets";
+import { planFor, usePlansVersion } from "@/features/life/plans";
 
 /** First and last local date of the month `month` (YYYY-MM) is in. */
 export function monthRange(month: string): { start: string; end: string } {
@@ -22,7 +24,7 @@ export function monthRange(month: string): { start: string; end: string } {
   return { start: `${y}-${mm}-01`, end: `${y}-${mm}-${String(days).padStart(2, "0")}` };
 }
 
-function stepsBetween(userId: string, start: string, end: string): Map<string, number> {
+export function stepsBetween(userId: string, start: string, end: string): Map<string, number> {
   const rows = getDb().getAllSync<{ date: string; steps: number }>(
     `SELECT local_date AS date, steps FROM health_steps WHERE user_id = ? AND local_date BETWEEN ? AND ?`,
     userId,
@@ -49,6 +51,8 @@ export function goalMonth(
   const water = glassesBetween(userId, start, end);
   for (const date of datesBetween(start, end)) {
     const eaten = intake.get(date);
+    // A planned day is scored against its plan (LA3); other days against the base.
+    const t = targetsOn(userId, date, targets);
     out.set(
       date,
       scoreGoalDay(
@@ -58,10 +62,10 @@ export function goalMonth(
           glasses: water.get(date) ?? 0,
         },
         {
-          kcal: targets.kcal + dayCredit(userId, date).kcal,
-          proteinG: targets.proteinG,
-          steps: targets.steps,
-          waterGlasses: waterGoal,
+          kcal: t.kcal + dayCredit(userId, date).kcal,
+          proteinG: t.proteinG,
+          steps: t.steps,
+          waterGlasses: waterFor(planFor(userId, date), waterGoal),
         },
       ),
     );
@@ -81,12 +85,14 @@ export function useGoalMonth(
   const water = useWaterVersion((s) => s.v);
   const activity = useActivityVersion();
   const sync = useSyncStatus((s) => s.lastSyncedAt);
+  const plans = usePlansVersion((s) => s.v);
   return useMemo(() => {
+    void plans;
     void coverageVersion;
     void meals;
     void water;
     void activity;
     void sync;
     return userId && targets ? goalMonth(userId, month, today, targets, waterGoal) : new Map();
-  }, [userId, month, today, targets, waterGoal, meals, water, activity, sync, coverageVersion]);
+  }, [userId, month, today, targets, waterGoal, meals, water, activity, sync, coverageVersion, plans]);
 }

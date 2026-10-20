@@ -57,7 +57,7 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
 /** Routes that call an AI model. */
-const AI_PATH = /^\/v1\/(users\/[^/]+\/(meals\/parse-(text|voice|photo)|workouts\/parse-voice|coach\/chat|brief\/parse)|dev\/ai\/chat)$/;
+const AI_PATH = /^\/v1\/(users\/[^/]+\/(meals\/parse-(text|voice|photo)|workouts\/parse-voice|coach\/chat|brief\/parse|plan\/week)|dev\/ai\/chat)$/;
 /** LA7: menu page reads (vision), limited per page on their own. */
 const MENU_PATH = /^\/v1\/users\/[^/]+\/menu\/read$/;
 /** Routes that call the search API (and an AI model). */

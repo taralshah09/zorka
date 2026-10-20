@@ -188,3 +188,12 @@ describe("classifyDay (LA2)", () => {
     expect(DAY_RULES.late_work.latestWalkMinute).toBe(LATE_MOVE_MINUTE);
   });
 });
+
+describe("classifyDay · long sessions and busy blocks", () => {
+  it("a study session until 23:00 is a late day; 6 h of other plans is busy; office hours stay usual", () => {
+    expect(classifyDay(facts({ blocks: [{ from: at(14), to: at(23), kind: "study", label: "Session" }] }), EMPTY_STANDING)).toBe("late_work");
+    expect(classifyDay(facts({ blocks: [{ from: at(14), to: at(20), kind: "other" }] }), EMPTY_STANDING)).toBe("busy");
+    expect(classifyDay(facts({ blocks: [{ from: at(14), to: at(18, 59), kind: "other" }] }), EMPTY_STANDING)).toBe("normal");
+    expect(classifyDay(OFFICE_DAY, OFFICE)).toBe("normal");
+  });
+});

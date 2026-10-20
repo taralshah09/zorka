@@ -1,8 +1,8 @@
-// Domain-core fixtures for docs/LIFE_PLAN.md "Scenarios to test against" (1–7; 8 is the menu scan, LA7).
-// The week is Mon 2026-10-19 … Sun 2026-10-25 (D75).
+// Domain-core fixtures for docs/LIFE_PLAN.md "Scenarios to test against" (1â€“7; 8 is the menu scan, LA7).
+// The week is Mon 2026-10-19 â€¦ Sun 2026-10-25 (D75).
 import type { DayType } from "../../../shared/domain/dayType.js";
 import type { DayFacts, Standing } from "../../../shared/domain/life.js";
-import { defaultCapacity, type DayActual, type DayLedgerInput } from "../../../shared/domain/week.js";
+import { defaultCapacity, type ChosenTargets, type DayActual, type DayLedgerInput } from "../../../shared/domain/week.js";
 
 export const WEEK = ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"];
 export const [MON, TUE, WED, THU, FRI, SAT, SUN] = WEEK as [string, string, string, string, string, string, string];
@@ -29,10 +29,10 @@ export const HOSTEL: Standing = {
 
 export const facts = (f: Partial<DayFacts>): DayFacts => ({ blocks: [], whereabouts: "home", mealAccess: {}, flags: [], ...f });
 
-/** An ordinary office day, 9:30–18:00. */
+/** An ordinary office day, 9:30â€“18:00. */
 export const OFFICE_DAY = facts({ blocks: [{ from: at(9, 30), to: at(18), kind: "work" }] });
 
-/** 1. Expo Wed 13:00–19:00 (office in the morning). */
+/** 1. Expo Wed 13:00â€“19:00 (office in the morning). */
 export const EXPO_WED = facts({
   blocks: [
     { from: at(9, 30), to: at(12, 30), kind: "work" },
@@ -49,7 +49,7 @@ export const EXPO_ONLY_WED = facts({
   mealAccess: { breakfast: "home", lunch: "packed", snack: "packed", dinner: "home" },
 });
 
-/** "Expo tomorrow 1–7, client dinner at 8" (LA2 exit): still away, not a feast. */
+/** "Expo tomorrow 1â€“7, client dinner at 8" (LA2 exit): still away, not a feast. */
 export const EXPO_CLIENT_DINNER = facts({
   blocks: [
     { from: at(13), to: at(19), kind: "event", label: "Expo" },
@@ -81,7 +81,7 @@ export const WEDDING_SAT = facts({
   sleepMinute: at(24, 30),
 });
 
-/** 5. Flight Thu 06:00–11:00, then another city Thu–Fri. */
+/** 5. Flight Thu 06:00â€“11:00, then another city Thuâ€“Fri. */
 export const FLIGHT_THU = facts({
   blocks: [{ from: at(6), to: at(11), kind: "travel", label: "Flight" }],
   whereabouts: "other_city",
@@ -98,6 +98,7 @@ export type DayOpts = {
   maintenanceKcal?: number;
   patternDay?: boolean;
   canTrain?: boolean;
+  chosen?: ChosenTargets;
 };
 
 export const BASE = { kcal: 2000, proteinG: 130, steps: 8000 };
@@ -120,6 +121,7 @@ export function ledgerDay(date: string, o: DayOpts = {}): DayLedgerInput {
   if (o.achievableProteinG !== undefined) d.achievableProteinG = o.achievableProteinG;
   if (o.maintenanceKcal !== undefined) d.maintenanceKcal = o.maintenanceKcal;
   if (o.patternDay !== undefined) d.patternDay = o.patternDay;
+  if (o.chosen !== undefined) d.chosen = o.chosen;
   return d;
 }
 

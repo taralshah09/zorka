@@ -12,7 +12,8 @@ import { GOAL_COUNT, type GoalDay } from "@shared/domain/gap";
 import type { Targets } from "@shared/domain/targets";
 
 import { monthRange, useGoalMonth } from "./goalDays";
-import { dateOf } from "./selectedDay";
+import { dateOf, PLAN_AHEAD_DAYS } from "./selectedDay";
+import { addDays } from "@shared/domain/progress";
 
 const MONTH_NAMES = [
   "January",
@@ -89,7 +90,6 @@ export function GoalCalendar({
   onSelect: (day: string) => void;
 }) {
   const { colors, radius } = useTheme();
-  const thisMonth = today.slice(0, 7);
   // The month on show, browsed with the chevrons; picking a day elsewhere (the date strip) jumps to its month.
   const [view, setView] = useState({ selected, month: selected.slice(0, 7) });
   const month = view.selected === selected ? view.month : selected.slice(0, 7);
@@ -127,7 +127,7 @@ export function GoalCalendar({
         <IconButton
           icon="chevron_right"
           accessibilityLabel="Next month"
-          disabled={month >= thisMonth}
+          disabled={month >= addDays(today, PLAN_AHEAD_DAYS).slice(0, 7)}
           onPress={() => setMonth(shiftMonth(month, 1))}
         />
       </View>
@@ -147,17 +147,19 @@ export function GoalCalendar({
               if (!date) return <View key={di} style={styles.cell} />;
               const day = days.get(date);
               const future = date > today;
+              // LA3: the coming week opens its plan; further out there's nothing to show yet.
+              const beyond = date > addDays(today, PLAN_AHEAD_DAYS);
               const full = day?.hit === GOAL_COUNT;
               const isSelected = date === selected;
               return (
                 <PressableScale
                   key={date}
                   onPress={() => onSelect(date)}
-                  disabled={future}
+                  disabled={beyond}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected, disabled: future }}
+                  accessibilityState={{ selected: isSelected, disabled: beyond }}
                   accessibilityLabel={`${formatDayLong(dateOf(date))}${date === today ? ", today" : ""}. ${
-                    future ? "Upcoming" : day ? hitWords(day) : `0 of ${GOAL_COUNT} goals`
+                    future ? (beyond ? "Upcoming" : "Planned") : day ? hitWords(day) : `0 of ${GOAL_COUNT} goals`
                   }`}
                   style={[
                     styles.cell,

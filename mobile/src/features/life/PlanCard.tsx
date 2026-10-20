@@ -7,7 +7,7 @@ import { StyleSheet, View } from "react-native";
 import type { IconName } from "@/core/icons/Icon";
 import { Badge, Button, Card, ListItem, Text } from "@/core/ui";
 import type { DayPlan, PlanItem } from "@shared/domain/planDay";
-import { DAY_TYPE_LABEL, itemTime, itemTitle, weekdayShort, whyText } from "./copy";
+import { ADJUST_CODES, adjustLines, DAY_TYPE_LABEL, itemTime, itemTitle, sourceLine, stepUpLine, weekdayShort, whyText } from "./copy";
 
 const ICON: Record<PlanItem["kind"], IconName> = {
   meal: "restaurant",
@@ -30,11 +30,32 @@ function hrefFor(item: PlanItem): Href | null {
   }
 }
 
-export function PlanCard({ plan, nowMinute, accepted, onAccept }: { plan: DayPlan; nowMinute: number; accepted: boolean; onAccept: () => void }) {
+export function PlanCard({
+  plan,
+  nowMinute,
+  accepted,
+  onAccept,
+  onReplan,
+  replanning,
+  eatenProteinG,
+}: {
+  plan: DayPlan;
+  nowMinute: number;
+  accepted: boolean;
+  onAccept: () => void;
+  /** D85: ask the AI to re-plan the week. */
+  onReplan?: () => void;
+  replanning?: boolean;
+  /** Protein eaten so far today, for the sick-day minimum line (D86). */
+  eatenProteinG?: number;
+}) {
   const next = plan.items.filter((i) => !(i.kind === "prep" && i.dayOffset === -1) && i.at >= nowMinute - 15).slice(0, 3);
   const t = plan.targets;
   const kcal = t.kcalRange ? `${t.kcalRange[0]}–${t.kcalRange[1]} kcal` : `${t.kcal} kcal`;
-  const why = whyText(plan.why.filter((w) => w !== "assumed_day")).slice(0, 2);
+  // What moved today and why ("Since Tuesday came in short…"), then any other reason the adjust lines don't cover.
+  const today = plan.week.days.find((d) => d.date === plan.date);
+  const moved = today ? adjustLines(today, plan.date, eatenProteinG) : [];
+  const why = whyText(plan.why.filter((w) => w !== "assumed_day" && !(moved.length && ADJUST_CODES.includes(w)))).slice(0, 2);
   return (
     <Card>
       <View style={styles.top}>
@@ -44,9 +65,13 @@ export function PlanCard({ plan, nowMinute, accepted, onAccept }: { plan: DayPla
         <Badge label={DAY_TYPE_LABEL[plan.dayType]} tone={plan.dayType === "normal" ? "neutral" : "lilac"} />
       </View>
       <Text variant="title">{`${kcal} · ${t.proteinG} g protein${t.steps != null ? ` · ${t.steps.toLocaleString("en-IN")} steps` : ""}`}</Text>
-      {plan.protein.stepUp ? (
+      <Text variant="caption" color="textSecondary">
+        {sourceLine(plan)}
+      </Text>
+      {plan.ai?.summary ? <Text variant="caption" color="textSecondary">{plan.ai.summary}</Text> : null}
+      {stepUpLine(plan) ? (
         <Text variant="caption" color="textSecondary">
-          {`${t.proteinG} g is realistic today. Add ${plan.protein.stepUp.staple.name} (≈ ₹${plan.protein.stepUp.costInr}) for ${plan.protein.stepUp.proteinG} g more.`}
+          {stepUpLine(plan)}
         </Text>
       ) : null}
       {plan.assumed ? (
@@ -54,6 +79,11 @@ export function PlanCard({ plan, nowMinute, accepted, onAccept }: { plan: DayPla
           {`Assumed a usual ${weekdayShort(plan.date)}. Tell me if not.`}
         </Text>
       ) : null}
+      {moved.map((m) => (
+        <Text key={m} variant="body">
+          {m}
+        </Text>
+      ))}
       {why.map((w) => (
         <Text key={w} variant="caption" color="textSecondary">
           {w}
@@ -80,6 +110,7 @@ export function PlanCard({ plan, nowMinute, accepted, onAccept }: { plan: DayPla
       <View style={styles.actions}>
         {!accepted ? <Button label="Accept" size="sm" onPress={onAccept} /> : null}
         <Button label="Change" size="sm" variant="secondary" onPress={() => router.push({ pathname: "/plan/tomorrow", params: { date: plan.date } })} />
+        {onReplan ? <Button label={replanning ? "Re-planning…" : "Ask AI to re-plan"} size="sm" variant="ghost" loading={replanning} disabled={replanning} onPress={onReplan} /> : null}
       </View>
     </Card>
   );

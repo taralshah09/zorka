@@ -1,6 +1,6 @@
 // Date strip — brand §8: 7 days in a surface-low pill track, selected day a lime circle with ink text,
-// today marked with a dot. Tapping a past day shows that day's logs on Today; the chevrons move a week back or
-// forward (never past this week). Future days can't be picked.
+// today marked with a dot. Tapping a past day shows that day's logs; a day up to a week ahead shows its plan (LA3). The
+// chevrons move a week back or forward, never past that horizon.
 import { StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/core/theme";
@@ -8,7 +8,7 @@ import { IconButton, PressableScale, Text } from "@/core/ui";
 import { formatDayLong, weekdayInitial } from "@/features/targets/format";
 import { localDate } from "@shared/domain/food";
 
-import { dateOf } from "./selectedDay";
+import { dateOf, PLAN_AHEAD_DAYS } from "./selectedDay";
 
 function weekOf(day: Date): Date[] {
   const mondayOffset = (day.getDay() + 6) % 7;
@@ -36,11 +36,12 @@ export function DateStrip({
 }) {
   const { colors, radius } = useTheme();
   const todayKey = localDate(today);
+  const lastKey = shift(todayKey, PLAN_AHEAD_DAYS);
   const week = weekOf(dateOf(selected));
   const lastOfWeek = localDate(week[6]!);
-  const isThisWeek = lastOfWeek >= todayKey;
-  // Next week: same weekday a week on, capped at today.
-  const next = shift(selected, 7) > todayKey ? todayKey : shift(selected, 7);
+  const atHorizon = lastOfWeek >= lastKey;
+  // Next week: same weekday a week on, capped at the last day that has a plan.
+  const next = shift(selected, 7) > lastKey ? lastKey : shift(selected, 7);
 
   return (
     <View style={styles.row}>
@@ -61,21 +62,22 @@ export function DateStrip({
           const isSelected = key === selected;
           const isToday = key === todayKey;
           const future = key > todayKey;
+          const beyond = key > lastKey;
           return (
             <PressableScale
               key={key}
               onPress={() => onSelect(key)}
-              disabled={future || isSelected}
+              disabled={beyond || isSelected}
               accessibilityRole="button"
-              accessibilityState={{ selected: isSelected, disabled: future }}
-              accessibilityLabel={`${formatDayLong(d)}${isToday ? ", today" : ""}`}
+              accessibilityState={{ selected: isSelected, disabled: beyond }}
+              accessibilityLabel={`${formatDayLong(d)}${isToday ? ", today" : future ? ", planned" : ""}`}
               containerStyle={styles.slot}
               style={[
                 styles.day,
                 {
                   borderRadius: radius.full,
                   backgroundColor: isSelected ? colors.primary : "transparent",
-                  opacity: future ? 0.4 : 1,
+                  opacity: beyond ? 0.4 : future ? 0.75 : 1,
                 },
               ]}
             >
@@ -97,7 +99,7 @@ export function DateStrip({
           );
         })}
       </View>
-      {isThisWeek ? (
+      {atHorizon ? (
         <View style={styles.chevronSpace} />
       ) : (
         <IconButton icon="chevron_right" accessibilityLabel="Next week" onPress={() => onSelect(next)} />

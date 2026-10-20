@@ -168,6 +168,7 @@ export default function Progress() {
             ) : null}
             <Button label="Log weight" icon="monitor_weight" onPress={() => router.push("/log-weight")} fullWidth />
           </Card>
+          <Button label="Weekly reports" variant="ghost" icon="check_circle" onPress={() => router.push("/progress/reports")} />
           <Button
             label="Change goal"
             variant="ghost"

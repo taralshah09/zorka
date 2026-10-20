@@ -44,6 +44,7 @@ import { briefsService } from "../src/modules/briefs/briefs.service.js";
 import type { DayBriefRecord, DayPlanRecord, LifeRepositories, MemoryFactRecord } from "../src/modules/life/life.repository.js";
 import { lifeService } from "../src/modules/life/life.service.js";
 import { menuService } from "../src/modules/menu/menu.service.js";
+import { aiPlanService } from "../src/modules/aiPlan/aiPlan.service.js";
 
 export const RIYA = "6f1c2a3e-0b4d-4c7a-9e21-5a7b3c9d0e11";
 export const ARJUN = "8a2d4b6f-1c3e-4d8b-8f32-6b8c4dae1f22";
@@ -466,6 +467,7 @@ export function testApp(
     coach: coachService(ai, foodsRepo.userExists),
     briefs: briefsService(ai, foodsRepo.userExists),
     menu: menuService(ai, foodsRepo.userExists),
+    aiPlan: aiPlanService(ai, foodsRepo.userExists),
     ai,
     search,
     devRoutes: true,

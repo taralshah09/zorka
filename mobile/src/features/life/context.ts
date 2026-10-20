@@ -2,7 +2,7 @@
 // to 4 week lines, and up to 8 active facts. Numbers come from the plan; the coach explains them (D72).
 import type { CoachDayContext } from "@/core/api/types";
 import type { DayPlan } from "@shared/domain/planDay";
-import { forgivenLines, itemTime, itemTitle, weekdayShort } from "./copy";
+import { adjustLines, forgivenLines, itemTime, itemTitle, weekdayShort } from "./copy";
 
 export function lifeContext(plan: DayPlan | null, facts: readonly string[], today: string): Partial<CoachDayContext> {
   const out: Partial<CoachDayContext> = { today, facts: facts.slice(0, 8).map((f) => f.slice(0, 200)) };
@@ -13,7 +13,10 @@ export function lifeContext(plan: DayPlan | null, facts: readonly string[], toda
     ...plan.items.slice(0, 5).map((i) => `${itemTime(i)} ${itemTitle(i)}`),
   ].map((s) => s.slice(0, 120));
   const event = plan.week.days.find((d) => !d.past && d.why.includes("event_allowance"));
+  const todayRow = plan.week.days.find((d) => d.date === plan.date);
   out.weekSummary = [
+    // What moved today and why: the coach explains these, it never changes them (D72).
+    ...(todayRow ? adjustLines(todayRow, today) : []),
     `${plan.week.sessionsDone} of ${plan.week.sessionsTarget} workouts done`,
     event ? `${weekdayShort(event.date)} is an event day (pre-banked)` : null,
     ...forgivenLines(plan.week),
