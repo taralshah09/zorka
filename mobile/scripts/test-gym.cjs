@@ -272,3 +272,19 @@ test("strength comparison: now vs the session nearest 3, 6 and 12 months ago", (
   assert.equal(compareMonthsAgo([{ date: "2026-10-18", value: 60 }], "2026-10-20", 3).change, null, "no session then");
   assert.deepEqual(withinMonths(points, "2026-10-20", 6).map((p) => p.date), ["2026-07-15", "2026-10-18"]);
 });
+
+test("records: each exercise's best set, bests and latest record day, most recently trained first", () => {
+  const store = feature("gym/store");
+  const w = store.startWorkout("a");
+  const [benchId] = store.addExercises(w, [{ exercise: exercises[0], targetSets: 2 }]);
+  let bench = store.getWorkout(w.id).exercises.find((e) => e.id === benchId);
+  store.completeSet("a", bench, bench.sets[0].id, { weightKg: 60, reps: 8, durationS: null, distanceM: null });
+  bench = store.getWorkout(w.id).exercises.find((e) => e.id === benchId);
+  store.completeSet("a", bench, bench.sets[1].id, { weightKg: 70, reps: 5, durationS: null, distanceM: null });
+  const [r] = store.exerciseRecords("a", new Map(exercises.map((e) => [e.id, e.type])));
+  assert.equal(r.exerciseId, "bench");
+  assert.equal(r.best.weightKg, 70);
+  assert.ok(r.bests.e1rm > 70);
+  assert.equal(r.lastPr.set.weightKg, 70, "the latest record-setting set");
+  assert.equal(r.lastPr.date, store.getWorkout(w.id).localDate);
+});

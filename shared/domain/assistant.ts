@@ -30,7 +30,7 @@ export const ASSISTANT_SCREENS = [
 export type AssistantScreen = (typeof ASSISTANT_SCREENS)[number];
 
 /** What a question can be about. The facts for each come from code (assistantFacts.ts), never from the AI. */
-export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why", "meals"] as const;
+export const ASK_TOPICS = ["today", "week", "trend", "streak", "what_to_eat", "plan", "why", "meals", "records"] as const;
 export type AskTopic = (typeof ASK_TOPICS)[number];
 
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ["walk", "run", "ride"];
@@ -82,8 +82,11 @@ export type AssistantAction =
   | { kind: "set_day"; dayType: DayType; date: string; note?: string }
   | { kind: "plan_meal"; span: string; mealType: MealType; date?: string }
   | { kind: "remind_me"; what: string; minute: number; date?: string }
-  /** `mealType`: which meal "what should I have for dinner" or "what did I eat for lunch" is about. */
-  | { kind: "ask"; topic: AskTopic; date?: string; mealType?: MealType }
+  /**
+   * `mealType`: which meal "what should I have for dinner" or "what did I eat for lunch" is about. `about`: the
+   * exercise a records question names ("what's my bench PR" → "bench").
+   */
+  | { kind: "ask"; topic: AskTopic; date?: string; mealType?: MealType; about?: string }
   /** How to do an exercise, or exercises for a muscle: links to MuscleWiki pages from the exercise list (D38). */
   | { kind: "exercise_ref"; span: string }
   /** Saves a routine: `span` is the exercises with their sets and reps as said. Always approved first. */
@@ -295,7 +298,14 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
       if (bad) return fail(bad);
       // Only food questions are about one meal.
       const mealType = a.topic === "what_to_eat" || a.topic === "meals" ? (a.mealType as MealType | undefined) : undefined;
-      return { ok: true, action: { kind: "ask", topic: a.topic, date, mealType } };
+      // Only a records question names an exercise.
+      let about: string | undefined;
+      if (a.topic === "records" && a.about !== undefined) {
+        const clean = cleanText(a.about, OPTION_MAX * 2);
+        if (clean === "too_long" || clean === "bad_value") return fail(clean);
+        about = clean === "empty" ? undefined : clean;
+      }
+      return { ok: true, action: { kind: "ask", topic: a.topic, date, mealType, about } };
     }
     case "exercise_ref": {
       const span = cleanText(a.span, OPTION_MAX * 2);
@@ -716,6 +726,8 @@ export function localAskTopic(text: string): AskTopic | null {
   const t = normalize(text);
   if (!t) return null;
   if (/\bstreak\b/.test(t)) return "streak";
+  // Not a bare "record": "record a walk" starts the recorder.
+  if (/\b(pr|prs|personal (best|record)s?|my best|my max|new records?|1rm|one rep max)\b/.test(t)) return "records";
   if (/\b(what s|whats|show|see) (my |the |today s |todays )?plan\b|\bplan (for )?today\b|\baaj ka plan\b/.test(t)) return "plan";
   if (/\bweek\b/.test(t) && /\b(how|my|this)\b/.test(t)) return "week";
   if (/\b(weight|trend)\b/.test(t) && /\b(how|what|trend|going)\b/.test(t)) return "trend";
@@ -727,6 +739,16 @@ export function localAskTopic(text: string): AskTopic | null {
   if (/\b(how s|hows|how is|how am i doing)\b|\btoday s (numbers|progress)\b|\baaj kaisa\b|\bkitna (bacha|baaki)\b|\bhow much (is )?left\b/.test(t))
     return "today";
   return null;
+}
+
+/** Words a records question uses around the exercise ("what's my bench PR" → "bench"). */
+const RECORD_WORDS =
+  /\b(what|whats|s|is|was|are|my|the|a|an|pr|prs|personal|best|bests|record|records|max|1rm|one|rep|on|in|for|of|at|show|me|tell|did|i|hit|get|got|set|any|new|today|ever|current|kya|hai|mera|meri)\b/g;
+
+/** The exercise an offline records question names, or none ("any new PRs today?"). */
+export function localRecordAbout(text: string): string | undefined {
+  const rest = normalize(text).replace(RECORD_WORDS, " ").replace(/\s+/g, " ").trim();
+  return rest || undefined;
 }
 
 /** The meal an offline food question names ("what should I have for dinner"), or none. */

@@ -9,7 +9,8 @@ import { dayContext } from "@/features/coach/chat";
 import { recentFoods } from "@/features/food/catalog";
 import { eatOptionsFor } from "@/features/gap/eat";
 import type { DayGap } from "@/features/gap/gap";
-import { recentWorkouts } from "@/features/gym/store";
+import { localExercises } from "@/features/gym/catalog";
+import { exerciseRecords, recentWorkouts } from "@/features/gym/store";
 import { lifeContext } from "@/features/life/context";
 import { adjustLines, itemTime, itemTitle, whyText } from "@/features/life/copy";
 import { targetsOn } from "@/features/life/dayTargets";
@@ -26,7 +27,8 @@ import { listWeights, weighInsFor } from "@/features/progress/weights";
 import { targetsFromProfile } from "@/features/targets/targetInput";
 import { readCachedProfile } from "@/features/users/api";
 import { glassesOn } from "@/features/water/store";
-import type { AssistantFactsInput } from "@shared/domain/assistantFacts";
+import { RECORDS_MAX, type AssistantFactsInput, type RecordFact } from "@shared/domain/assistantFacts";
+import { formatKg, formatSet, type ExerciseType, type SetValues } from "@shared/domain/gym";
 import { freshness } from "@shared/domain/evidence";
 import { localDate, MEAL_TYPES, mealTypeForTime, sumMacros, type MealType } from "@shared/domain/food";
 import { SLOT_MINUTE } from "@shared/domain/planDay";
@@ -45,6 +47,33 @@ export type TurnSnapshot = {
   facts: AssistantFactsInput;
   vocab: { usuals: string[]; aliases: { heard: string; means: string }[]; recent: string[]; exercises: string[] };
 };
+
+/** A set in words for a spoken answer: "80 kg × 5" (the set table's "80 × 5" with its unit). */
+const setWords = (type: ExerciseType, s: SetValues) =>
+  type === "weight_reps" && (s.weightKg ?? 0) > 0 ? `${formatKg(s.weightKg!)} kg × ${s.reps}` : formatSet(type, s);
+
+/** "What's my bench PR?": each trained exercise's best set, estimated max and latest record, from this phone. */
+function recordFacts(userId: string): RecordFact[] {
+  const list = localExercises(userId);
+  const byId = new Map(list.map((e) => [e.id, e]));
+  return exerciseRecords(userId, new Map(list.map((e) => [e.id, e.type])))
+    .slice(0, RECORDS_MAX)
+    .flatMap((r) => {
+      const e = byId.get(r.exerciseId);
+      if (!e || !r.best) return [];
+      return [
+        {
+          exerciseId: e.id,
+          name: clip(e.name, 80),
+          aliases: e.aliases.slice(0, 5).map((a) => clip(a, 60)),
+          type: e.type,
+          best: clip(setWords(e.type, r.best), 60),
+          e1rmKg: e.type === "weight_reps" && r.bests.e1rm ? Math.round(r.bests.e1rm * 10) / 10 : null,
+          lastPr: r.lastPr ? { set: clip(setWords(e.type, r.lastPr.set), 60), date: r.lastPr.date } : null,
+        },
+      ];
+    });
+}
 
 const unique = (list: readonly string[], max: number) => [...new Set(list.map((s) => s.trim()).filter(Boolean))].slice(0, max);
 const clip = (s: string, n: number) => s.slice(0, n);
@@ -181,6 +210,7 @@ export function buildSnapshot(userId: string, nowMs = Date.now()): TurnSnapshot 
     eatFor,
     eatBySlot,
     meals: mealFacts,
+    records: recordFacts(userId),
   };
 
   return {

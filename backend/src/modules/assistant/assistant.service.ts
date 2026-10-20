@@ -103,6 +103,8 @@ function spansOf(a: RouterAction): string[] {
       return a.from ? [a.span, a.from] : [a.span];
     case "delete_entry":
       return a.span ? [a.span] : [];
+    case "ask":
+      return a.about ? [a.about] : [];
     default:
       return [];
   }
@@ -227,7 +229,7 @@ export function assistantService(deps: AssistantDeps) {
         return { ...item, resolved: { kind: "day", facts: factsForDayType(a.dayType, base), dayType: a.dayType, question } };
       }
       case "ask": {
-        const f = answerFacts(a.topic, body.facts, a.date, a.mealType);
+        const f = answerFacts(a.topic, body.facts, a.date, a.mealType, a.about);
         return { ...item, resolved: { kind: "answer", topic: f.topic, date: f.date, known: f.known, lines: f.lines, numbers: f.numbers, card: f.card } };
       }
       case "exercise_ref": {

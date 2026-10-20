@@ -373,6 +373,31 @@ describe("POST /assistant/turn", () => {
     expect((none.body as AssistantTurnResult).items[0]).toMatchObject({ resolved: { kind: "exercises", matches: [] } });
   });
 
+  it("answers a PR question from the phone's records, with the exercise's page on the card", async () => {
+    const records = [
+      { exerciseId: "bench", name: "Barbell Bench Press", aliases: ["bench"], type: "weight_reps", best: "80 kg × 5", e1rmKg: 93.3, lastPr: { set: "80 kg × 5", date: "2026-10-12" } },
+    ];
+    const facts = { ...FACTS, records };
+    const res = await turn(
+      { router: { actions: [{ kind: "ask", topic: "records", about: "bench" }] } },
+      { ...body({ text: "what's my bench PR" }), facts },
+    );
+    const r = res.body as AssistantTurnResult;
+    const item = r.items[0]!;
+    expect(item.tier).toBe("answer");
+    expect(item.resolved?.kind === "answer" && item.resolved.lines).toEqual([
+      "Your best Barbell Bench Press: 80 kg × 5.",
+      "That puts your estimated one-rep max at 93.3 kg.",
+      "Your latest record was 80 kg × 5, 12 Oct.",
+    ]);
+    expect(item.resolved?.kind === "answer" && item.resolved.card).toEqual({ kind: "exercise_record", exerciseId: "bench", name: "Barbell Bench Press" });
+    // The phrased reply keeps to the facts: every number in it is one of them.
+    expect(r.reply).toContain("80 kg");
+
+    const unheard = await turn({ router: { actions: [{ kind: "ask", topic: "records", about: "squat" }] } }, { ...body({ text: "what's my bench PR" }), facts });
+    expect((unheard.body as AssistantTurnResult).dropped).toEqual([{ kind: "ask", reason: "span_not_heard" }]);
+  });
+
   it("builds a routine from spoken exercises, with targets, for approval", async () => {
     const span = "bench 3 sets of 8, rows and planks";
     const res = await turn(

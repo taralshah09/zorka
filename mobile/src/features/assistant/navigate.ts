@@ -29,6 +29,9 @@ export function hrefToUrl(href: Href): string {
   return `zorka://${clean}${qs ? `?${qs}` : ""}`;
 }
 
+/** One exercise's page: records, sessions and the 3/6/12-month chart. A plain path so the bubble can deep-link it too. */
+export const exerciseHref = (exerciseId: string): Href => `/train/exercise/${encodeURIComponent(exerciseId)}` as Href;
+
 export function goTo(href: Href) {
   if (uiMounted && AppState.currentState === "active") {
     router.push(href);

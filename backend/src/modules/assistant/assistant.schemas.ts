@@ -18,10 +18,10 @@ import {
   type RejectReason,
   type Tier,
 } from "../../../../shared/domain/assistant.js";
-import type { AnswerCard, AnswerFacts } from "../../../../shared/domain/assistantFacts.js";
+import { RECORDS_MAX, type AnswerCard, type AnswerFacts } from "../../../../shared/domain/assistantFacts.js";
 import { DAY_TYPES, type DayType } from "../../../../shared/domain/dayType.js";
 import { MEAL_TYPES, type FoodUnit, type MealType } from "../../../../shared/domain/food.js";
-import type { ExerciseCategory } from "../../../../shared/domain/gym.js";
+import { EXERCISE_TYPES, type ExerciseCategory } from "../../../../shared/domain/gym.js";
 import type { DayFacts } from "../../../../shared/domain/life.js";
 import { ChatMessage, CoachId, DayContext } from "../coach/coach.schemas.js";
 import type { ExerciseDto } from "../exercises/exercises.schemas.js";
@@ -55,7 +55,14 @@ export const RouterAction = z.discriminatedUnion("kind", [
     time: z.string().regex(/^\d{1,2}:\d{2}$/),
     date: date.optional(),
   }),
-  z.strictObject({ kind: z.literal("ask"), topic: z.enum(ASK_TOPICS), date: date.optional(), mealType: z.enum(MEAL_TYPES).optional() }),
+  z.strictObject({
+    kind: z.literal("ask"),
+    topic: z.enum(ASK_TOPICS),
+    date: date.optional(),
+    mealType: z.enum(MEAL_TYPES).optional(),
+    /** records: the exercise words ("bench"). */
+    about: z.string().trim().min(1).max(80).optional(),
+  }),
   z.strictObject({ kind: z.literal("exercise_ref"), span: z.string().trim().min(1).max(80) }),
   z.strictObject({ kind: z.literal("create_routine"), name: z.string().trim().min(1).max(ROUTINE_NAME_MAX), span }),
   z.strictObject({ kind: z.literal("correct"), index: z.number().int().min(0).max(4), span }),
@@ -162,6 +169,23 @@ export const AssistantFactsInput = z
     meals: z
       .array(z.object({ date, mealType: z.enum(MEAL_TYPES), text: z.string().trim().max(160), kcal: num, proteinG: num }).strict())
       .max(16)
+      .nullable()
+      .optional(),
+    records: z
+      .array(
+        z
+          .object({
+            exerciseId: z.string().trim().min(1).max(64),
+            name: z.string().trim().min(1).max(80),
+            aliases: z.array(z.string().trim().min(1).max(60)).max(5),
+            type: z.enum(EXERCISE_TYPES),
+            best: z.string().trim().max(60),
+            e1rmKg: num.nullable(),
+            lastPr: z.object({ set: z.string().trim().max(60), date }).strict().nullable(),
+          })
+          .strict(),
+      )
+      .max(RECORDS_MAX)
       .nullable()
       .optional(),
   })

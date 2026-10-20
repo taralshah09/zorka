@@ -40,9 +40,18 @@ function buttons(turn: StoredTurn, item: StoredItem, today: string): OverlayButt
     linked.forEach(({ m, i }) => out.push({ id: linkId(i), label: linked.length === 1 ? "Open on MuscleWiki" : m.name, primary: linked.length === 1 }));
     if (!linked.length) out.push({ id: BROWSE_ID, label: "Search MuscleWiki" });
   }
+  if (item.resolved?.kind === "answer" && item.resolved.card?.kind === "exercise_record")
+    out.push({ id: EXERCISE_ID, label: "See progress", primary: true });
   if (canUndo(turn, item, today)) out.push({ id: "undo", label: "Undo" });
   return out;
 }
+
+/** "See progress" on a records answer: opens that exercise's page in Zorka. */
+export const EXERCISE_ID = "exercise";
+
+/** The exercise behind "See progress", looked up from the stored turn. */
+export const exerciseFor = (item: StoredItem): string | null =>
+  item.resolved?.kind === "answer" && item.resolved.card?.kind === "exercise_record" ? item.resolved.card.exerciseId : null;
 
 /** The page behind a link button, looked up from the stored turn and checked again (never the id's content). */
 export function linkFor(item: StoredItem, id: string): string | null {
@@ -76,8 +85,9 @@ export function overlayView(messageId: string, turn: StoredTurn, today: string):
       : turn.items.some((i) => i.state === "done")
         ? "happy"
         : "idle";
-  // One answer on its own reads better as the reply itself than as a row under it.
-  const lone = turn.items.length === 1 && turn.items[0]!.resolved?.kind === "answer" ? turn.items[0]! : null;
+  // One answer on its own reads better as the reply itself than as a row under it, unless it has a button.
+  const lone =
+    turn.items.length === 1 && turn.items[0]!.resolved?.kind === "answer" && !rows[0]!.buttons.length ? turn.items[0]! : null;
   return {
     phase: "result",
     messageId,

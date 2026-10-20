@@ -24,11 +24,13 @@ Catalogue (JSON objects, "kind" first):
   "Make today lighter" or a calorie number they ask for → the day type that fits ("sick" if unwell, else "rest").
 - {"kind":"plan_meal","span":"<food words>","mealType":"...","date"?} Food they WILL eat later ("I'll have paneer for dinner").
 - {"kind":"remind_me","what":"<short>","time":"HH:MM","date"?} A reminder at a clock time (24-hour).
-- {"kind":"ask","topic":"today|week|trend|streak|what_to_eat|plan|why|meals","date"?,"mealType"?} A question about
-  their own progress. today = how today is going (with "date" for another day, "and yesterday?"); week = this week;
-  trend = weight trend; what_to_eat = what to eat next, food ideas, "suggest something" (mealType when they name the
-  meal: "what should I have for dinner"); plan = today's plan; why = why the plan or a number changed; meals = what
-  they already ate ("what did I have for lunch", "what did I eat yesterday": mealType and date when said).
+- {"kind":"ask","topic":"today|week|trend|streak|what_to_eat|plan|why|meals|records","date"?,"mealType"?,"about"?} A
+  question about their own progress. today = how today is going (with "date" for another day, "and yesterday?");
+  week = this week; trend = weight trend; what_to_eat = what to eat next, food ideas, "suggest something" (mealType
+  when they name the meal: "what should I have for dinner"); plan = today's plan; why = why the plan or a number
+  changed; meals = what they already ate ("what did I have for lunch", "what did I eat yesterday": mealType and date
+  when said); records = their personal records, PRs, best or max lift ("what's my bench PR" → about "bench"; "did I
+  hit a PR today", "show my PRs" → no about). about copies the exercise words.
 - {"kind":"exercise_ref","span":"<exercise or muscle words>"} How to do an exercise, its form, a demo or reference, or
   exercises for a muscle ("how do I do a romanian deadlift", "show me bench press form", "exercises for quads").
   span copies the exercise or muscle words.
@@ -98,6 +100,10 @@ SAID: suggest something for dinner
 {"actions":[{"kind":"ask","topic":"what_to_eat","mealType":"dinner"}]}
 SAID: what did I have for lunch yesterday
 {"actions":[{"kind":"ask","topic":"meals","mealType":"lunch","date":"<YESTERDAY>"}]}
+SAID: what's my deadlift PR
+{"actions":[{"kind":"ask","topic":"records","about":"deadlift"}]}
+SAID: did I hit any PRs today
+{"actions":[{"kind":"ask","topic":"records"}]}
 SAID: how do I do bulgarian split squats
 {"actions":[{"kind":"exercise_ref","span":"bulgarian split squats"}]}
 SAID: create a routine called pull day with lat pulldown 3 sets of 12, seated row and bicep curls

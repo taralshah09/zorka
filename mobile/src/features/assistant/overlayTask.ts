@@ -14,8 +14,8 @@ import { draftActions } from "@/features/log/draft";
 import { useActiveUser } from "@/features/users/activeUser";
 import { localDate } from "@shared/domain/food";
 import { ZorkaOverlay } from "../../../modules/zorka-overlay";
-import { goTo } from "./navigate";
-import { linkFor, patchFor, sayFor, overlayView, type OverlayView } from "./overlayView";
+import { exerciseHref, goTo } from "./navigate";
+import { EXERCISE_ID, exerciseFor, linkFor, patchFor, sayFor, overlayView, type OverlayView } from "./overlayView";
 import { buildSnapshot } from "./snapshot";
 import { answerAsk, approve, dismiss, getTurn, undo } from "./thread";
 import { flushQueue, phoneContext, queuedTurns, runTurn, type TurnOutcome } from "./turn";
@@ -73,6 +73,11 @@ async function runAction(userId: string, data: Extract<OverlayTaskData, { op: "a
   if (!found || !item) return render(message("That one's gone. Open Zorka to see your thread.", "idle", "zorka://coach"));
   const said = sayFor(item, data.action);
   if (said) return runWords(userId, { text: said }, online);
+  const exerciseId = data.action === EXERCISE_ID ? exerciseFor(item) : null;
+  if (exerciseId) {
+    goTo(exerciseHref(exerciseId));
+    return render(overlayView(data.messageId, found.turn, today));
+  }
   const link = linkFor(item, data.action);
   if (link) {
     // The browser, not Zorka: a MuscleWiki page opens over whatever app the bubble is on. The card stays as it was.

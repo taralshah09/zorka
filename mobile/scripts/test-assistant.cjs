@@ -76,7 +76,7 @@ function load(file) {
     if (name === "@/features/activity/health") return { cachedSteps: () => ({ steps: 4200 }) };
     if (name === "@/features/activity/recorder") return { stopRecorder: async () => {} };
     if (name === "@/features/activity/store") return { activeActivity: () => null, dayCredit: () => ({ kcal: 0 }), routePoints: () => [] };
-    if (name === "@/features/gym/catalog") return { getExercise: () => null };
+    if (name === "@/features/gym/catalog") return { getExercise: () => null, localExercises: () => [] };
     if (name === "@/features/gym/voice") return { applyVoiceSets: (...args) => gym.apply(...args) };
     if (name === "@/features/gym/store")
       return {
@@ -88,6 +88,7 @@ function load(file) {
         removeSet: () => {},
         workoutsBetween: () => [],
         recentWorkouts: () => [],
+        exerciseRecords: () => [],
         restoreWorkout: () => {},
       };
     if (name === "./reminders")
@@ -690,4 +691,38 @@ test("the router also sees today's plans and upcoming reminders", () => {
     { date: TODAY, kind: "planned_meal", mealType: "dinner", text: "paneer tikka" },
     { date: TODAY, kind: "reminder", text: "11:59pm pack snacks" },
   ]);
+});
+
+test("records: a PR answer names the exercise's best, max and latest record, and offers its page on the card", async () => {
+  const { answerFacts } = load(path.join(root, "../shared/domain/assistantFacts.ts"));
+  const { overlayView, exerciseFor } = feature("assistant/overlayView");
+  const day = { targetKcal: 1600, eatenKcal: 900, targetProteinG: 90, eatenProteinG: 50, steps: null, stepGoal: 8000, glasses: null, waterGoal: null, workoutToday: true, mealsLogged: 2, coverage: "complete" };
+  const records = [
+    { exerciseId: "bench", name: "Barbell Bench Press", aliases: ["bench"], type: "weight_reps", best: "80 kg × 5", e1rmKg: 93.3, lastPr: { set: "80 kg × 5", date: TODAY } },
+    { exerciseId: "plank", name: "Plank", aliases: [], type: "time", best: "1:30", e1rmKg: null, lastPr: { set: "1:30", date: "2026-09-01" } },
+  ];
+  const facts = { today: TODAY, day, records };
+  const bench = answerFacts("records", facts, undefined, undefined, "bench");
+  assert.deepEqual(bench.lines, ["Your best Barbell Bench Press: 80 kg × 5.", "That puts your estimated one-rep max at 93.3 kg.", "Your latest record was 80 kg × 5, today."]);
+  assert.ok([80, 5, 93.3].every((n) => bench.numbers.includes(n)));
+  assert.deepEqual(bench.card, { kind: "exercise_record", exerciseId: "bench", name: "Barbell Bench Press" });
+  assert.match(answerFacts("records", facts).lines[0], /^New record today: Barbell Bench Press 80 kg × 5\.$/);
+  assert.equal(answerFacts("records", facts, undefined, undefined, "squat").known, false);
+  assert.equal(answerFacts("records", { today: TODAY, day }).known, false, "an older app sends no records");
+
+  const resolved = { kind: "answer", topic: "records", date: TODAY, known: true, lines: bench.lines, numbers: bench.numbers, card: bench.card };
+  const t = await saveTurn(result([{ action: { kind: "ask", topic: "records", about: "bench" }, tier: "answer", resolved, ask: null, line: bench.lines.join(" ") }], "what's my bench PR"));
+  const v = overlayView(t.id, t.turn(), TODAY);
+  assert.deepEqual(v.rows[0].buttons, [{ id: "exercise", label: "See progress", primary: true }], "the card keeps its row for the button");
+  assert.equal(exerciseFor(t.turn().items[0]), "bench");
+});
+
+test("records offline: PR questions are recognised and the exercise words picked out; 'record a walk' isn't one", () => {
+  const { localAskTopic, localRecordAbout } = load(path.join(root, "../shared/domain/assistant.ts"));
+  assert.equal(localAskTopic("what's my bench PR"), "records");
+  assert.equal(localRecordAbout("what's my bench PR"), "bench");
+  assert.equal(localAskTopic("did I hit any PRs today"), "records");
+  assert.equal(localRecordAbout("did I hit any PRs today"), undefined);
+  assert.equal(localAskTopic("my best deadlift"), "records");
+  assert.equal(localAskTopic("record a walk"), null);
 });

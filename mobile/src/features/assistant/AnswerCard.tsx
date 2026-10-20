@@ -1,15 +1,17 @@
 // AB5 · The one card an answer can carry (docs/ASSISTANT_BAR_PLAN.md "Two-way: answering questions"): today's rings,
-// the week's bars, the weight trend, or today's plan. Built from the same facts as the words (assistantFacts.ts) and from
-// the app's own pieces: the rings from Home, the session bars from Train.
+// the week's bars, the weight trend, today's plan, or a link to one exercise's page (a records answer). Built from the
+// same facts as the words (assistantFacts.ts) and from the app's own pieces: the rings from Home, the bars from Train.
+import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
 import { Icon } from "@/core/icons/Icon";
 import { useTheme } from "@/core/theme";
-import { Badge, ProgressRing, Text } from "@/core/ui";
+import { Badge, Button, ProgressRing, Text } from "@/core/ui";
 import { BarChart } from "@/features/gym/BarChart";
 import { DAY_TYPE_LABEL } from "@/features/life/copy";
 import { formatInt } from "@/features/targets/format";
 import type { AnswerCard as Card } from "@shared/domain/assistantFacts";
+import { exerciseHref } from "./navigate";
 
 function Ring({ label, value, target, color }: { label: string; value: number; target: number; color: string }) {
   return (
@@ -74,6 +76,16 @@ export function AnswerCard({ card }: { card: Card }) {
         </View>
       );
     }
+    case "exercise_record":
+      return (
+        <Button
+          label={`See ${card.name} progress`}
+          icon="show_chart"
+          variant="secondary"
+          size="sm"
+          onPress={() => router.push(exerciseHref(card.exerciseId))}
+        />
+      );
     case "plan_preview":
       return (
         <View style={box}>

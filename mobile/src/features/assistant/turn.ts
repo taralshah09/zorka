@@ -17,7 +17,7 @@ import { addMessage } from "@/features/coach/chat";
 import { VOICE_MIME } from "@/features/log/parse";
 import { listWeights } from "@/features/progress/weights";
 import { useActiveUser } from "@/features/users/activeUser";
-import { localAskTopic, localMealType, OFFLINE_ANSWER_LINE, TURN_TEXT_MAX, type TurnContext } from "@shared/domain/assistant";
+import { localAskTopic, localMealType, localRecordAbout, OFFLINE_ANSWER_LINE, TURN_TEXT_MAX, type TurnContext } from "@shared/domain/assistant";
 import { answerFacts, answerText, OFFLINE_TOPICS } from "@shared/domain/assistantFacts";
 import { localDate } from "@shared/domain/food";
 import { addDays } from "@shared/domain/progress";
@@ -118,7 +118,8 @@ function answerLocally(snapshot: TurnSnapshot, text: string): string | null {
   const topic = localAskTopic(text);
   if (!topic) return null;
   const mealType = topic === "what_to_eat" || topic === "meals" ? localMealType(text) : undefined;
-  const facts = answerFacts(topic, snapshot.facts, undefined, mealType);
+  const about = topic === "records" ? localRecordAbout(text) : undefined;
+  const facts = answerFacts(topic, snapshot.facts, undefined, mealType, about);
   const reply = OFFLINE_TOPICS.includes(topic) ? answerText(facts) : OFFLINE_ANSWER_LINE;
   const turn: StoredTurn = {
     v: 1,
@@ -128,7 +129,7 @@ function answerLocally(snapshot: TurnSnapshot, text: string): string | null {
     kind: "actions",
     items: [
       {
-        action: { kind: "ask", topic, mealType },
+        action: { kind: "ask", topic, mealType, about },
         tier: "answer",
         resolved: { kind: "answer", topic, date: facts.date, known: facts.known, lines: facts.lines, numbers: facts.numbers, card: facts.card },
         ask: null,

@@ -6,6 +6,8 @@
 import type { AskTopic } from "./assistant.js";
 import type { DayType } from "./dayType.js";
 import type { MealType } from "./food.js";
+import { matchScore, MIN_MATCH_SCORE } from "./foodMatch.js";
+import type { ExerciseType } from "./gym.js";
 
 /** A day counts as on target when calories land within this share of the target… */
 export const ON_TARGET_KCAL_SHARE = 0.1;
@@ -52,16 +54,37 @@ export type AssistantFactsInput = {
   eatBySlot?: Partial<Record<MealType, EatIdea[]>> | null;
   /** Meals logged today and yesterday, oldest first ("what did I have for lunch?"). */
   meals?: LoggedMealFact[] | null;
+  /** Bests per exercise from this phone's logged sets, most recently trained first ("what's my bench PR?"). */
+  records?: RecordFact[] | null;
 };
 
 export type EatIdea = { name: string; kcal: number; proteinG: number };
 export type LoggedMealFact = { date: string; mealType: MealType; text: string; kcal: number; proteinG: number };
 
+/** How many exercises' records the phone sends: the most recently trained ones. */
+export const RECORDS_MAX = 40;
+
+/** One exercise's records. Set texts are code-written ("80 kg × 5", gym.ts formatSet), so their numbers are facts. */
+export type RecordFact = {
+  exerciseId: string;
+  name: string;
+  aliases: string[];
+  type: ExerciseType;
+  /** The best set ever (gym.ts topSet). */
+  best: string;
+  /** Estimated one-rep max, weight + reps exercises only. */
+  e1rmKg: number | null;
+  /** The latest set that set a record, and the day it was done. */
+  lastPr: { set: string; date: string } | null;
+};
+
 export type AnswerCard =
   | { kind: "today_rings"; kcal: [number, number]; proteinG: [number, number]; steps: [number, number] | null }
   | { kind: "week_bars"; days: { date: string; kcal: number | null; target: number; onTarget: boolean | null }[] }
   | { kind: "trend_line"; trendKg: number | null; weeklyChangeKg: number | null }
-  | { kind: "plan_preview"; dayType: DayType; kcal: number; proteinG: number; items: string[] };
+  | { kind: "plan_preview"; dayType: DayType; kcal: number; proteinG: number; items: string[] }
+  /** A records answer about one exercise: the phone offers its page (history, chart, 3/6/12-month comparison). */
+  | { kind: "exercise_record"; exerciseId: string; name: string };
 
 export type AnswerFacts = {
   topic: AskTopic;
@@ -289,11 +312,63 @@ function mealsAnswer(input: AssistantFactsInput, date: string, mealType?: MealTy
   return { topic: "meals", date, known: true, lines, numbers, card: null };
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "12 Oct", or "today". */
+const shortDay = (date: string, today: string) =>
+  date === today ? "today" : `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]}`;
+/** Every number in code-written lines (set texts, dates) may be said back. */
+const numbersIn = (lines: readonly string[]) =>
+  lines.flatMap((l) => (l.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((m) => Number(m.replace(/,/g, ""))));
+
+/** The logged exercise some words mean ("bench" → Barbell Bench Press), or null. */
+export function recordFor(records: readonly RecordFact[], about: string): RecordFact | null {
+  let best: { r: RecordFact; score: number } | null = null;
+  for (const r of records) {
+    const score = matchScore(about, { name: r.name, aliases: r.aliases });
+    if (score >= MIN_MATCH_SCORE && (!best || score > best.score)) best = { r, score };
+  }
+  return best?.r ?? null;
+}
+
+/**
+ * "What's my bench PR?" (`about`: the exercise words): that exercise's best set, estimated max and latest record.
+ * "Did I hit a PR today?" / "my PRs" (no `about`): today's new records, else the latest ones.
+ */
+function recordsAnswer(input: AssistantFactsInput, about?: string): AnswerFacts {
+  const today = input.today;
+  const records = input.records;
+  if (!records) return unknown("records", today, "I can't see your workouts from here. Open Train for your records.");
+  if (about) {
+    const r = recordFor(records, about);
+    if (!r) return unknown("records", today, `I don't see "${about}" in your workouts yet. Log it once and its records show up.`);
+    const lines = [`Your best ${r.name}: ${r.best}.`];
+    if (r.e1rmKg !== null) lines.push(`That puts your estimated one-rep max at ${kg(r.e1rmKg)} kg.`);
+    if (r.lastPr) lines.push(`Your latest record was ${r.lastPr.set}, ${shortDay(r.lastPr.date, today)}.`);
+    return { topic: "records", date: today, known: true, lines, numbers: numbersIn(lines), card: { kind: "exercise_record", exerciseId: r.exerciseId, name: r.name } };
+  }
+  const withPr = records.filter((r) => r.lastPr).sort((a, b) => b.lastPr!.date.localeCompare(a.lastPr!.date));
+  if (!withPr.length) return unknown("records", today, "No records yet. Log a few workouts and your bests show up here.");
+  const fresh = withPr.filter((r) => r.lastPr!.date === today);
+  const list = (fresh.length ? fresh : withPr).slice(0, 3);
+  const items = list.map((r) => `${r.name} ${r.lastPr!.set}${fresh.length ? "" : ` (${shortDay(r.lastPr!.date, today)})`}`);
+  const lines = fresh.length
+    ? [`New record${fresh.length === 1 ? "" : "s"} today: ${items.join(", ")}.`]
+    : ["No new records today.", `Your latest: ${items.join(", ")}.`];
+  const card = list.length === 1 ? { kind: "exercise_record" as const, exerciseId: list[0]!.exerciseId, name: list[0]!.name } : null;
+  return { topic: "records", date: today, known: true, lines, numbers: numbersIn(lines), card };
+}
+
 /**
  * The facts for one question. `date` defaults to today; `today` and `meals` read another day ("and yesterday?").
- * `mealType` narrows a food question to one meal.
+ * `mealType` narrows a food question to one meal; `about` names the exercise of a records question.
  */
-export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: string, mealType?: MealType): AnswerFacts {
+export function answerFacts(
+  topic: AskTopic,
+  input: AssistantFactsInput,
+  date?: string,
+  mealType?: MealType,
+  about?: string,
+): AnswerFacts {
   switch (topic) {
     case "today":
       return todayAnswer(input, date ?? input.today);
@@ -311,6 +386,8 @@ export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: 
       return eatAnswer(input, mealType);
     case "meals":
       return mealsAnswer(input, date ?? input.today, mealType);
+    case "records":
+      return recordsAnswer(input, about);
   }
 }
 
@@ -318,4 +395,4 @@ export function answerFacts(topic: AskTopic, input: AssistantFactsInput, date?: 
 export const answerText = (a: AnswerFacts): string => a.lines.slice(0, 3).join(" ");
 
 /** D98 · Topics the phone can answer offline from local data. Others wait for the server. */
-export const OFFLINE_TOPICS: readonly AskTopic[] = ["today", "streak", "plan", "why", "week", "trend", "what_to_eat", "meals"];
+export const OFFLINE_TOPICS: readonly AskTopic[] = ["today", "streak", "plan", "why", "week", "trend", "what_to_eat", "meals", "records"];

@@ -856,6 +856,46 @@ export function exerciseStats(userId: string, types: ReadonlyMap<string, Exercis
 export const HAS_TICKED_SET = `EXISTS (SELECT 1 FROM workout_sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
   WHERE we.workout_id = workouts.id AND s.done = 1)`;
 
+export type ExerciseRecords = {
+  exerciseId: string;
+  lastAt: string;
+  best: WorkoutSet | null;
+  bests: Bests;
+  /** The latest ticked set that set a record, and its workout's day. */
+  lastPr: { set: WorkoutSet; date: string } | null;
+};
+
+/** Per exercise ever ticked: its best set, bests and latest record, most recently trained first (the assistant's PRs). */
+export function exerciseRecords(userId: string, types: ReadonlyMap<string, ExerciseType>): ExerciseRecords[] {
+  const rows = getDb().getAllSync<HistoryRow & { local_date: string }>(
+    `SELECT s.*, w.id AS workout_id, w.name AS workout_name, w.started_at AS started_at, w.local_date AS local_date,
+            we.exercise_id AS exercise_id
+       FROM workout_sets s
+       JOIN workout_exercises we ON we.id = s.workout_exercise_id
+       JOIN workouts w ON w.id = we.workout_id
+      WHERE w.user_id = ? AND w.status = 'done' AND w.deleted = 0 AND s.done = 1 AND we.exercise_id IS NOT NULL
+      ORDER BY w.started_at DESC, s.completed_at DESC, s.position DESC`,
+    userId,
+  );
+  const grouped = new Map<string, (HistoryRow & { local_date: string })[]>();
+  for (const r of rows) grouped.set(r.exercise_id, [...(grouped.get(r.exercise_id) ?? []), r]);
+  const out: ExerciseRecords[] = [];
+  for (const [exerciseId, list] of grouped) {
+    const type = types.get(exerciseId);
+    if (!type) continue;
+    const sets = list.map(toSet);
+    const pr = list.find((r) => toSet(r).prKinds.length);
+    out.push({
+      exerciseId,
+      lastAt: list[0]!.started_at,
+      best: topSet(type, sets),
+      bests: bestsOf(type, sets),
+      lastPr: pr ? { set: toSet(pr), date: pr.local_date } : null,
+    });
+  }
+  return out;
+}
+
 export function recentWorkouts(userId: string, limit = 10): Workout[] {
   return hydrate(
     getDb().getAllSync<WorkoutRow>(
