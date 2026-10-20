@@ -21,7 +21,7 @@ import {
 } from "../../../../shared/domain/assistant.js";
 import { RECORDS_MAX, type AnswerCard, type AnswerFacts } from "../../../../shared/domain/assistantFacts.js";
 import { DAY_TYPES, type DayType } from "../../../../shared/domain/dayType.js";
-import { MEAL_TYPES, type FoodUnit, type MealType } from "../../../../shared/domain/food.js";
+import { FOOD_UNITS, MEAL_TYPES, type FoodUnit, type MealType } from "../../../../shared/domain/food.js";
 import { EXERCISE_TYPES, type ExerciseCategory } from "../../../../shared/domain/gym.js";
 import type { DayFacts } from "../../../../shared/domain/life.js";
 import { ChatMessage, CoachId, DayContext } from "../coach/coach.schemas.js";
@@ -88,6 +88,15 @@ export const RouterAction = z.discriminatedUnion("kind", [
     mealType: z.enum(MEAL_TYPES).optional(),
     date: date.optional(),
   }),
+  z.strictObject({
+    kind: z.literal("set_amount"),
+    quantity: z.number().finite().positive(),
+    unit: z.enum(FOOD_UNITS).optional(),
+    more: z.boolean().optional(),
+    food: span.optional(),
+    mealType: z.enum(MEAL_TYPES).optional(),
+    date: date.optional(),
+  }),
   z.strictObject({ kind: z.literal("open"), screen: z.enum(ASSISTANT_SCREENS) }),
   z.strictObject({
     kind: z.literal("clarify"),
@@ -102,6 +111,8 @@ export type RouterAction = z.infer<typeof RouterAction>;
 export const AiRouterOutput = z.object({ actions: z.array(z.unknown()).max(12) });
 
 export const AiPhrasing = z.object({ reply: z.string().trim().min(1).max(600) });
+/** Hindi in Devanagari, written in Roman letters (Hinglish). */
+export const AiRomanized = z.object({ text: z.string().trim().min(1).max(TURN_TEXT_MAX) });
 
 // ── What the phone sends ─────────────────────────────────────────────────────────────────────────
 

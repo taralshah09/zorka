@@ -168,6 +168,12 @@ export function receipt(item: TurnItem, today: string): { line: string; numbers:
       if (a.from) return { line: `Swap ${a.from} for ${m.text || a.span} in ${meal}? Tap OK.`, numbers: m.numbers };
       return { line: `Change ${meal} to ${m.text || a.span}? Tap OK.`, numbers: m.numbers };
     }
+    case "set_amount": {
+      const unit = a.unit ? ` ${UNIT_LABEL[a.unit][a.quantity === 1 ? "one" : "many"]}` : "";
+      const meal = a.mealType ? MEAL_WORD[a.mealType] : "your last meal";
+      const what = `${a.more ? `${qty(a.quantity)}${unit} more` : `${qty(a.quantity)}${unit}`}`;
+      return { line: `Make ${a.food ?? "it"} in ${meal} ${what}? Tap OK.`, numbers: [a.quantity] };
+    }
     case "open":
       return { line: `Opening ${SCREEN_WORD[a.screen] ?? "that"}.`, numbers: [] };
     case "clarify":

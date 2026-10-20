@@ -599,6 +599,47 @@ test("edit_meal removes a food, adds one or replaces the meal, each undoable", a
   assert.deepEqual(names(), ["Roti", "Steamed rice", "Dal tadka"]);
 });
 
+test("edit_meal add with no such meal yet logs it as that meal, and Undo takes it back", async () => {
+  const thread = feature("assistant/thread");
+  const t = await saveTurn(
+    result([item({ kind: "edit_meal", mode: "add", span: "one katori of dal", mealType: "breakfast", confidence: "high" }, { kind: "meal", items: [parsedItem("dal", DAL)], mealType: "breakfast" })]),
+  );
+  const row = t.turn().items[0];
+  assert.equal(row.state, "pending");
+  assert.equal(row.receipt, "No breakfast logged today yet. Log dal tadka, 1 katori as breakfast?");
+  await thread.approve(t.id, 0);
+  assert.equal(meals().length, 1);
+  assert.equal(meals()[0].mealType, "breakfast");
+  assert.deepEqual(meals()[0].items.map((i) => i.name), ["Dal tadka"]);
+  await thread.undo(t.id, 0);
+  assert.equal(meals().length, 0);
+});
+
+test("set_amount changes the meal's food to the new amount; more adds to it; two foods asks which", async () => {
+  const thread = feature("assistant/thread");
+  savedMeal("breakfast", [["Poha", 324]]);
+  const set = await saveTurn(result([item({ kind: "set_amount", quantity: 2, unit: "katori", mealType: "breakfast" })], "make it 2 katori"));
+  assert.equal(set.turn().items[0].receipt, "Change breakfast (today) from poha (324 kcal) to poha, 2 katori (648 kcal)?");
+  await thread.approve(set.id, 0);
+  assert.equal(meals()[0].items[0].quantity, 2);
+  assert.equal(meals()[0].items[0].kcal, 648);
+
+  const more = await saveTurn(result([item({ kind: "set_amount", quantity: 1, unit: "katori", more: true, food: "poha", mealType: "breakfast" })], "ek aur katori poha"));
+  await thread.approve(more.id, 0);
+  assert.equal(meals()[0].items[0].quantity, 3);
+  await thread.undo(more.id, 0);
+  assert.equal(meals()[0].items[0].quantity, 2);
+
+  savedMeal("lunch", [["Roti", 200], ["Dal tadka", 165]]);
+  const which = await saveTurn(result([item({ kind: "set_amount", quantity: 2, mealType: "lunch" })], "make it 2"));
+  assert.equal(which.turn().items[0].state, "failed");
+  assert.match(which.turn().items[0].receipt, /^Which food in lunch\?/);
+  const named = await saveTurn(result([item({ kind: "set_amount", quantity: 2, food: "dal", mealType: "lunch" })], "dal do katori"));
+  await thread.approve(named.id, 0);
+  const lunch = feature("meals/store").mealsForDay("a", TODAY).find((m) => m.mealType === "lunch");
+  assert.deepEqual(lunch.items.map((i) => [i.name, i.quantity]), [["Roti", 1], ["Dal tadka", 2]]);
+});
+
 test("removing a food the meal doesn't have fails; removing the last one deletes the meal", async () => {
   const thread = feature("assistant/thread");
   savedMeal("snack", [["Banana", 89]]);

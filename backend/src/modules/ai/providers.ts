@@ -193,7 +193,7 @@ export async function transcribe(
           {
             parts: [
               {
-                text: `Transcribe this voice note exactly as spoken. Return only the transcript, no quotes or notes. Words you may hear: ${vocabularyHint}`,
+                text: `Transcribe this voice note exactly as spoken. Write Hindi or Hinglish in Roman letters ("do katori poha"), never Devanagari. Return only the transcript, no quotes or notes. Words you may hear: ${vocabularyHint}`,
               },
               { inline_data: { mime_type: audio.mimeType, data: audio.base64 } },
             ],

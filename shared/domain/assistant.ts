@@ -8,7 +8,7 @@
 // it is always approved first, and the planner keeps it inside `chosenLimits` and moves the rest over the week.
 import type { ActivityKind } from "./activity.js";
 import { classifyDay, DAY_TYPES, type DayType } from "./dayType.js";
-import { MEAL_TYPES, type FoodUnit, type MealType } from "./food.js";
+import { FOOD_UNITS, MEAL_TYPES, type FoodUnit, type MealType } from "./food.js";
 import { normalize } from "./foodMatch.js";
 import { EMPTY_STANDING, validateDayFacts, type DayFacts } from "./life.js";
 import { WATER_LOG_MAX_GLASSES } from "./water.js";
@@ -72,6 +72,8 @@ const AHEAD_TARGETS: ReadonlySet<DeleteTarget> = new Set(["reminder", "planned_m
 /** replace: the meal is now these foods · add: these foods join it · remove: the named food leaves it. */
 export const EDIT_MODES = ["replace", "add", "remove"] as const;
 export type EditMode = (typeof EDIT_MODES)[number];
+/** Most of one food a `set_amount` may set (2 litres in ml is the largest real one). */
+export const AMOUNT_MAX = 2000;
 /** D99 · Which of a day's targets `set_target` sets: the numbers the Plan-a-day screen lets the user pick. */
 export const TARGET_METRICS = ["protein", "kcal", "steps"] as const;
 export type TargetMetric = (typeof TARGET_METRICS)[number];
@@ -118,6 +120,12 @@ export type AssistantAction =
    * replace + `from`: only the foods matching `from` are swapped for `span` ("dal, not rajma").
    */
   | { kind: "edit_meal"; mode: EditMode; span: string; from?: string; mealType?: MealType; date?: string; confidence: Confidence }
+  /**
+   * A new amount for one food already in a saved meal of today or yesterday ("make it 2 katori", "poha do katori kar
+   * do"). The router reads the amount (it understands "do", "aadha", "one more"); `more`: add it to what's there.
+   * `food`: the food's words when named, else the meal's only food. Approved first.
+   */
+  | { kind: "set_amount"; quantity: number; unit?: FoodUnit; more?: boolean; food?: string; mealType?: MealType; date?: string }
   | { kind: "open"; screen: AssistantScreen }
   | { kind: "clarify"; question: string; options: string[] }
   | { kind: "out_of_scope" };
@@ -141,13 +149,14 @@ export const ACTION_KINDS: readonly ActionKind[] = [
   "undo",
   "delete_entry",
   "edit_meal",
+  "set_amount",
   "open",
   "clarify",
   "out_of_scope",
 ];
 
 /** Actions that change records already saved. MAX_EDITS_PER_TURN of them per turn. */
-const EDIT_KINDS: ReadonlySet<ActionKind> = new Set(["correct", "undo", "delete_entry", "edit_meal"]);
+const EDIT_KINDS: ReadonlySet<ActionKind> = new Set(["correct", "undo", "delete_entry", "edit_meal", "set_amount"]);
 
 /** What the phone knows when it checks a turn. */
 export type TurnContext = {
@@ -392,6 +401,33 @@ export function checkAction(raw: unknown, ctx: TurnContext): Checked {
         action: { kind: "edit_meal", mode: a.mode, span, from, mealType: a.mealType as MealType | undefined, date, confidence: confidenceOf(a.confidence) },
       };
     }
+    case "set_amount": {
+      const q = a.quantity;
+      if (typeof q !== "number" || !Number.isFinite(q) || q <= 0 || q > AMOUNT_MAX) return fail("bad_value");
+      if (a.unit !== undefined && !oneOf(FOOD_UNITS, a.unit)) return fail("bad_value");
+      if (a.more !== undefined && typeof a.more !== "boolean") return fail("bad_value");
+      if (a.mealType !== undefined && !oneOf(MEAL_TYPES, a.mealType)) return fail("bad_value");
+      let food: string | undefined;
+      if (a.food !== undefined) {
+        const clean = cleanText(a.food, OPTION_MAX * 2);
+        if (clean === "too_long" || clean === "bad_value") return fail(clean);
+        food = clean === "empty" ? undefined : clean;
+      }
+      const bad = checkDate(date, ctx.today, -DATE_PAST_DAYS, 0);
+      if (bad) return fail(bad);
+      return {
+        ok: true,
+        action: {
+          kind: "set_amount",
+          quantity: Math.round(q * 100) / 100,
+          unit: a.unit as FoodUnit | undefined,
+          more: a.more === true ? true : undefined,
+          food,
+          mealType: a.mealType as MealType | undefined,
+          date,
+        },
+      };
+    }
     case "open":
       return oneOf(ASSISTANT_SCREENS, a.screen) ? { ok: true, action: { kind: "open", screen: a.screen } } : fail("bad_value");
     case "clarify": {
@@ -433,6 +469,7 @@ export function tierFor(action: AssistantAction, ctx: TurnContext): Tier {
     // D92: anything that changes or deletes a saved record is shown before it happens.
     case "delete_entry":
     case "edit_meal":
+    case "set_amount":
       return "approve";
     case "log_meal":
     case "log_workout":
@@ -634,6 +671,10 @@ export function numberInTranscript(value: number, transcript: string): boolean {
   }
   return false;
 }
+
+/** Hindi in Devanagari. Food search, the heard-words check and aliases all read Roman script, so it's written in Roman
+ *  letters (Hinglish) before the router sees it. */
+export const hasDevanagari = (text: string): boolean => /[\u0900-\u097F]/.test(text);
 
 // ── Learned aliases (D97) ────────────────────────────────────────────────────────────────────────
 

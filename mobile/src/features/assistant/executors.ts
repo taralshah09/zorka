@@ -10,7 +10,7 @@ import type { IconName } from "@/core/icons/Icon";
 import { reactMascot } from "@/core/ui/mascot/bus";
 import { stopRecorder } from "@/features/activity/recorder";
 import { activeActivity } from "@/features/activity/store";
-import { nutritionOf } from "@/features/food/catalog";
+import { getFood, nutritionOf } from "@/features/food/catalog";
 import { getExercise } from "@/features/gym/catalog";
 import {
   deleteWorkout,
@@ -54,7 +54,7 @@ import { classifyDay } from "@shared/domain/dayType";
 import { validateDayFacts } from "@shared/domain/life";
 import { chosenLimits, defaultCapacity, eventAllowance } from "@shared/domain/week";
 import { addDays } from "@shared/domain/progress";
-import { localDate, portion, UNIT_LABEL, type MealType } from "@shared/domain/food";
+import { localDate, portion, UNIT_LABEL, type FoodUnit, type MealType } from "@shared/domain/food";
 import { matchScore, MIN_MATCH_SCORE, normalize } from "@shared/domain/foodMatch";
 import { cleanMusclewikiUrl } from "@shared/domain/gym";
 import { clockText } from "@shared/domain/memory";
@@ -114,6 +114,7 @@ const KIND_ICON: Record<AssistantAction["kind"], IconName> = {
   undo: "undo",
   delete_entry: "delete",
   edit_meal: "edit",
+  set_amount: "edit",
   open: "chevron_right",
   clarify: "info",
   out_of_scope: "close",
@@ -164,7 +165,8 @@ export function checkPhoneTurn(result: AssistantTurnResult, ctx: TurnContext, us
         ...checked.resolved,
         matches: checked.resolved.matches.slice(0, 3).map((m) => ({ ...m, url: m.url ? cleanMusclewikiUrl(m.url) : null })),
       };
-    if (userId && (item.action.kind === "delete_entry" || item.action.kind === "edit_meal")) return withTarget(checked, userId, ctx.today);
+    if (userId && (item.action.kind === "delete_entry" || item.action.kind === "edit_meal" || item.action.kind === "set_amount"))
+      return withTarget(checked, userId, ctx.today);
     // D99: a number outside what the planner allows for that day is refused now, with the range, not after OK.
     if (userId && item.action.kind === "set_target" && checked.state === "pending") {
       const off = targetOutOfRange(userId, item.action);
@@ -202,6 +204,44 @@ export function mergedItems(saved: readonly MealItem[], next: readonly MealItem[
   const at = saved.findIndex((i) => gone.has(i.id));
   const kept = saved.filter((i) => !gone.has(i.id));
   return [...kept.slice(0, at), ...next, ...kept.slice(at)];
+}
+
+/** A saved food at a new amount: the food's own portion maths, else (same unit, food not on this phone) scaled. */
+function resized(userId: string, saved: MealItem, quantity: number, unit: FoodUnit): MealItem | null {
+  const food = getFood(userId, saved.foodId);
+  if (food) {
+    const { grams, macros } = portion(nutritionOf(food), quantity, unit);
+    return { ...saved, quantity, unit, grams, ...macros };
+  }
+  if (unit !== saved.unit || saved.quantity <= 0) return null;
+  const k = quantity / saved.quantity;
+  return { ...saved, quantity, grams: saved.grams * k, kcal: saved.kcal * k, proteinG: saved.proteinG * k, carbsG: saved.carbsG * k, fatG: saved.fatG * k };
+}
+
+/** A saved meal's items after an edit_meal add or replace, or why it can't be done. */
+function editedItems(meal: Meal, a: Extract<AssistantAction, { kind: "edit_meal" }>, item: StoredItem): MealItem[] | string {
+  const name = MEAL_TITLE[meal.mealType].toLowerCase();
+  const added = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
+  if (!added.length) return `I couldn't find "${a.span}".`;
+  if (a.mode === "add") return [...meal.items, ...added];
+  return mergedItems(meal.items, added, a.from) ?? `Your ${name} doesn't have ${a.from}.`;
+}
+
+/**
+ * A saved meal's items after a set_amount: the food it names (else the meal's only food) at the new amount, or why it
+ * can't be done. `more` adds to what's there when the unit is the same.
+ */
+function amountedItems(userId: string, meal: Meal, a: Extract<AssistantAction, { kind: "set_amount" }>): MealItem[] | string {
+  const name = MEAL_TITLE[meal.mealType].toLowerCase();
+  const pick = a.food ? matching(meal.items, a.food) : meal.items.length === 1 ? meal.items : [];
+  if (!pick.length) return a.food ? `Your ${name} doesn't have ${a.food}: ${mealText(meal)}.` : `Which food in ${name}? Say it with the food, like "2 katori poha".`;
+  if (pick.length > 1) return `Which one: ${pick.map((i) => i.name.toLowerCase()).join(" or ")}?`;
+  const saved = pick[0]!;
+  const unit = a.unit ?? saved.unit;
+  const quantity = a.more && unit === saved.unit ? saved.quantity + a.quantity : a.quantity;
+  const next = resized(userId, saved, quantity, unit);
+  if (!next) return `I can't measure ${saved.name.toLowerCase()} in ${UNIT_LABEL[unit].many}. Try ${UNIT_LABEL[saved.unit].many}.`;
+  return meal.items.map((i) => (i.id === saved.id ? next : i));
 }
 
 const itemsText = (items: readonly MealItem[]) =>
@@ -273,20 +313,33 @@ function withTarget(item: StoredItem, userId: string, today: string): StoredItem
     const date = a.date ?? today;
     const when = dayWord(date, today);
     const meal = targetMeal(userId, date, a.mealType);
-    if (!meal) return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when} to change.`);
+    if (!meal) {
+      // "Add poha to breakfast" with no breakfast yet: it's logged as that meal instead (no targetId → a new meal).
+      const words = a.mode === "add" && item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : "";
+      if (!words || item.resolved?.kind !== "meal") return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when} to change.`);
+      const mealType = a.mealType ?? item.resolved.mealType;
+      return { ...item, receipt: `No ${mealType} logged ${when} yet. Log ${words} as ${mealType}?` };
+    }
     const name = MEAL_TITLE[meal.mealType].toLowerCase();
     if (a.mode === "remove") {
       const gone = matching(meal.items, a.span);
       if (!gone.length) return failed(item, `Your ${name} doesn't have ${a.span}: ${mealText(meal)}.`);
       return { ...item, targetId: meal.id, receipt: `Take ${gone.map((i) => i.name.toLowerCase()).join(", ")} out of ${name} (${when})?` };
     }
+    const next = editedItems(meal, a, item);
+    if (typeof next === "string") return failed(item, next);
     const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : "";
-    if (!words) return failed(item, `I couldn't find "${a.span}".`);
     if (a.mode === "add") return { ...item, targetId: meal.id, receipt: `Add ${words} to ${name} (${when})?` };
-    const next = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
-    const merged = mergedItems(meal.items, next, a.from);
-    if (!merged) return failed(item, `Your ${name} doesn't have ${a.from}: ${mealText(meal)}.`);
-    return { ...item, targetId: meal.id, receipt: `Change ${name} (${when}) from ${mealText(meal)} to ${itemsText(merged)}?` };
+    return { ...item, targetId: meal.id, receipt: `Change ${name} (${when}) from ${mealText(meal)} to ${itemsText(next)}?` };
+  }
+  if (a.kind === "set_amount") {
+    const date = a.date ?? today;
+    const when = dayWord(date, today);
+    const meal = targetMeal(userId, date, a.mealType);
+    if (!meal) return failed(item, `There's no ${a.mealType ?? "meal"} logged ${when} to change.`);
+    const next = amountedItems(userId, meal, a);
+    if (typeof next === "string") return failed(item, next);
+    return { ...item, targetId: meal.id, receipt: `Change ${MEAL_TITLE[meal.mealType].toLowerCase()} (${when}) from ${mealText(meal)} to ${itemsText(next)}?` };
   }
   return item;
 }
@@ -410,25 +463,29 @@ function loggedAtFor(date: string | undefined, today: string, mealType: MealType
   return new Date(y!, m! - 1, d!, Math.floor(minute / 60), minute % 60);
 }
 
-function logMeal(item: StoredItem, ctx: RunContext): StoredItem {
-  if (item.resolved?.kind !== "meal" || item.action.kind !== "log_meal") return failed(item, "Nothing to log.");
-  const items = item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x);
-  if (!items.length) return failed(item, `I couldn't find "${item.resolved.items.map((p) => p.query).join(", ")}". Tap Change to search.`);
-  const mealType = item.resolved.mealType;
-  const at = loggedAtFor(item.action.date, ctx.today, mealType);
+/** Saves a new meal of `mealType` on `date` (today when absent); its id. */
+function saveNewMeal(ctx: RunContext, mealType: MealType, date: string | undefined, items: MealItem[]): string {
   const id = randomUUID();
   saveMeal({
     id,
     userId: ctx.userId,
     mealType,
-    loggedAt: at.toISOString(),
-    localDate: item.action.date ?? ctx.today,
+    loggedAt: loggedAtFor(date, ctx.today, mealType).toISOString(),
+    localDate: date ?? ctx.today,
     source: ctx.source,
     oilLevel: null,
     photoUri: null,
     items,
   });
   reactMascot("happy");
+  return id;
+}
+
+function logMeal(item: StoredItem, ctx: RunContext): StoredItem {
+  if (item.resolved?.kind !== "meal" || item.action.kind !== "log_meal") return failed(item, "Nothing to log.");
+  const items = item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x);
+  if (!items.length) return failed(item, `I couldn't find "${item.resolved.items.map((p) => p.query).join(", ")}". Tap Change to search.`);
+  const id = saveNewMeal(ctx, item.resolved.mealType, item.action.date, items);
   const missing = item.resolved.items.filter((p) => !p.food).map((p) => `"${p.query}"`);
   return done(item, mealLine(item, "done"), { kind: "meal", mealId: id }, {
     mealId: id,
@@ -686,6 +743,14 @@ async function deleteEntry(item: StoredItem, ctx: RunContext): Promise<StoredIte
 function editMeal(item: StoredItem, ctx: RunContext): StoredItem {
   const a = item.action;
   if (a.kind !== "edit_meal") return item;
+  // "Add poha to breakfast" with no breakfast yet (withTarget found none): a new meal of that type.
+  if (!item.targetId && a.mode === "add" && item.resolved?.kind === "meal") {
+    const items = item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x);
+    if (!items.length) return failed(item, `I couldn't find "${a.span}".`);
+    const mealType = a.mealType ?? item.resolved.mealType;
+    const id = saveNewMeal(ctx, mealType, a.date, items);
+    return done(item, `Logged ${mealWords(item.resolved.items)} as ${mealType}.`, { kind: "meal", mealId: id }, { mealId: id });
+  }
   const meal = item.targetId ? getMeal(item.targetId) : null;
   if (!meal) return failed(item, "That meal is gone.");
   const name = MEAL_TITLE[meal.mealType].toLowerCase();
@@ -701,14 +766,23 @@ function editMeal(item: StoredItem, ctx: RunContext): StoredItem {
     saveMeal({ ...meal, items: left });
     return done(item, `Took ${a.span} out of ${name}.`, { kind: "meal_edit", previous: meal });
   }
-  const added = item.resolved?.kind === "meal" ? item.resolved.items.map(mealItemFrom).filter((x): x is MealItem => !!x) : [];
-  if (!added.length) return failed(item, `I couldn't find "${a.span}".`);
-  const items = a.mode === "add" ? [...meal.items, ...added] : mergedItems(meal.items, added, a.from);
-  if (!items) return failed(item, `Your ${name} doesn't have ${a.from}.`);
+  const items = editedItems(meal, a, item);
+  if (typeof items === "string") return failed(item, items);
   saveMeal({ ...meal, items });
   const words = item.resolved?.kind === "meal" ? mealWords(item.resolved.items) : a.span;
   if (a.mode === "add") return done(item, `Added ${words} to ${name}.`, { kind: "meal_edit", previous: meal });
   return done(item, a.from ? `Swapped ${a.from} for ${words} in ${name}.` : `Changed ${name} to ${itemsText(items)}.`, { kind: "meal_edit", previous: meal });
+}
+
+function setAmount(item: StoredItem, ctx: RunContext): StoredItem {
+  const a = item.action;
+  if (a.kind !== "set_amount") return item;
+  const meal = item.targetId ? getMeal(item.targetId) : null;
+  if (!meal) return failed(item, "That meal is gone.");
+  const items = amountedItems(ctx.userId, meal, a);
+  if (typeof items === "string") return failed(item, items);
+  saveMeal({ ...meal, items });
+  return done(item, `Changed ${MEAL_TITLE[meal.mealType].toLowerCase()} to ${itemsText(items)}.`, { kind: "meal_edit", previous: meal });
 }
 
 /** Runs one action (tier do, or approved). Never throws: a failure becomes a failed receipt. */
@@ -766,6 +840,8 @@ export async function runItem(item: StoredItem, ctx: RunContext): Promise<Stored
         return deleteEntry(item, ctx);
       case "edit_meal":
         return editMeal(item, ctx);
+      case "set_amount":
+        return setAmount(item, ctx);
       case "open":
         goTo(SCREEN_HREF[a.screen]);
         return done(item, item.line, null);

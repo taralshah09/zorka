@@ -77,6 +77,32 @@
       "said": "delete tomorrow's lunch",
       "router": { "actions": [{ "kind": "delete_entry", "target": "meal", "mealType": "lunch", "date": "2026-10-21" }] },
       "expect": []
+    },
+    {
+      "id": "ed-13",
+      "said": "make the poha in breakfast 2 katori",
+      "router": { "actions": [{ "kind": "set_amount", "quantity": 2, "unit": "katori", "food": "poha", "mealType": "breakfast" }] },
+      "expect": [["set_amount", "approve"]]
+    },
+    {
+      "id": "ed-14",
+      "said": "nashte mein ek aur roti thi",
+      "router": { "actions": [{ "kind": "set_amount", "quantity": 1, "unit": "piece", "more": true, "food": "roti", "mealType": "breakfast" }] },
+      "expect": [["set_amount", "approve"]]
+    },
+    {
+      "id": "ed-15",
+      "said": "poha do katori kar do",
+      "heard": "पोहा दो कटोरी कर दो",
+      "roman": "poha do katori kar do",
+      "router": { "actions": [{ "kind": "set_amount", "quantity": 2, "unit": "katori", "food": "poha" }] },
+      "expect": [["set_amount", "approve"]]
+    },
+    {
+      "id": "ed-16",
+      "said": "make the paneer 2 katori",
+      "router": { "actions": [{ "kind": "set_amount", "quantity": 2, "unit": "katori", "food": "chicken" }] },
+      "expect": []
     }
   ]
 }

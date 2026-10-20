@@ -7,6 +7,7 @@ import {
   checkAction,
   deviatesFromUsual,
   factsForDayType,
+  hasDevanagari,
   localAskTopic,
   lowerConfidence,
   matchConfidence,
@@ -305,6 +306,35 @@ describe("planTurn", () => {
       const turn = planTurn(Array.from({ length: 50 }, () => ({ kind: "log_meal", span: "pizza", confidence: "high" })), CTX);
       expect(turn.items).toHaveLength(1);
     });
+  });
+});
+
+describe("set_amount: a new amount for a food already logged", () => {
+  it("keeps the router's amount and unit, and is an approved edit", () => {
+    const a = ok({ kind: "set_amount", quantity: 2, unit: "katori", food: "poha", mealType: "breakfast" });
+    expect(a).toEqual({ kind: "set_amount", quantity: 2, unit: "katori", more: undefined, food: "poha", mealType: "breakfast", date: undefined });
+    expect(tierFor(a, CTX)).toBe("approve");
+    expect(ok({ kind: "set_amount", quantity: 1, more: true })).toMatchObject({ quantity: 1, more: true });
+  });
+
+  it("rejects a silly amount, an unknown unit, and anything not today or yesterday", () => {
+    expect(reason({ kind: "set_amount", quantity: 0 })).toBe("bad_value");
+    expect(reason({ kind: "set_amount", quantity: 5000 })).toBe("bad_value");
+    expect(reason({ kind: "set_amount", quantity: 2, unit: "bucket" })).toBe("bad_value");
+    expect(reason({ kind: "set_amount", quantity: 2, date: "2026-10-21" })).toBe("date_out_of_range");
+  });
+
+  it("counts as the turn's one edit", () => {
+    const turn = planTurn([{ kind: "set_amount", quantity: 2 }, { kind: "delete_entry", target: "meal" }], CTX);
+    expect(turn.items.map((i) => i.action.kind)).toEqual(["set_amount"]);
+    expect(turn.dropped[0]?.reason).toBe("too_many_edits");
+  });
+});
+
+describe("hasDevanagari", () => {
+  it("spots Hindi script, not Hinglish", () => {
+    expect(hasDevanagari("दो कटोरी पोहा")).toBe(true);
+    expect(hasDevanagari("poha do katori kar do")).toBe(false);
   });
 });
 

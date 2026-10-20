@@ -42,6 +42,7 @@ function phrase(i: StoredItem, today: string): string | null {
     case "delete_entry":
       return a.target === "meal" ? `deleted ${a.mealType ?? "a meal"}` : a.target === "water" ? "removed some water" : `deleted a ${a.target === "weight" ? "weigh-in" : "workout"}`;
     case "edit_meal":
+    case "set_amount":
       return `changed ${a.mealType ?? "a meal"}`;
     default:
       return null;

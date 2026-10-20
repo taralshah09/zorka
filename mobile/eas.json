@@ -3,10 +3,12 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "android": { "buildType": "apk" }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": { "buildType": "apk" },
       "env": { "EXPO_PUBLIC_API_URL": "https://health-coach-api-nmz6.onrender.com" }
     }

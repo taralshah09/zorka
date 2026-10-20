@@ -28,6 +28,8 @@ type Script = {
   meals?: Record<string, unknown[]>;
   gym?: Record<string, unknown[]>;
   brief?: unknown;
+  /** Hindi in Devanagari, written in Roman letters; default: the words unchanged. */
+  roman?: string;
   /** The phrasing step's reply; default: the FACTS lines as given (always grounded). */
   reply?: string;
   /** Steps that answer with an HTTP 500. */
@@ -48,6 +50,7 @@ function scripted(s: Script, seen: Seen = { stt: [], router: [], meal: [], gym: 
     const body = JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[] };
     const system = body.messages.find((m) => m.role === "system")?.content ?? "";
     const user = body.messages.find((m) => m.role === "user")?.content ?? "";
+    if (system.includes("in Roman letters")) return json({ text: s.roman ?? user });
     if (system.includes("intent router of Zorka")) {
       seen.router.push(user);
       if (s.fail?.includes("router")) return new Response("down", { status: 500 });
@@ -464,6 +467,7 @@ type Fixture = {
   meals?: Record<string, unknown[]>;
   gym?: Record<string, unknown[]>;
   brief?: unknown;
+  roman?: string;
   reply?: string;
   kind?: "support";
   learned?: boolean;
@@ -500,7 +504,7 @@ describe("AB8 eval set (recorded router answers)", () => {
         it(`${fx.id}: ${fx.said}`, async () => {
           const voice = fx.heard !== undefined;
           const res = await turn(
-            { heard: fx.heard, segments: fx.segments, router: fx.router, meals: fx.meals, gym: fx.gym, brief: fx.brief, reply: fx.reply },
+            { heard: fx.heard, segments: fx.segments, router: fx.router, meals: fx.meals, gym: fx.gym, brief: fx.brief, roman: fx.roman, reply: fx.reply },
             body({ text: fx.said, voice, at: fx.at, turn: fx.turn, aliases: fx.aliases }),
           );
           expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -517,7 +521,9 @@ describe("AB8 eval set (recorded router answers)", () => {
           if (g.group === "misheard" && !fx.learned)
             for (const i of r.items) if (WRITES.has(i.action.kind)) expect(["approve", "ask"]).toContain(i.tier);
           if (g.group === "edits")
-            for (const i of r.items) if (i.action.kind === "delete_entry" || i.action.kind === "edit_meal") expect(i.tier).toBe("approve");
+            for (const i of r.items)
+              if (i.action.kind === "delete_entry" || i.action.kind === "edit_meal" || i.action.kind === "set_amount") expect(i.tier).toBe("approve");
+          if (fx.roman) expect(r.heard.text).toBe(fx.roman);
           if (g.group === "targets") for (const i of r.items) if (i.action.kind === "set_target") expect(i.tier).toBe("approve");
           if (g.group === "adversarial") {
             for (const i of r.items) {

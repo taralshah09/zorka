@@ -11,6 +11,7 @@ import {
   ambiguousMealTypes,
   applyAliases,
   factsForDayType,
+  hasDevanagari,
   lowerConfidence,
   matchConfidence,
   mealTypeAt,
@@ -39,6 +40,7 @@ import { routineFromSets, type GymParseService } from "../gymParse/gymParse.serv
 import type { ParseService } from "../mealParse/parse.service.js";
 import {
   AiPhrasing,
+  AiRomanized,
   AiRouterOutput,
   RouterAction,
   type AskQuestion,
@@ -48,7 +50,7 @@ import {
   type TurnItem,
 } from "./assistant.schemas.js";
 import { phrasingSystem, phrasingUser, receipt, templateReply } from "./facts.js";
-import { ROUTER_SYSTEM_FOR, routerUser } from "./router.prompt.js";
+import { ROMANIZE_SYSTEM, ROUTER_SYSTEM_FOR, routerUser } from "./router.prompt.js";
 import { vocabularyHint } from "./vocab.js";
 
 /** A calorie-dense food logged with no amount is asked about (Tier rules: "no quantity on a calorie-dense item"). */
@@ -106,6 +108,8 @@ function spansOf(a: RouterAction): string[] {
       return a.span ? [a.span] : [];
     case "ask":
       return a.about ? [a.about] : [];
+    case "set_amount":
+      return a.food ? [a.food] : [];
     default:
       return [];
   }
@@ -281,6 +285,15 @@ export function assistantService(deps: AssistantDeps) {
         text = body.text!.replace(/\s+/g, " ").trim().slice(0, TURN_TEXT_MAX);
         source = "text";
         confidence = "high";
+      }
+      // Hindi in Devanagari is written in Roman letters first: everything after reads Roman script. A failed call keeps
+      // the words as heard (the router still gets them).
+      if (hasDevanagari(text)) {
+        try {
+          text = (await ai.json({ system: ROMANIZE_SYSTEM, user: text, schema: AiRomanized })).value.text.slice(0, TURN_TEXT_MAX);
+        } catch {
+          // keep `text`
+        }
       }
       const heard = { text, source, confidence };
       const nothing = { items: [], dropped: [], ai: null };
