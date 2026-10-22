@@ -54,3 +54,9 @@ services:
         value: "1"
       - key: RATE_LIMIT_ENABLED
         value: "true"
+      # AI routes (meal/gym parse, coach, brief, week plan, assistant turn) share one budget per user. Lower than the
+      # code defaults (10/min, 100/day) to fit Groq's free tier: one assistant turn can make up to ~6 model calls.
+      - key: RATE_LIMIT_AI_PER_MIN
+        value: "5"
+      - key: RATE_LIMIT_AI_PER_DAY
+        value: "40"

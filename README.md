@@ -197,8 +197,9 @@ aren't authenticated yet, so each request also counts against a per-IP ceiling: 
 |---|---|---|
 | Every route, per user id | 120 / min | `RATE_LIMIT_PER_MIN_USER` |
 | Every route, per IP | 300 / min | `RATE_LIMIT_PER_MIN_IP` |
-| AI: meal parse (text, voice, photo), gym voice parse, coach chat, brief, week plan, assistant turn | 10 / min, 100 / day per user | `RATE_LIMIT_AI_PER_MIN`, `RATE_LIMIT_AI_PER_DAY` |
+| AI: meal parse (text, voice, photo), gym voice parse, coach chat, brief, week plan, assistant turn | 5 / min, 40 / day per user on Render (10 / min, 100 / day by default) | `RATE_LIMIT_AI_PER_MIN`, `RATE_LIMIT_AI_PER_DAY` |
 | AI + search: food lookup, nearby | 5 / min, 30 / day per user | `RATE_LIMIT_SEARCH_PER_MIN`, `RATE_LIMIT_SEARCH_PER_DAY` |
+| Menu scan (vision), per page | 12 / min, 72 / day per user | fixed in code |
 
 - **Over the limit:** `429` with the usual error shape (`code: "RATE_LIMITED"`, `details.retryAfterSeconds`) and a
   `Retry-After` header. The app shows the message, and sync retries with backoff.
